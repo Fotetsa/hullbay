@@ -25,7 +25,7 @@ export type OpsNodeData = {
    * voir CanvasPage.tsx). Affiché en badge "emboîté" plutôt qu'en nœud séparé +
    * ligne visible, sur demande explicite ("je veux que ce soit emboîté").
    */
-  attachedVolumes?: string[]
+  attachedVolumes?: { id: string; name: string; mountPath?: string }[]
   /**
    * Écart désiré-vs-réel : "pending" = jamais déployé, "drift" = projet partiel/erreur,
    * "deployed" = conforme. Sert au badge "à déployer" (cf. CanvasPage/validate.ts).
@@ -36,6 +36,50 @@ export type OpsNodeData = {
    * Node(volume)+Edge en une seule action. `undefined` pour les nœuds non-conteneur.
    */
   onVolumeDrop?: () => void
+  /**
+   * PASSERELLE uniquement — la route Caddy n'a pas de cycle de vie conteneur, on
+   * affiche donc un état dérivé (cf. validate.ts/gatewayState) + le mapping exposé.
+   */
+  gatewayState?: "online" | "offline" | "pending"
+  /** Domaine exposé (config.domain) affiché sous le libellé de la passerelle. */
+  gatewayDomain?: string
+  /** Port cible de l'upstream (config.targetPort), affiché en :port. */
+  gatewayTargetPort?: number
+  /**
+   * CONTENEUR — ports publiés sur l'hôte (host:container). S'il y en a, le conteneur
+   * est joignable depuis l'extérieur sur ces ports ; sinon il n'est joignable qu'en
+   * interne par les autres conteneurs du réseau (DNS). Sert à l'indicateur d'accès.
+   */
+  publishedPorts?: { host: number; container: number }[]
+  /** CONTENEUR — relié à au moins un réseau (sinon isolé). */
+  onNetwork?: boolean
+  /** Ouvre l'inspecteur du volume embarqué (édition) comme s'il était un nœud libre. */
+  onVolumeClick?: (volumeId: string) => void
+}
+
+/** Pastille d'état spécifique passerelle : libellé + couleur façon santé upstream. */
+const GATEWAY_STATE: Record<
+  NonNullable<OpsNodeData["gatewayState"]>,
+  { label: string; dot: string; text: string; title: string }
+> = {
+  online: {
+    label: "en ligne",
+    dot: "bg-ui-tag-green-icon",
+    text: "text-ui-tag-green-text",
+    title: "Route active et conteneur cible joignable : le domaine résout vers l'upstream.",
+  },
+  offline: {
+    label: "cible hors-ligne",
+    dot: "bg-ui-tag-orange-icon",
+    text: "text-ui-tag-orange-text",
+    title: "Route déployée mais conteneur cible absent/arrêté : le domaine renverrait 502.",
+  },
+  pending: {
+    label: "à déployer",
+    dot: "bg-ui-tag-neutral-icon",
+    text: "text-ui-fg-muted",
+    title: "Route pas encore appliquée dans Caddy.",
+  },
 }
 
 /** Libellé court de l'état (lisible, en plus de la couleur — WCAG : pas que la couleur). */
@@ -80,6 +124,10 @@ export function OpsNode({ data, selected }: NodeProps) {
   const stateColor = d.actualState
     ? STATE_COLOR[d.actualState] ?? "bg-ui-tag-neutral-icon"
     : "bg-ui-tag-neutral-icon"
+
+  // Passerelle : état dérivé propre (route + santé upstream), libellé/couleur dédiés.
+  const isGateway = d.nodeType === "gateway"
+  const gw = GATEWAY_STATE[d.gatewayState ?? "pending"]
 
   // Replicas : live si connu (mesuré sur les tasks réelles), sinon la config
   // désirée en attendant la première mesure (évite un "×1" trompeur au chargement
@@ -242,23 +290,49 @@ export function OpsNode({ data, selected }: NodeProps) {
         </span>
         <div className="min-w-0 flex-1">
           <div className="truncate text-xs font-medium text-ui-fg-base">{d.label}</div>
-          <div className="text-[10px] leading-tight text-ui-fg-muted">
-            {NODE_META[d.nodeType]?.label ?? d.nodeType}
-          </div>
+          {isGateway && d.gatewayDomain ? (
+            // Passerelle : on montre le mapping exposé (domaine -> :port cible)
+            // directement sur le nœud, façon GNS3/Azure (le lien porte ses ports).
+            <div
+              className="truncate text-[10px] leading-tight text-ui-fg-subtle"
+              title={`${d.gatewayDomain}${d.gatewayTargetPort ? ` -> :${d.gatewayTargetPort}` : ""}`}
+            >
+              {d.gatewayDomain}
+              {d.gatewayTargetPort ? ` :${d.gatewayTargetPort}` : ""}
+            </div>
+          ) : (
+            <div className="text-[10px] leading-tight text-ui-fg-muted">
+              {NODE_META[d.nodeType]?.label ?? d.nodeType}
+            </div>
+          )}
         </div>
-        <span
-          className="inline-flex items-center gap-1"
-          aria-label={`État : ${d.actualState ? STATE_LABEL[d.actualState] ?? d.actualState : "non déployé"}`}
-        >
-          <span className={`inline-block h-2 w-2 rounded-full ${stateColor}`} />
-          <span className="text-[10px] leading-tight text-ui-fg-muted">
-            {d.actualState ? STATE_LABEL[d.actualState] ?? d.actualState : "—"}
+        {isGateway ? (
+          // État LOGIQUE de la route (en ligne / cible hors-ligne / à déployer),
+          // pas le cycle de vie conteneur : une route Caddy n'est jamais "actif".
+          <span
+            className="inline-flex items-center gap-1"
+            aria-label={`Passerelle : ${gw.label}`}
+            title={gw.title}
+          >
+            <span className={`inline-block h-2 w-2 rounded-full ${gw.dot}`} />
+            <span className={`text-[10px] leading-tight ${gw.text}`}>{gw.label}</span>
           </span>
-        </span>
+        ) : (
+          <span
+            className="inline-flex items-center gap-1"
+            aria-label={`État : ${d.actualState ? STATE_LABEL[d.actualState] ?? d.actualState : "non déployé"}`}
+          >
+            <span className={`inline-block h-2 w-2 rounded-full ${stateColor}`} />
+            <span className="text-[10px] leading-tight text-ui-fg-muted">
+              {d.actualState ? STATE_LABEL[d.actualState] ?? d.actualState : "—"}
+            </span>
+          </span>
+        )}
       </div>
 
-      {/* Écart désiré-vs-réel : badge explicite "à déployer" (pas seulement une couleur). */}
-      {(d.deployState === "pending" || d.deployState === "drift") && (
+      {/* Écart désiré-vs-réel : badge explicite "à déployer" (pas seulement une
+          couleur). Inutile pour la passerelle : sa pastille porte déjà son état. */}
+      {!isGateway && (d.deployState === "pending" || d.deployState === "drift") && (
         <div className="mt-1.5">
           <span
             className="inline-flex items-center gap-1 rounded-full bg-ui-tag-orange-bg px-1.5 py-0.5 text-[10px] font-medium text-ui-tag-orange-text"
@@ -273,18 +347,57 @@ export function OpsNode({ data, selected }: NodeProps) {
           </span>
         </div>
       )}
+      {/* Accès (conteneur) : publié sur l'hôte (joignable navigateur) vs interne seul. */}
+      {d.nodeType === "container" && (
+        d.publishedPorts?.length ? (
+          <div className="mt-1.5 flex flex-wrap gap-1">
+            {d.publishedPorts.map((p) => (
+              <span
+                key={p.host}
+                className="inline-flex items-center gap-1 rounded-full bg-ui-tag-green-bg px-1.5 py-0.5 text-[10px] font-medium text-ui-tag-green-text"
+                title={`Publié sur l'hôte : accessible via le port ${p.host} (-> ${p.container} dans le conteneur)`}
+              >
+                <span className="h-1.5 w-1.5 rounded-full bg-ui-tag-green-icon" />
+                :{p.host}
+              </span>
+            ))}
+          </div>
+        ) : (
+          <div className="mt-1.5">
+            <span
+              className="inline-flex items-center gap-1 text-[10px] leading-tight text-ui-fg-muted"
+              title={
+                d.onNetwork
+                  ? "Aucun port publié : joignable seulement en interne par les autres conteneurs du réseau (par nom DNS)."
+                  : "Aucun port publié et aucun réseau : conteneur isolé, joignable seulement via une passerelle."
+              }
+            >
+              <span className="h-1.5 w-1.5 rounded-full bg-ui-tag-neutral-icon" />
+              interne
+            </span>
+          </div>
+        )
+      )}
       {!!d.attachedVolumes?.length && (
         <div className="mt-1.5 flex flex-wrap gap-1">
-          {d.attachedVolumes.map((name) => (
-            <span
-              key={name}
-              className="inline-flex items-center gap-1 rounded-full bg-ui-tag-orange-bg px-1.5 py-0.5 text-[10px] text-ui-tag-orange-text"
-              title={`Volume : ${name}`}
-            >
-              <span className={`h-1.5 w-1.5 rounded-full ${HANDLE_COLOR["vol-link"]}`} />
-              {name}
-            </span>
-          ))}
+          {d.attachedVolumes.map((v) => {
+            const VolIcon = NODE_META.volume.Icon
+            return (
+              <button
+                key={v.id}
+                type="button"
+                className="nodrag inline-flex items-center gap-1 rounded-full bg-ui-tag-orange-bg px-1.5 py-0.5 text-[10px] text-ui-tag-orange-text transition-colors hover:bg-ui-tag-orange-bg-hover"
+                title={`Volume « ${v.name} » monté sur ${v.mountPath || `/data/${v.name}`} — clic pour éditer`}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  d.onVolumeClick?.(v.id)
+                }}
+              >
+                <VolIcon className="h-3 w-3 text-ui-tag-orange-icon" />
+                {v.name}
+              </button>
+            )
+          })}
         </div>
       )}
       </div>

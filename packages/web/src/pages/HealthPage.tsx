@@ -232,6 +232,9 @@ function ServiceDetailDrawer({
     refetchInterval: 8_000,
   })
   const s = data ?? service
+  // `placements` doit TOUJOURS être un tableau pour le rendu (.length/.map/.some) :
+  // filet défensif si une réponse partielle/erreur l'omet (sinon crash ErrorBoundary).
+  const placements = s?.placements ?? []
   const memMb = s?.totalMemBytes ? Math.round(s.totalMemBytes / (1024 * 1024)) : 0
 
   return (
@@ -256,7 +259,7 @@ function ServiceDetailDrawer({
                 <Heading level="h3" className="mb-2">
                   Placement des tasks
                 </Heading>
-                {s.placements.length === 0 ? (
+                {placements.length === 0 ? (
                   <Text size="small" className="text-ui-fg-subtle">
                     Aucune task en cours.
                   </Text>
@@ -271,7 +274,7 @@ function ServiceDetailDrawer({
                         </Table.Row>
                       </Table.Header>
                       <Table.Body>
-                        {s.placements.map((p, i) => {
+                        {placements.map((p, i) => {
                           const fail = ["failed", "rejected", "shutdown"].includes(p.state)
                           return (
                             <Table.Row key={i}>
@@ -289,9 +292,9 @@ function ServiceDetailDrawer({
                     </Table>
                   </div>
                 )}
-                {s.placements.some((p) => p.error) && (
+                {placements.some((p) => p.error) && (
                   <div className="mt-3 flex flex-col gap-1">
-                    {s.placements
+                    {placements
                       .filter((p) => p.error)
                       .map((p, i) => (
                         <Text key={i} size="xsmall" className="text-ui-fg-error">

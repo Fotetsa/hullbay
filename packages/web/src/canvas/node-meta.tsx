@@ -1,4 +1,5 @@
 import { CubeSolid, ServerStack, CircleStack, GlobeEurope } from "@medusajs/icons"
+import type { IconProps } from "@medusajs/icons/dist/types"
 import type { NodeType } from "@bozando-ops/shared"
 
 /**
@@ -11,7 +12,7 @@ import type { NodeType } from "@bozando-ops/shared"
  */
 export const NODE_META: Record<
   NodeType,
-  { label: string; hint: string; Icon: React.ComponentType }
+  { label: string; hint: string; Icon: React.ComponentType<IconProps> }
 > = {
   container: { label: "Conteneur", hint: "Une image Docker", Icon: CubeSolid },
   network: { label: "Réseau", hint: "Relie des conteneurs", Icon: ServerStack },

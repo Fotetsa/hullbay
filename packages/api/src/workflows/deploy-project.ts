@@ -2,6 +2,7 @@ import {
   buildBozandoLabels,
   parseNodeConfig,
   effectivePullPolicy,
+  LabelKeys,
   type ProjectGraph,
   type Node,
   type Edge,
@@ -147,6 +148,32 @@ const volumesStep: Step<DeployInput> = {
     const s = ctx.shared as DeployShared
     const slug = input.graph.slug
     const existing = await docker.listManagedVolumes()
+
+    // ── Suppression des volumes ORPHELINS (présents dans Docker mais plus dans le
+    // graphe) — symétrique du `remove` des services "hors graphe". Sans ça, un
+    // volume retiré du canvas survit indéfiniment dans Docker (le step ne faisait
+    // que créer), et réapparaît à chaque déploiement. On ne touche QU'aux volumes
+    // managés de CE projet (filtre projectId), jamais aux volumes système/externes.
+    const wantedNames = new Set(
+      input.graph.nodes
+        .filter((n) => n.type === "volume")
+        .map((n) => resourceName(slug, n.name))
+    )
+    for (const v of existing) {
+      const labels = v.Labels ?? {}
+      if (labels[LabelKeys.projectId] !== input.graph.id) continue
+      if (labels[LabelKeys.system] === "true") continue
+      if (wantedNames.has(v.Name)) continue
+      try {
+        await docker.removeVolume(v.Name)
+        s.log.push(`volume ${v.Name} supprimé (hors graphe)`)
+      } catch {
+        // Volume encore monté par un service pas encore reconcilié, ou déjà parti :
+        // tolérant (le prochain déploiement, après mise à jour du service, réessaiera).
+        s.log.push(`volume ${v.Name} non supprimé (encore utilisé ?) — réessai au prochain déploiement`)
+      }
+    }
+
     for (const node of input.graph.nodes.filter((n) => n.type === "volume")) {
       const cfg = parseNodeConfig("volume", node.config) as VolumeConfig
       if (cfg.external) {

@@ -1,6 +1,5 @@
 import type { FastifyInstance } from "fastify"
 import { observabilityService } from "./service"
-import { DockerEngineService } from "../docker-engine/service"
 import { requireRole } from "../auth/rbac"
 
 const viewer = { preHandler: requireRole("viewer") }
@@ -22,7 +21,7 @@ export async function registerObservabilityRoutes(app: FastifyInstance) {
   app.get("/api/services/:id/metrics", viewer, async (req, reply) => {
     const { id } = req.params as { id: string }
     try {
-      return await new DockerEngineService().getServiceMetrics(id)
+      return await observabilityService.serviceHealth(id)
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
       return reply.code(404).send({ error: message })

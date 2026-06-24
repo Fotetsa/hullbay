@@ -16,7 +16,7 @@ import {
 import { useQuery, useQueryClient, keepPreviousData } from "@tanstack/react-query"
 import { Navigate, useNavigate, useParams } from "react-router-dom"
 import { Button, Heading, Text, toast, usePrompt } from "@medusajs/ui"
-import { PlaySolid, Trash, ArrowLeft, ExclamationCircle, Spinner } from "@medusajs/icons"
+import { PlaySolid, Trash, ArrowLeft, ExclamationCircle, Spinner, XMark } from "@medusajs/icons"
 import type { NodeType, ActualState, Node, Edge } from "@bozando-ops/shared"
 // Sous-chemin node-config : évite de tirer labels.ts (node:crypto) dans le bundle navigateur.
 import { isConnectionAllowed, edgeKindForPair } from "@bozando-ops/shared/node-config"
@@ -29,7 +29,7 @@ import { Palette } from "../canvas/Palette"
 import { Inspector } from "../canvas/Inspector"
 import { EdgeInspector } from "../canvas/EdgeInspector"
 import { DeployPlanModal } from "../canvas/DeployPlanModal"
-import { nodeDeployState } from "../canvas/validate"
+import { nodeDeployState, gatewayState } from "../canvas/validate"
 
 /** Mappe la nature d'un lien persisté (edge.kind) sur l'id du handle correspondant. */
 const KIND_TO_HANDLE: Record<string, string> = {
@@ -104,7 +104,7 @@ function CanvasInner({ projectId }: { projectId: string }) {
   // ne change pas (un volume relié à plusieurs conteneurs, ou créé par drop libre
   // sur le canvas, reste affiché comme nœud séparé classique).
   const { volumeEdgesByContainer, embeddedVolumeNodeIds } = useMemo(() => {
-    const byContainer = new Map<string, string[]>()
+    const byContainer = new Map<string, { id: string; name: string; mountPath?: string }[]>()
     const embedded = new Set<string>()
     if (!graph) return { volumeEdgesByContainer: byContainer, embeddedVolumeNodeIds: embedded }
 
@@ -115,6 +115,7 @@ function CanvasInner({ projectId }: { projectId: string }) {
       .map((e) => ({
         containerId: typeById.get(e.sourceNodeId) === "container" ? e.sourceNodeId : e.targetNodeId,
         volId: typeById.get(e.sourceNodeId) === "volume" ? e.sourceNodeId : e.targetNodeId,
+        mountPath: (e.config as { mountPath?: string } | null)?.mountPath?.trim() || undefined,
       }))
 
     const volumeEdgeCount = new Map<string, number>()
@@ -124,13 +125,46 @@ function CanvasInner({ projectId }: { projectId: string }) {
     for (const [volId, count] of volumeEdgeCount) {
       if (count === 1) embedded.add(volId)
     }
-    for (const { containerId, volId } of volumeEdges) {
+    for (const { containerId, volId, mountPath } of volumeEdges) {
       if (!embedded.has(volId)) continue
       const volName = nameById.get(volId)
       if (!volName) continue
-      byContainer.set(containerId, [...(byContainer.get(containerId) ?? []), volName])
+      byContainer.set(containerId, [
+        ...(byContainer.get(containerId) ?? []),
+        { id: volId, name: volName, mountPath },
+      ])
     }
     return { volumeEdgesByContainer: byContainer, embeddedVolumeNodeIds: embedded }
+  }, [graph])
+
+  // Passerelle -> conteneur cible : map gatewayNodeId -> containerNodeId, à partir
+  // de l'edge kind="gateway". Sert à dériver l'état "en ligne / cible hors-ligne"
+  // de la route depuis la santé live du conteneur upstream (cf. validate.gatewayState).
+  const gatewayTargetByGateway = useMemo(() => {
+    const map = new Map<string, string>()
+    if (!graph) return map
+    const typeById = new Map(graph.nodes.map((n) => [n.id, n.type]))
+    for (const e of graph.edges) {
+      if (e.kind !== "gateway") continue
+      const gwId = typeById.get(e.sourceNodeId) === "gateway" ? e.sourceNodeId : e.targetNodeId
+      const targetId = typeById.get(e.sourceNodeId) === "gateway" ? e.targetNodeId : e.sourceNodeId
+      if (typeById.get(gwId) === "gateway") map.set(gwId, targetId)
+    }
+    return map
+  }, [graph])
+
+  // Conteneurs reliés à au moins un réseau (edge kind="network") : sert à l'indicateur
+  // d'accès du nœud (un conteneur sans réseau ni port publié est isolé).
+  const networkedContainers = useMemo(() => {
+    const set = new Set<string>()
+    if (!graph) return set
+    const typeById = new Map(graph.nodes.map((n) => [n.id, n.type]))
+    for (const e of graph.edges) {
+      if (e.kind !== "network") continue
+      const cId = typeById.get(e.sourceNodeId) === "container" ? e.sourceNodeId : e.targetNodeId
+      if (typeById.get(cId) === "container") set.add(cId)
+    }
+    return set
   }, [graph])
 
   // Drop d'un volume DIRECTEMENT sur un conteneur (pas sur le canvas vide) :
@@ -169,10 +203,30 @@ function CanvasInner({ projectId }: { projectId: string }) {
     if (!graph) return
     setRfNodes((prev) => {
       const prevById = new Map(prev.map((n) => [n.id, n]))
+      // État actuel (live si connu) de chaque nœud, pour résoudre la cible des passerelles.
+      const stateById = new Map<string, ActualState | null | undefined>(
+        graph.nodes.map((n) => {
+          const ex = prevById.get(n.id)
+          return [n.id, ex ? (ex.data as OpsNodeData).actualState : (liveState[n.id] ?? n.actualState ?? null)]
+        })
+      )
       return graph.nodes
         .filter((n) => !embeddedVolumeNodeIds.has(n.id))
         .map((n) => {
           const existing = prevById.get(n.id)
+          const isGw = n.type === "gateway"
+          const gwCfg = isGw ? (n.config as { domain?: string; targetPort?: number } | null) : null
+          const targetId = isGw ? gatewayTargetByGateway.get(n.id) : undefined
+          // Conteneur : on garde l'état caché/live (l'observer le pousse en continu,
+          // éviter le flicker pendant un rolling update). Réseau/volume/passerelle
+          // n'émettent AUCUN event live -> on fait confiance à l'actualState fraîchement
+          // refetch du graphe (sinon leur voyant resterait gris : bug observé).
+          const liveDriven = n.type === "container"
+          const resolvedState = liveDriven
+            ? existing
+              ? (existing.data as OpsNodeData).actualState
+              : (liveState[n.id] ?? n.actualState ?? null)
+            : (n.actualState ?? null)
           return {
             id: n.id,
             type: "ops",
@@ -180,36 +234,70 @@ function CanvasInner({ projectId }: { projectId: string }) {
             data: {
               label: n.name,
               nodeType: n.type,
-              actualState: existing
-                ? (existing.data as OpsNodeData).actualState
-                : (liveState[n.id] ?? n.actualState ?? null),
+              actualState: resolvedState,
               desiredReplicas: (n.config as { replicas?: number } | null)?.replicas ?? 1,
               runningReplicas: existing
                 ? (existing.data as OpsNodeData).runningReplicas
                 : liveReplicas[n.id],
               attachedVolumes: n.type === "container" ? volumeEdgesByContainer.get(n.id) : undefined,
+              ...(n.type === "container"
+                ? {
+                    publishedPorts: (
+                      (n.config as { ports?: { host?: number; container: number }[] } | null)?.ports ?? []
+                    )
+                      .filter((p): p is { host: number; container: number } => typeof p.host === "number")
+                      .map((p) => ({ host: p.host, container: p.container })),
+                    onNetwork: networkedContainers.has(n.id),
+                  }
+                : {}),
               deployState: nodeDeployState(n, graph.status),
+              ...(isGw
+                ? {
+                    gatewayState: gatewayState(
+                      nodeDeployState(n, graph.status) === "deployed",
+                      targetId ? stateById.get(targetId) ?? null : null
+                    ),
+                    gatewayDomain: gwCfg?.domain,
+                    gatewayTargetPort: gwCfg?.targetPort,
+                  }
+                : {}),
               onVolumeDrop:
                 n.type === "container" ? () => onContainerVolumeDrop(n.id) : undefined,
+              onVolumeClick: n.type === "container" ? (id: string) => setSelectedId(id) : undefined,
             } satisfies OpsNodeData,
           }
         })
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [graph, embeddedVolumeNodeIds, volumeEdgesByContainer, onContainerVolumeDrop])
+  }, [graph, embeddedVolumeNodeIds, volumeEdgesByContainer, onContainerVolumeDrop, gatewayTargetByGateway, networkedContainers])
 
   // Mise à jour INCRÉMENTALE : un event "node.state"/"node.replicas" ne touche
   // QUE le nœud concerné, en mutant son `data` en place plutôt qu'en recréant
   // tout le tableau (cf. commentaire ci-dessus — même piège React Flow/Handle).
   useEffect(() => {
-    setRfNodes((prev) =>
-      prev.map((n) => {
+    setRfNodes((prev) => {
+      // 1) Met à jour l'état propre de chaque nœud conteneur dont l'event est arrivé.
+      const next = prev.map((n) => {
         const state = liveState[n.id]
         if (state === undefined || (n.data as OpsNodeData).actualState === state) return n
         return { ...n, data: { ...(n.data as OpsNodeData), actualState: state } }
       })
-    )
-  }, [liveState])
+      // 2) Recalcule l'état des passerelles : il dépend de la santé du conteneur
+      // CIBLE, pas de la passerelle elle-même (qui n'émet aucun event live).
+      const stateById = new Map(next.map((n) => [n.id, (n.data as OpsNodeData).actualState]))
+      return next.map((n) => {
+        const d = n.data as OpsNodeData
+        if (d.nodeType !== "gateway") return n
+        const targetId = gatewayTargetByGateway.get(n.id)
+        const computed = gatewayState(
+          d.deployState === "deployed",
+          targetId ? stateById.get(targetId) ?? null : null
+        )
+        if (computed === d.gatewayState) return n
+        return { ...n, data: { ...d, gatewayState: computed } }
+      })
+    })
+  }, [liveState, gatewayTargetByGateway])
 
   useEffect(() => {
     setRfNodes((prev) =>
@@ -496,7 +584,16 @@ function CanvasInner({ projectId }: { projectId: string }) {
           )}
           {canDeploy ? (
             <>
-              <Button onClick={() => setPlanOpen(true)} isLoading={deployMut.isPending}>
+              <Button
+                onClick={() => {
+                  // Ferme l'inspecteur de nœud/lien ouvert : on déploie l'état
+                  // enregistré, pas une édition en cours — éviter toute ambiguïté.
+                  setSelectedId(null)
+                  setSelectedEdgeId(null)
+                  setPlanOpen(true)
+                }}
+                isLoading={deployMut.isPending}
+              >
                 <PlaySolid /> Déployer
               </Button>
               <Button variant="danger" onClick={onDestroy} isLoading={destroyMut.isPending}>
@@ -512,19 +609,6 @@ function CanvasInner({ projectId }: { projectId: string }) {
           )}
         </div>
       </div>
-
-      {/* Panneau d'activité de déploiement (déroulant, annoncé par lecteur d'écran). */}
-      {activityOpen && activityLog && (
-        <div
-          className="border-b border-ui-border-base bg-ui-bg-subtle px-4 py-2"
-          aria-live="polite"
-          role="status"
-        >
-          <pre className="max-h-40 overflow-auto whitespace-pre-wrap font-mono text-ui-fg-subtle txt-compact-xsmall">
-            {activityLog.length ? activityLog.join("\n") : "Aucune opération."}
-          </pre>
-        </div>
-      )}
 
       {/* Canvas plein écran ; palette (gauche) et inspecteur (droit) flottent
           par-dessus en overlay sans rétrécir le canvas. */}
@@ -578,6 +662,34 @@ function CanvasInner({ projectId }: { projectId: string }) {
                   Glisse un composant depuis la palette, ou clique dessus pour l'ajouter.
                 </Text>
               </div>
+            </div>
+          )}
+
+          {/* Activité de déploiement : carte flottante en BAS À DROITE (à l'opposé
+              de la palette en haut à gauche), façon toast persistant. Déroulée à la
+              demande via le bouton « Activité » du header ; fermable. */}
+          {activityOpen && activityLog && (
+            <div
+              className="absolute bottom-4 right-4 z-10 w-[min(420px,calc(100%-2rem))] overflow-hidden rounded-xl border border-ui-border-base bg-ui-bg-base shadow-elevation-flyout"
+              role="status"
+              aria-live="polite"
+            >
+              <div className="flex items-center justify-between border-b border-ui-border-base px-3 py-2">
+                <Text size="small" weight="plus" className="text-ui-fg-base">
+                  Activité de déploiement
+                </Text>
+                <button
+                  type="button"
+                  className="text-ui-fg-muted transition-colors hover:text-ui-fg-base"
+                  aria-label="Fermer le panneau d'activité"
+                  onClick={() => setActivityOpen(false)}
+                >
+                  <XMark />
+                </button>
+              </div>
+              <pre className="max-h-48 overflow-auto whitespace-pre-wrap px-3 py-2 font-mono text-ui-fg-subtle txt-compact-xsmall">
+                {activityLog.length ? activityLog.join("\n") : "Aucune opération."}
+              </pre>
             </div>
           )}
 

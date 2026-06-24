@@ -104,6 +104,33 @@ export function validateGraph(graph: ProjectGraph): ValidationIssue[] {
     }
   }
 
+  // ── Chemins de montage en double sur un même conteneur ──
+  // Docker refuse deux volumes montés sur le MÊME chemin. On reproduit ici le
+  // calcul du backend (deploy-project.volumeMountsFor) : chemin = edge.mountPath
+  // ou, à défaut, `/data/<nom-du-volume>`. Deux montages au même chemin = conflit.
+  const nodeById = new Map(nodes.map((n) => [n.id, n]))
+  for (const c of containers) {
+    const pathOwners = new Map<string, string[]>()
+    for (const e of edgesByNode.get(c.id) ?? []) {
+      if (e.kind !== "volume") continue
+      const otherId = e.sourceNodeId === c.id ? e.targetNodeId : e.sourceNodeId
+      const vol = nodeById.get(otherId)
+      if (!vol || vol.type !== "volume") continue
+      const mountPath =
+        (e.config as { mountPath?: string } | null)?.mountPath?.trim() || `/data/${vol.name}`
+      pathOwners.set(mountPath, [...(pathOwners.get(mountPath) ?? []), vol.name])
+    }
+    for (const [path, vols] of pathOwners) {
+      if (vols.length > 1) {
+        issues.push({
+          severity: "error",
+          nodeId: c.id,
+          message: `« ${c.name} » : plusieurs volumes (${vols.join(", ")}) montés sur le même chemin ${path}. Donne un chemin de montage distinct à chacun.`,
+        })
+      }
+    }
+  }
+
   return issues
 }
 
@@ -125,4 +152,27 @@ export function nodeDeployState(node: Node, projectStatus: string): NodeDeploySt
   if (!deployed) return "pending"
   if (projectStatus === "partial" || projectStatus === "error") return "drift"
   return "deployed"
+}
+
+/**
+ * État LOGIQUE d'une passerelle (route Caddy), distinct du cycle de vie d'un
+ * conteneur : une route n'est ni "running" ni "exited". On dérive l'état utile
+ * façon santé d'upstream nginx :
+ *  - "pending"  : route pas encore déployée (rien dans Caddy) -> "à déployer".
+ *  - "online"   : route déployée ET le conteneur cible est actif (running) ->
+ *                 le mapping domaine -> upstream résout réellement.
+ *  - "offline"  : route déployée mais cible absente/arrêtée (ou aucune cible) ->
+ *                 le domaine répondrait 502. C'est l'info vraiment utile.
+ *
+ * `gatewayDeployed` : la passerelle a-t-elle été appliquée (cf. nodeDeployState).
+ * `targetState`     : actualState du conteneur ciblé par l'edge gateway, ou null.
+ */
+export type GatewayState = "online" | "offline" | "pending"
+
+export function gatewayState(
+  gatewayDeployed: boolean,
+  targetState: string | null | undefined
+): GatewayState {
+  if (!gatewayDeployed) return "pending"
+  return targetState === "running" ? "online" : "offline"
 }

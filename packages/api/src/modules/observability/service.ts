@@ -107,6 +107,31 @@ export class ObservabilityService {
   }
 
   /**
+   * Santé COMPLÈTE d'un seul service (métriques + placement par task), pour le
+   * drill-down de la page Santé. Renvoie le MÊME type `ServiceHealth` que la liste
+   * (`placements` TOUJOURS présent) — sans ça, le front qui lit `s.placements`
+   * planterait dès que la réponse du /metrics remplace l'objet de la liste.
+   */
+  async serviceHealth(serviceId: string): Promise<ServiceHealth> {
+    const [m, rawPlacements, rawNodes] = await Promise.all([
+      this.engine.getServiceMetrics(serviceId),
+      this.engine.listServiceTaskPlacements(serviceId),
+      this.engine.listNodes(),
+    ])
+    const hostnameById = new Map(
+      (rawNodes as RawNode[]).map((n) => [n.ID ?? "", n.Description?.Hostname ?? n.ID ?? "?"])
+    )
+    const placements: ServicePlacement[] = rawPlacements.map((p) => ({
+      nodeId: p.nodeId,
+      hostname: hostnameById.get(p.nodeId) ?? p.nodeId ?? "?",
+      state: p.state,
+      desiredState: p.desiredState,
+      error: p.error,
+    }))
+    return { ...m, placements }
+  }
+
+  /**
    * Agrège, par projet, la liste DISTINCTE des serveurs (hostnames) où des tasks
    * tournent réellement. Répond à "quel serveur ce projet touche-t-il ?".
    * Si un projectId est fourni, ne renvoie que ce projet.
