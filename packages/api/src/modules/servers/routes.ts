@@ -6,6 +6,16 @@ import { DockerEngineService } from "../docker-engine/service"
 import { requireRole, currentUser } from "../auth/rbac"
 import { eventBus } from "../../lib/event-bus"
 
+
+/**
+ * Routes des serveurs - validation automatique via fastify-type-provider-zod
+ * 
+ * La validation des schemas Zod (body, params, query) est effectuee automatiquement
+ * par Fastify avant que le handler ne s'execute. En cas d'erreur, Fastify retourne
+ * un 400 avec le detail de l'erreur. Pas besoin de safeParse() manuel.
+ */
+
+
 // Provisionner / retirer des serveurs = OWNER uniquement (action infra sensible).
 const owner = { preHandler: requireRole("owner") }
 const localDocker = new DockerEngineService()
@@ -60,8 +70,6 @@ export async function registerServersRoutes(app: FastifyInstance) {
       },
     },
     async (req, reply) => {
-      // const parsed = provisionBody.safeParse(req.body)
-      // if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() })
       const { name, host, port, user, credential } = req.body as {
         name: string;
         host: string;
@@ -154,8 +162,6 @@ export async function registerServersRoutes(app: FastifyInstance) {
     },
     async (req, reply) => {
       const { id } = req.params as { id: string };
-      // const parsed = z.object({ role: z.enum(["manager", "worker"]) }).safeParse(req.body)
-      // if (!parsed.success) return reply.code(400).send({ error: "role invalide" })
       const server = await serversService.get(id);
       if (!server)
         return reply.code(404).send({ error: "serveur introuvable" });

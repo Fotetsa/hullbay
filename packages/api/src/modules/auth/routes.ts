@@ -6,6 +6,15 @@ import { requireRole, currentUser } from "./rbac"
 import { eventBus } from "../../lib/event-bus"
 
 /**
+ * Routes d'authentification - validation automatique via fastify-type-provider-zod
+ * 
+ * La validation des schemas Zod (body, params, query) est effectuee automatiquement
+ * par Fastify avant que le handler ne s'execute. En cas d'erreur, Fastify retourne
+ * un 400 avec le detail de l'erreur. Pas besoin de safeParse() manuel.
+ */
+
+
+/**
  * Routes d'auth + hook de protection des routes /api/*.
  *
  * Sécurité (cf. plan) : tout /api/* exige un JWT valide, SAUF les routes d'auth
@@ -51,8 +60,6 @@ export async function registerAuthRoutes(app: FastifyInstance) {
       summary: "Création du 1er compte owner (bootstrap)",
     },
   }, async (req, reply) => {
-    // const parsed = credBody.safeParse(req.body)
-    // if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() })
     try {
       const user = await authService.createOwner(req.body.email, req.body.password)
       return { ok: true, id: user.id }
@@ -90,6 +97,7 @@ export async function registerAuthRoutes(app: FastifyInstance) {
     pendingToken: z.string(), 
     code: z.string()
   });
+  
   app.post("/api/auth/mfa/verify", {
     schema: {
       body: verifyMfa,
@@ -97,10 +105,8 @@ export async function registerAuthRoutes(app: FastifyInstance) {
       summary: "Vérification MFA (code + pendingToken)",
     },
   }, async (req, reply) => {
-    const body = z.object({ pendingToken: z.string(), code: z.string() }).safeParse(req.body)
-    if (!body.success) return reply.code(400).send({ error: body.error.flatten() })
     try {
-      return await authService.verifyMfa(body.data.pendingToken, body.data.code)
+      return await authService.verifyMfa(req.body.pendingToken, req.body.code)
     } catch (err) {
       return reply.code(401).send({ error: err instanceof Error ? err.message : String(err) })
     }
@@ -160,10 +166,6 @@ export async function registerAuthRoutes(app: FastifyInstance) {
     },
   }, async (req, reply) => {
     const user = (req as FastifyRequest & { user: { sub: string } }).user
-    // const parsed = changePwBody.safeParse(req.body)
-    // if (!parsed.success) {
-    //   return reply.code(400).send({ error: req.error.issues[0]?.message ?? "invalide" })
-    // }
     try {
       return await authService.changePassword(
         user.sub,
@@ -211,8 +213,6 @@ export async function registerAuthRoutes(app: FastifyInstance) {
       },
     },
     async (req, reply) => {
-      //const parsed = createUserBody.safeParse(req.body)
-      //if (!req.data) return reply.code(400).send({ error: req.error.flatten() })
       try {
         const u = await authService.createUser(
           req.body.email,
@@ -249,8 +249,6 @@ export async function registerAuthRoutes(app: FastifyInstance) {
     },
     async (req, reply) => {
       const { id } = req.params as { id: string };
-      //const parsed = setRoleBody.safeParse(req.body)
-      //if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() })
       try {
         const u = await authService.setRole(id, req.body.role);
         await eventBus.emit("user.role.changed", {

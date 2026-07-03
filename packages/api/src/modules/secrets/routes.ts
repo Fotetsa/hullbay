@@ -13,6 +13,11 @@ import { eventBus } from "../../lib/event-bus"
  *
  * RBAC : créer/supprimer un secret = operator (sensible mais nécessaire au deploy).
  * La valeur n'est jamais exposée même au owner.
+ * 
+ * 
+ * La validation des schemas Zod (body, params, query) est effectuee automatiquement
+ * par Fastify avant que le handler ne s'execute. En cas d'erreur, Fastify retourne
+ * un 400 avec le detail de l'erreur. Pas besoin de safeParse() manuel.
  */
 
 const operator = { preHandler: requireRole("operator") }
@@ -55,10 +60,6 @@ export async function registerSecretsRoutes(app: FastifyInstance) {
       },
     },
     async (req, reply) => {
-      // const parsed = CreateSecretSchema.safeParse(req.body)
-      // if (!parsed.success) {
-      //   return reply.code(400).send({ error: parsed.error.issues[0]?.message ?? "invalide" })
-      // }
       const { name, value } = req.body as { name: string; value: string };
       try {
         await engine.upsertSecret(name, value);

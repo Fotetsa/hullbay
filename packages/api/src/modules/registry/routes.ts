@@ -4,6 +4,15 @@ import { registryService } from "./service"
 import { requireRole, currentUser } from "../auth/rbac"
 import { eventBus } from "../../lib/event-bus"
 
+/**
+ * Routes du registre - validation automatique via fastify-type-provider-zod
+ * 
+ * La validation des schemas Zod (body, params, query) est effectuee automatiquement
+ * par Fastify avant que le handler ne s'execute. En cas d'erreur, Fastify retourne
+ * un 400 avec le detail de l'erreur. Pas besoin de safeParse() manuel.
+ */
+
+
 // Gestion des credentials registre = OWNER uniquement (secret sensible).
 const owner = { preHandler: requireRole("owner") }
 
@@ -39,8 +48,6 @@ export async function registerRegistryRoutes(app: FastifyInstance) {
       },
     },
     async (req, reply) => {
-      // const parsed = setBody.safeParse(req.body)
-      // if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() })
       const cred = await registryService.set(
         req.body.registry,
         req.body.username,

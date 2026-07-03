@@ -4,6 +4,15 @@ import { NodeType, EdgeKind } from "@bozando-ops/shared"
 import { projectsService } from "./service"
 import { requireRole } from "../auth/rbac"
 
+/**
+ * Routes des projets - validation automatique via fastify-type-provider-zod
+ * 
+ * La validation des schemas Zod (body, params, query) est effectuee automatiquement
+ * par Fastify avant que le handler ne s'execute. En cas d'erreur, Fastify retourne
+ * un 400 avec le detail de l'erreur. Pas besoin de safeParse() manuel.
+ */
+
+
 // Routes mutantes = operator minimum ; les GET restent ouverts (viewer inclus).
 const operator = { preHandler: requireRole("operator") }
 
@@ -63,10 +72,6 @@ export async function registerProjectRoutes(app: FastifyInstance) {
     },
   }, async (req, reply) => {
     const { id } = req.params as { id: string }
-    // const parsed = updateProjectBody.safeParse(req.body)
-    // if (!parsed.success) {
-    //   return reply.code(400).send({ error: parsed.error.issues[0]?.message ?? "invalide" })
-    // }
     try {
       return await projectsService.updateProject(id, req.body)
     } catch (err) {
@@ -105,8 +110,6 @@ export async function registerProjectRoutes(app: FastifyInstance) {
     },
   }, async (req, reply) => {
     const { id } = req.params as { id: string }
-    // const parsed = createNodeBody.safeParse(req.body)
-    // if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() })
     try {
       return await projectsService.createNode({ projectId: id, ...req.body })
     } catch (err) {
@@ -130,8 +133,6 @@ export async function registerProjectRoutes(app: FastifyInstance) {
     },
   }, async (req, reply) => {
     const { nodeId } = req.params as { nodeId: string }
-    // const parsed = updateNodeBody.safeParse(req.body)
-    // if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() })
     try {
       return await projectsService.updateNode(nodeId, req.body)
     } catch (err) {
@@ -169,8 +170,6 @@ export async function registerProjectRoutes(app: FastifyInstance) {
     },
   }, async (req, reply) => {
     const { id } = req.params as { id: string }
-    // const parsed = createEdgeBody.safeParse(req.body)
-    // if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() })
     try {
       return await projectsService.createEdge({
         projectId: id,
@@ -197,8 +196,6 @@ export async function registerProjectRoutes(app: FastifyInstance) {
     },
   }, async (req, reply) => {
     const { edgeId } = req.params as { edgeId: string }
-    // const parsed = updateEdgeBody.safeParse(req.body)
-    // if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() })
     try {
       return await projectsService.updateEdge(edgeId, req.body)
     } catch (err) {

@@ -12,6 +12,10 @@ const viewer = { preHandler: requireRole("viewer") }
  *
  * La réconciliation effective (corriger le drift) passe par /deploy existant
  * (rôle operator) — pas dupliquée ici.
+ * 
+ * la Validation des schema Zod (body, params, query) est effectuee automatiquement
+ * par Fastify via le plugin fastify-zod avant que le handler ne s'execute. En cas d'erreur, 
+ * Fastify retourne un 400 avec le details de l'erreur. pas besoin de safeParse() manuel.
  */
 export async function registerObservabilityRoutes(app: FastifyInstance) {
   app.get(

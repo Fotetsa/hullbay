@@ -17,6 +17,10 @@ const owner = { preHandler: requireRole("owner") }
  *
  * NB : un verrou simple par projet évite deux déploiements concurrents (le plan
  * recommande locking-redis ; ici un Set en mémoire suffit pour le mono-process V1).
+ * 
+ * La validation des schemas Zod (body, params, query) est effectuee automatiquement
+ * par Fastify avant que le handler ne s'execute. En cas d'erreur, Fastify retourne
+ * un 400 avec le detail de l'erreur. Pas besoin de safeParse() manuel.
  */
 const deployingProjects = new Set<string>()
 

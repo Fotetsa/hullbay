@@ -5,14 +5,10 @@ import {
   jsonSchemaTransform, // Pour transformer les schémas Zod en JSON Schema
   type ZodTypeProvider,
 } from "fastify-type-provider-zod";
-
-import { Table } from "@medusajs/ui";
 import Fastify from "fastify";
 import cors from "@fastify/cors";
-
 import fastifySwagger from "@fastify/swagger";
 import fastifySwaggerUi from "@fastify/swagger-ui";
-
 import { pingDocker } from "./modules/docker-engine/client";
 import { registerProjectRoutes } from "./modules/projects/routes";
 import { registerReconcilerRoutes } from "./modules/reconciler/routes";
@@ -27,7 +23,8 @@ import { registerObservabilitySubscribers } from "./modules/observability/servic
 import { registerDeploySubscribers } from "./subscribers/on-deploy-finished";
 import { startDriftJob } from "./jobs/reconcile-drift";
 import { startAutoScaler } from "./jobs/auto-scaler";
-// import { ZodTypeProvider } from "fastify-type-provider-zod";
+
+
 
 /**
  * Serveur Fastify long-running de l'ops-panel (1 process : HTTP + socket.io).
@@ -39,9 +36,16 @@ import { startAutoScaler } from "./jobs/auto-scaler";
 const HOST = process.env.API_HOST || "127.0.0.1";
 const PORT = Number(process.env.API_PORT || 4000);
 
-async function main() {
+export interface BuildAppOptions {
+  logger?: boolean | object;
+  skipSideEffects?: boolean;
+}
+
+export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyInstance> {
+  const { logger = true, skipSideEffects = false } = options;
+
   const app = Fastify({
-    logger: {
+    logger: logger ? {
       // Rédaction des champs sensibles dans les logs (Fastify logge req au niveau
       // info). Empêche credentials SSH/registry/secrets de fuiter dans les journaux.
       redact: {
@@ -58,12 +62,32 @@ async function main() {
         ],
         censor: "[redacted]",
       },
-    },
+    } : false,
   }).withTypeProvider<ZodTypeProvider>();  //permet l'activation du typage automatique
 
   app.setValidatorCompiler(validatorCompiler);
   app.setSerializerCompiler(serializerCompiler);
 
+  
+app.setErrorHandler((error, request, reply) => {
+  if (error.validation) {
+    const fieldErrors: Record<string, string[]> = {};
+    error.validation.forEach((v) => {
+      const path = v.instancePath?.replace("/", "") || "body";
+      if (!fieldErrors[path]) fieldErrors[path] = [];
+      fieldErrors[path].push(v.message);
+    });
+
+    return reply.code(400).send({
+      statusCode: 400,
+      error: "Validation echouee",
+      details: fieldErrors,
+    });
+  }
+
+  reply.send(error);
+});
+  
   //Permet de spécifier au site donc l'url est http://localhost:5273
   //de lui parler depuis le serveur API (CORS) pour les requêtes fetch() côté navigateur.
   await app.register(cors, {
@@ -93,7 +117,7 @@ async function main() {
     transform: jsonSchemaTransform,
   });
 
-  // 🟢 2. L'INTERFACE WEB INTERACTIVE (SWAGGER UI)
+
   await app.register(fastifySwaggerUi, {
     routePrefix: "/docs", // C'est l'adresse web pour ouvrir le Playground
     uiConfig: {
@@ -122,19 +146,26 @@ async function main() {
   await registerObservabilityRoutes(app);
   await registerSecretsRoutes(app);
 
+  if (!skipSideEffects) {
+    // socket.io attaché au serveur HTTP de Fastify (calque chat-websocket.ts).
+    attachWebSocket(app.server);
+
+    // Observer Docker (Réel -> canvas live), lecture seule.
+    startObserver();
+
+    // Subscribers métier (audit + suivi drift) + jobs périodiques.
+    registerDeploySubscribers();
+    registerObservabilitySubscribers();
+    startDriftJob();
+    startAutoScaler();
+  }
+  return app;
+}
+
+async function main() {
+  const app = await buildApp({ logger: true, skipSideEffects: false });
+
   await app.listen({ host: HOST, port: PORT });
-
-  // socket.io attaché au serveur HTTP de Fastify (calque chat-websocket.ts).
-  attachWebSocket(app.server);
-
-  // Observer Docker (Réel -> canvas live), lecture seule.
-  startObserver();
-
-  // Subscribers métier (audit + suivi drift) + jobs périodiques.
-  registerDeploySubscribers();
-  registerObservabilitySubscribers();
-  startDriftJob();
-  startAutoScaler();
 
   const docker = await pingDocker();
   if (!docker.ok) {
@@ -155,7 +186,9 @@ async function main() {
   app.log.info(`bozando-ops api on http://${HOST}:${PORT} (ws path /ws)`);
 }
 
-main().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+if (process.env.NODE_ENV !== "test") { 
+  main().catch((err) => {
+    console.error(err);
+    process.exit(1);
+  });
+}
