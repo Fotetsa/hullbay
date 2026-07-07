@@ -1,181 +1,81 @@
-# bozando-ops
+# Bozando Ops
 
-Ops-panel "GNS3-like" pour piloter le déploiement Docker de Bozando.
+<div align="center">
+  <img src="docs/image%20canvas.png" alt="Bozando Ops interface" width="1100" />
+  <p><strong>Visual infrastructure operations for Docker and Swarm</strong></p>
+  <p>Design, review, and deploy container-based environments from a GNS3-style canvas with a clear and auditable workflow.</p>
+  <p>
+    <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License: MIT" /></a>
+    <a href="README.md"><img src="https://img.shields.io/badge/status-production-success.svg" alt="Project status" /></a>
+  </p>
+</div>
 
-Canvas visuel (type GNS3) où l'on dessine une infrastructure — conteneurs, réseaux,
-passerelles internet, volumes — et où le dessin **pilote Docker réellement** via l'API
-Docker Engine (dockerode). Conçu pour un VPS unique, avec pour but de transformer des
-opérations d'infra risquées en actions visuelles sûres et délégables.
+## Overview
+
+Bozando Ops is a visual operations plane for modern infrastructure teams. It transforms Docker-based deployments into a safe, guided experience where services, networks, volumes, and routing can be drawn, reviewed, and applied from a single interface.
+
+The platform is designed for a single VPS or a Swarm cluster and aims to make infrastructure operations accessible, traceable, and less error-prone for both operators and teams with limited Docker experience.
+
+## Key capabilities
+
+- Visual topology design for containers, networks, gateways, and volumes
+- Deployment review with a clear before/after plan before applying changes
+- Multi-node Docker Swarm orchestration with resilient rollout behavior
+- Provisioning and server onboarding workflows with secure SSH handling
+- Observability, health monitoring, and drift detection
+- Secrets management and role-based access control for delegated operations
+
+## Screenshots
+
+### Health and observability
+
+<div align="center">
+  <img src="docs/image%20sant%C3%A9.png" alt="Bozando Ops health view" width="1000" />
+</div>
 
 ## Architecture
 
-Monorepo à 3 packages :
+The project is organized as a monorepo with three main packages:
 
-- `packages/shared` — contrat de types (Zod) : `Project` / `Node` / `Edge`, config par type
-  de nœud, et helpers d'encodage/décodage des labels Docker `bozando.*`. Source de vérité
-  partagée par `api` et `web`.
-- `packages/api` — back Node long-running (Fastify) : modules / workflows / subscribers /
-  jobs / event-bus, dockerode (moteur), socket.io (temps réel), Prisma + PostgreSQL.
-- `packages/web` — front React + Vite, coquille `@medusajs/ui` + canvas React Flow.
+| Package | Role |
+|---|---|
+| packages/shared | Shared domain model and validation contracts for projects, nodes, and edges |
+| packages/api | Backend service for orchestration, Docker integration, sockets, Prisma, and RBAC |
+| packages/web | React and Vite front end with a visual canvas and operator workflow UI |
 
-Bootstrap (hors-canvas, pour résoudre le paradoxe œuf-poule) : `docker-compose.yml`
-(postgres + redis + caddy + api + web).
+A core principle of the platform is that Docker labels act as a redundant source of truth. The canvas can be reconstructed from the runtime state, while the database serves as a convenient operational cache.
 
-## Principes clés
+## Quick start
 
-- **Mapping 1-pour-1** : 1 nœud = 1 conteneur, 1 lien = un réseau Docker partagé,
-  1 passerelle = une route Caddy, 1 volume = un volume nommé.
-- **Labels Docker = source de vérité redondante** : le maximum d'informations est stocké
-  dans les labels `bozando.*` pour pouvoir reconstruire le canvas depuis Docker seul
-  (`rebuildFromDocker()`). PostgreSQL n'est qu'un cache de confort.
-- **Réconciliation desired-vs-actual** : déploiement idempotent (diff create/recreate/remove),
-  déclenché manuellement ; observation continue de l'état réel via les events Docker.
-
-## Fonctionnalités
-
-- **Cluster Docker Swarm multi-serveurs** : services répliqués, rolling update
-  zero-downtime (start-first), routing mesh, self-healing natif.
-- **Provisioning SSH one-shot** : ajout d'un serveur (clé/mot de passe utilisés une
-  seule fois, jamais stockés) → install Docker + join Swarm + login registre. L'outil
-  installe ensuite sa propre clé de maintenance chiffrée.
-- **HA multi-managers** : promotion/rétrogradation de nœuds, indicateur de quorum Raft.
-- **Observabilité** : santé du cluster (nœuds + métriques CPU/mém par service),
-  détection de drift, prune des ressources orphelines (jamais le système).
-- **Auto-scaling** (ce que Swarm ne fait pas) : ajuste les replicas selon le CPU,
-  entre min/max, avec cooldown anti-flapping.
-- **Registres & secrets** : credentials de registre chiffrés ; Docker Secrets pour les
-  valeurs sensibles (hors labels/env).
-- **Sécurité** : MFA TOTP, docker-socket-proxy (API Docker filtrée, EXEC bloqué),
-  garde œuf-poule, secrets chiffrés AES-256-GCM, rédaction des logs, bind loopback + Caddy.
-
-## Console (web)
-
-L'interface est pensée pour être utilisée — et **déléguée à un employé** — sans connaissance Docker :
-
-- **Onboarding** : à la première ouverture (aucun compte), un écran crée le compte
-  propriétaire (owner) directement depuis l'UI — plus besoin de `curl`.
-- **Rôles (RBAC) effectifs** : `owner > operator > viewer`. Le menu et les actions
-  s'adaptent au rôle (un viewer ne voit pas Serveurs/Registres/Utilisateurs et ne peut
-  pas déployer) — au lieu d'un refus opaque. Gestion des comptes : créer un operator/viewer,
-  changer un rôle, retirer un accès (garde-fous : pas d'auto-suppression, jamais le dernier owner).
-- **Journal d'audit** : qui a déployé/détruit/créé quoi et quand (filtrable, paginé).
-- **Déploiement sûr (canvas)** : un écran « Revoir et déployer » montre le diff
-  (créer/mettre à jour/supprimer) **et** des vérifications de cohérence (conteneur sans
-  réseau, passerelle sans cible, ports en conflit…) avant d'appliquer ; la destruction
-  est confirmée et récapitulée. Chaque nœud affiche un badge « à déployer » quand le
-  désiré diverge du réel, et un indicateur temps-réel signale si le canvas est « live ».
-- **Observabilité** : clic sur un service → détail (placement par task, CPU/mémoire,
-  erreurs).
-- **Accessibilité** : palette utilisable au clavier (pas seulement en glisser-déposer),
-  labels ARIA, fermeture `Esc` des panneaux, suppression au clavier (`Suppr`), états
-  communiqués par texte en plus de la couleur, lien d'évitement, focus visible.
-
-## Installation (serveur frais)
+On a fresh server, the installation flow is handled by the provided script:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/bright77777/bozando-ops/master/install.sh | bash
 ```
 
-L'installeur (idempotent) installe Docker, initialise le Swarm, crée l'overlay
-système, génère les secrets (`.env`), récupère `docker-compose.prod.yml` (images
-GHCR publiques) et démarre l'ops-panel. Variables : `GHCR_OWNER`, `IMAGE_TAG`,
-`PUBLIC_HOST` (active HTTPS auto). Ouvre ensuite l'URL affichée : l'écran d'amorçage
-te demande de créer le compte propriétaire (owner), puis active la MFA dans Paramètres.
+The installer is idempotent and will:
 
-## Développement (contributeurs)
+1. Install Docker and initialize Swarm if needed
+2. Generate the required environment and secret files
+3. Pull the production stack configuration
+4. Start the operations panel
 
-Monorepo npm workspaces (`packages/shared`, `packages/api`, `packages/web`). Node `>=20`.
-On ne lance pas l'image de prod en dev : on fait tourner l'`api` et le `web` en watch
-depuis le workspace, et seules les dépendances d'infra (Postgres + Redis) tournent en
-conteneur. Docker reste piloté via le socket Unix local.
+Available environment variables include GHCR_OWNER, IMAGE_TAG, and PUBLIC_HOST. Once the service is up, open the displayed URL and complete the bootstrap flow to create the initial owner account.
 
-### 1. Prérequis
+## Usage
 
-- Node `>=20` et npm (workspaces).
-- Un démon Docker local (le canvas pilote `/var/run/docker.sock` en dev).
-- Postgres + Redis : le plus simple est de ne lancer QUE ces deux services du compose
-  de dev (le reste — api/web/caddy — tournera depuis le workspace) :
+- Roles and permissions are handled through RBAC, with owner, operator, and viewer levels
+- Deployment is performed from the canvas after reviewing the proposed changes
+- Audit history helps track who created, modified, or removed resources and when
 
-```bash
-docker compose up -d postgres redis
-```
+## Security
 
-### 2. Variables d'environnement
+Security measures include encrypted secrets, restricted Docker socket access, MFA support, and log redaction. For more detail, see [SECURITY.md](SECURITY.md).
 
-```bash
-cp .env.template .env
-# Générer les clés maîtresses :
-#   openssl rand -hex 32   -> JWT_SECRET
-#   openssl rand -hex 32   -> MFA_ENCRYPTION_KEY
-```
+## Contributing
 
-Repères pour le dev local (déjà commentés dans `.env.template`) : `API_PORT=4000`,
-`WEB_ORIGIN=http://localhost:5273`, `REDIS_URL=redis://localhost:6379`,
-`DATABASE_URL=postgresql://ops:...@localhost/bozando_ops`. Laisser `DOCKER_HOST` vide
-en dev (repli sur le socket Unix) ; `DOCKER_SOCKET_PATH` n'est utile que pour un socket
-non standard.
+Contributions are welcome. For local development setup, conventions, and pull request guidance, see [CONTRIBUTING.md](CONTRIBUTING.md).
 
-### 3. Installer + préparer la base
+## License
 
-```bash
-npm install                                   # à la racine (workspaces)
-npm run prisma:generate --workspace @bozando-ops/api
-npm run prisma:migrate  --workspace @bozando-ops/api   # applique le schéma Prisma
-```
-
-Ne JAMAIS écrire de migration Prisma à la main : utiliser `prisma migrate dev`.
-
-### 4. Lancer les serveurs de dev
-
-Deux terminaux (ou `&`) depuis la racine :
-
-```bash
-npm run dev --workspace @bozando-ops/api   # Fastify + tsx watch -> http://127.0.0.1:4000
-npm run dev --workspace @bozando-ops/web   # Vite -> http://localhost:5273
-```
-
-Le front (5273) appelle l'api (4000) ; l'api parle au démon Docker local et à
-Postgres/Redis. À la première ouverture, l'écran d'amorçage crée le compte owner.
-
-### 5. Tester les passerelles (Caddy de dev)
-
-Les nœuds « passerelle » créent des routes via l'API d'admin Caddy (port `2019`).
-En prod, Caddy tourne dans le compose et partage le réseau de l'api ; en dev, l'api
-tourne sur l'hôte et a besoin que `localhost:2019` réponde. On lance donc un Caddy
-de dev qui publie `2019` (admin) + `80` (trafic) et rejoint l'overlay `boz_system`
-(attachable) pour résoudre les services exposés par leur nom DNS Swarm :
-
-```bash
-docker run -d --name boz-caddy-dev \
-  --network boz_system \
-  -p 2019:2019 -p 80:80 \
-  -e PUBLIC_HOST=:80 \
-  -v "$(pwd)/Caddyfile":/etc/caddy/Caddyfile:ro \
-  caddy:2-alpine
-```
-
-L'overlay `boz_system` est créé par le premier déploiement d'un projet contenant une
-passerelle. Le `Caddyfile` reverse-proxie `api:4000`/`web:80` (inexistants en dev) :
-sans importance, les routes de passerelle sont insérées en tête et résolvent d'abord.
-Vérifier : `curl -s -o /dev/null -w "%{http_code}\n" http://localhost:2019/config/`
-doit donner `200`. Pour un domaine de test (`tls:false`), pointer le domaine vers
-`127.0.0.1` dans `/etc/hosts`. Penser à libérer les ports 80/2019 (un nginx/apache
-hôte les occupe souvent).
-
-### 6. Vérifier avant de pousser
-
-```bash
-npm run typecheck                              # shared + api + web (exit 0)
-npm run build --workspace @bozando-ops/api     # tsc
-npm run build --workspace @bozando-ops/web     # tsc && vite build
-```
-
-`packages/shared` est le contrat de types unique : tout changement de forme de
-`Project`/`Node`/`Edge` ou des règles de connexion s'y fait, jamais dupliqué côté
-front ou back.
-
-## Sécurité & licence
-
-Sécurité : voir [SECURITY.md](./SECURITY.md). Licence : [MIT](./LICENSE).
-
-Voir le plan d'implémentation détaillé dans le dépôt parent.
+This project is distributed under the MIT License. See [LICENSE](LICENSE) for details.
