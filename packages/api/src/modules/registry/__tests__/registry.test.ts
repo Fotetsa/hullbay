@@ -62,7 +62,7 @@ describe("POST /api/registry", () => {
     
   it("devrait créer un credential avec des données valides", async () => {
     const mockCred = { id: "1", registry: "ghcr.io", username: "KamerLink" };
-    vi.mocked(registryService.set).mockResolvedValue(mockCred);
+    vi.mocked(registryService.set).mockResolvedValue(mockCred as any);
 
     const response = await app.inject({
       method: "POST",
@@ -90,7 +90,7 @@ describe("POST /api/registry", () => {
 
   it("devrait utiliser ghcr.io par défaut si registry n'est pas fourni", async () => {
     const mockCred = { id: "1", registry: "ghcr.io", username: "KamerLink" };
-    vi.mocked(registryService.set).mockResolvedValue(mockCred);
+    vi.mocked(registryService.set).mockResolvedValue(mockCred as any);
 
     const response = await app.inject({
       method: "POST",

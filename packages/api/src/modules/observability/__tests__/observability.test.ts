@@ -48,7 +48,7 @@ describe("GET /api/health/cluster", () => {
       nodes: [{ id: "node-1" }],
       services: [{ id: "svc-1" }],
     };
-    vi.mocked(observabilityService.clusterHealth).mockResolvedValue(mockHealth);
+    vi.mocked(observabilityService.clusterHealth).mockResolvedValue(mockHealth as any);
 
     const response = await app.inject({
       method: "GET",

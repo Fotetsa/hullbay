@@ -82,7 +82,8 @@ export async function registerServersRoutes(app: FastifyInstance) {
       };
 
       // Rôle : explicite si fourni, sinon 1er serveur = manager / suivants = worker.
-      const role = req.body.role ?? ((await serversService.hasManager()) ? "worker" : "manager");
+      const body = req.body as any;
+      const role = body.role ?? ((await serversService.hasManager()) ? "worker" : "manager");
       const server = await serversService.create({
         name,
         host,
@@ -171,19 +172,21 @@ export async function registerServersRoutes(app: FastifyInstance) {
           .send({ error: "nœud pas encore joint au Swarm" });
       }
       try {
-        await localDocker.setNodeRole(server.swarmNodeId, req.body.role);
+        const body = setRoleBody.parse(req.body);
+        await localDocker.setNodeRole(server.swarmNodeId, body.role);
       } catch (err) {
         return reply
           .code(500)
           .send({ error: err instanceof Error ? err.message : String(err) });
       }
-      await serversService.update(id, { role: req.body.role });
+      const body = setRoleBody.parse(req.body);
+      await serversService.update(id, { role: body.role });
       await eventBus.emit("server.role.changed", {
         serverId: id,
         userId: currentUser(req)?.sub,
-        role: req.body.role,
+        role: body.role,
       });
-      return { ok: true, role: req.body.role };
+      return { ok: true, role: body.role };
     },
   );
 }

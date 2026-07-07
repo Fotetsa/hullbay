@@ -48,14 +48,15 @@ export async function registerRegistryRoutes(app: FastifyInstance) {
       },
     },
     async (req, reply) => {
+      const body = req.body as { registry: string; username: string; token: string };
       const cred = await registryService.set(
-        req.body.registry,
-        req.body.username,
-        req.body.token,
+        body.registry,
+        body.username,
+        body.token,
       );
       await eventBus.emit("registry.set", {
         userId: currentUser(req)?.sub,
-        registry: req.body.registry,
+        registry: body.registry,
       });
       return { id: cred.id, registry: cred.registry, username: cred.username };
     },

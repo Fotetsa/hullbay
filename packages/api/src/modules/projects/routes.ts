@@ -55,7 +55,7 @@ export async function registerProjectRoutes(app: FastifyInstance) {
       security: [{ bearerAuth: []}],
     },
   }, async (req) => {
-    return projectsService.createProject(req.body)
+    return projectsService.createProject(req.body as { name: string; description?: string})
   })
 
   const updateProjectBody = z.object({
@@ -73,7 +73,7 @@ export async function registerProjectRoutes(app: FastifyInstance) {
   }, async (req, reply) => {
     const { id } = req.params as { id: string }
     try {
-      return await projectsService.updateProject(id, req.body)
+      return await projectsService.updateProject(id, req.body as any)
     } catch (err) {
       return reply.code(400).send({ error: err instanceof Error ? err.message : String(err) })
     }
@@ -111,7 +111,8 @@ export async function registerProjectRoutes(app: FastifyInstance) {
   }, async (req, reply) => {
     const { id } = req.params as { id: string }
     try {
-      return await projectsService.createNode({ projectId: id, ...req.body })
+      const body = req.body as any
+      return await projectsService.createNode({ projectId: id, ...body })
     } catch (err) {
       return reply.code(400).send({ error: err instanceof Error ? err.message : String(err) })
     }
@@ -134,7 +135,8 @@ export async function registerProjectRoutes(app: FastifyInstance) {
   }, async (req, reply) => {
     const { nodeId } = req.params as { nodeId: string }
     try {
-      return await projectsService.updateNode(nodeId, req.body)
+      const body = req.body as any
+      return await projectsService.updateNode(nodeId, body)
     } catch (err) {
       return reply.code(400).send({ error: err instanceof Error ? err.message : String(err) })
     }
@@ -171,12 +173,13 @@ export async function registerProjectRoutes(app: FastifyInstance) {
   }, async (req, reply) => {
     const { id } = req.params as { id: string }
     try {
+      const body = req.body as { sourceNodeId: string; targetNodeId: string; kind: string; config?: any };
       return await projectsService.createEdge({
         projectId: id,
-        sourceNodeId: req.body.sourceNodeId,
-        targetNodeId: req.body.targetNodeId,
-        kind: req.body.kind,
-        config: req.body.config ?? null,
+        sourceNodeId: body.sourceNodeId,
+        targetNodeId: body.targetNodeId,
+        kind: body.kind,
+        config: body.config ?? null,
       })
     } catch (err) {
       return reply.code(400).send({ error: err instanceof Error ? err.message : String(err) })
@@ -197,7 +200,8 @@ export async function registerProjectRoutes(app: FastifyInstance) {
   }, async (req, reply) => {
     const { edgeId } = req.params as { edgeId: string }
     try {
-      return await projectsService.updateEdge(edgeId, req.body)
+      const body = req.body as any
+      return await projectsService.updateEdge(edgeId, body)
     } catch (err) {
       return reply.code(400).send({ error: err instanceof Error ? err.message : String(err) })
     }

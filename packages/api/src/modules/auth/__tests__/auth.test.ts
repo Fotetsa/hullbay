@@ -92,7 +92,7 @@ describe("Auth Routes", () => {
 
     describe("POST /api/auth/bootstrap", () => {
         it("devrait créer le premier owner avec des donnée valides", async () => {
-            vi.mocked(authService.createOwner).mockResolvedValue({ id: "new-owner-id" });
+            vi.mocked(authService.createOwner).mockResolvedValue({ id: "new-owner-id" } as any);
 
             const response = await app.inject({
                 method: "POST",
@@ -207,7 +207,7 @@ describe("Auth Routes", () => {
         it("devrait connecter un utilisateur avec des données valides", async () => {
             vi.mocked(authService.login).mockResolvedValue({
                 token: "jwt_token",
-                requiresMfa: false,
+                mfaRequired: false
             });
 
             const response = await app.inject({
@@ -220,7 +220,7 @@ describe("Auth Routes", () => {
             });
 
             expect(response.statusCode).toBe(200);
-            expect(response.json()).toEqual({ token: "jwt_token", requiresMfa: false });
+            expect(response.json()).toEqual({ token: "jwt_token", mfaRequired: false });
         });
 
         it("devrait retourner 401 avec des credentials invalides", async () => {
@@ -338,7 +338,7 @@ describe("Auth Routes", () => {
         it("devrait démarrer l'enrolement MFA avec un token valide", async () => {
             vi.mocked(authService.startMfaEnrollment).mockResolvedValue({
                 secret: "MFA_SECRET",
-                qrCode: "data:image/png;base64,...",
+                otpauth: "data:image/png;base64,...",
             });
 
             const response = await app.inject({
@@ -351,7 +351,7 @@ describe("Auth Routes", () => {
 
             expect(response.statusCode).toBe(200);
             expect(response.json()).toHaveProperty("secret");
-            expect(response.json()).toHaveProperty("qrCode");
+            expect(response.json()).toHaveProperty("otpauth");
         });
 
         it("devrait retourner 401 sans token", async () => {
@@ -384,7 +384,7 @@ describe("Auth Routes", () => {
     describe("POST /api/auth/mfa/confirm", () => {
         it("devrat confirmer l'enrolement MFA avec code validé", async () => {
             vi.mocked(authService.confirmMfaEnrollment).mockResolvedValue({
-                success: true,
+                ok: true,
             });
 
             const response = await app.inject({
@@ -399,7 +399,7 @@ describe("Auth Routes", () => {
             });
 
             expect(response.statusCode).toBe(200);
-            expect(response.json()).toEqual({ success: true });
+            expect(response.json()).toEqual({ ok: true });
         });
 
         it("devrat retourner 400 si le code est invalide", async () => {
@@ -494,7 +494,7 @@ describe("Auth Routes", () => {
     */
     describe("POST /api/auth/password", () => {
         it("devrait changer le mot de passe avec succes", async () => {
-            vi.mocked(authService.changePassword).mockResolvedValue({ success: true });
+            vi.mocked(authService.changePassword).mockResolvedValue({ ok: true });
 
             const response = await app.inject({
                 method: "POST",
@@ -509,7 +509,7 @@ describe("Auth Routes", () => {
             });
 
             expect(response.statusCode).toBe(200);
-            expect(response.json()).toEqual({ success: true });
+            expect(response.json()).toEqual({ ok: true });
         });
 
         it("devrait retourner 400 si le mot de passe actuel est incorrect", async () => {
@@ -572,9 +572,9 @@ describe("Auth Routes", () => {
     describe("GET /api/users", () => {
         it("devrait lister les utilisateurs pour un owner", async () => {
             vi.mocked(authService.listUsers).mockResolvedValue([
-                { id: "1", email: "utilisateur1@gmail.com", role: "operator" },
-                { id: "2", email: "utilisateur2@gmail.com", role: "viewer" },
-            ]);
+              { id: "1", email: "utilisateur1@gmail.com", role: "operator" },
+              { id: "2", email: "utilisateur2@gmail.com", role: "viewer" },
+            ] as any);
 
             const response = await app.inject({
                 method: "GET",
@@ -735,8 +735,9 @@ describe("Auth Routes", () => {
         it("devrait changer le rôle d'un utilisateur", async () => {
             vi.mocked(authService.setRole).mockResolvedValue({
                 id: "user-id",
-                role: "operator",
-            });
+                email: "utilisateur1@gmail.com",
+              role: "operator",
+            } as any);
 
             const response = await app.inject({
                 method: "POST",
@@ -789,7 +790,9 @@ describe("Auth Routes", () => {
     */
     describe("DELETE /api/users/:id", () => {
         it("devrait supprimer un utilisateur", async () => {
-            vi.mocked(authService.deleteUser).mockResolvedValue({ success: true });
+            vi.mocked(authService.deleteUser).mockResolvedValue({
+              ok: true,
+            });
 
             const response = await app.inject({
                 method: "DELETE",
@@ -800,7 +803,7 @@ describe("Auth Routes", () => {
             });
 
             expect(response.statusCode).toBe(200);
-            expect(response.json()).toEqual({ success: true });
+            expect(response.json()).toEqual({ ok: true });
         });
 
         it("devrait retourner 403 pour un operator", async () => {

@@ -47,7 +47,7 @@ describe("POST /api/projects", () => {
 
   it("devrait créer un projet avec des données valides", async () => {
     const mockProject = { id: "proj-1", name: "Mon projet", description: "Description" };
-    vi.mocked(projectsService.createProject).mockResolvedValue(mockProject);
+    vi.mocked(projectsService.createProject).mockResolvedValue(mockProject as any);
 
     const response = await app.inject({
       method: "POST",
@@ -66,7 +66,7 @@ describe("POST /api/projects", () => {
 
   it("devrait accepter un projet sans description (champ optionnel)", async () => {
     const mockProject = { id: "proj-1", name: "Mon projet" };
-    vi.mocked(projectsService.createProject).mockResolvedValue(mockProject);
+    vi.mocked(projectsService.createProject).mockResolvedValue(mockProject as any);
 
     const response = await app.inject({
       method: "POST",
@@ -149,7 +149,7 @@ describe("POST /api/projects", () => {
     vi.mocked(projectsService.createProject).mockResolvedValue({
       id: "proj-1",
       name: "Project1",
-    });
+    } as any);
 
     const response = await app.inject({
       method: "POST",

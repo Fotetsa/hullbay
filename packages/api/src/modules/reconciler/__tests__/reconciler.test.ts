@@ -55,7 +55,7 @@ describe("POST /api/rebuild-from-docker", () => {
     
   it("devrait reconstruire depuis Docker avec un token operator", async () => {
     const mockResult = { rebuilt: 3, errors: 0 };
-    vi.mocked(rebuildModule.rebuildFromDocker).mockResolvedValue(mockResult);
+    vi.mocked(rebuildModule.rebuildFromDocker).mockResolvedValue(mockResult as any);
 
     const response = await app.inject({
       method: "POST",
@@ -69,7 +69,7 @@ describe("POST /api/rebuild-from-docker", () => {
   });
 
   it("devrait accepter un owner", async () => {
-    vi.mocked(rebuildModule.rebuildFromDocker).mockResolvedValue({});
+    vi.mocked(rebuildModule.rebuildFromDocker).mockResolvedValue({} as any);
 
     const response = await app.inject({
       method: "POST",

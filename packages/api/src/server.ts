@@ -5,7 +5,7 @@ import {
   jsonSchemaTransform, // Pour transformer les schémas Zod en JSON Schema
   type ZodTypeProvider,
 } from "fastify-type-provider-zod";
-import Fastify from "fastify";
+import Fastify, { FastifyError } from "fastify";
 import cors from "@fastify/cors";
 import fastifySwagger from "@fastify/swagger";
 import fastifySwaggerUi from "@fastify/swagger-ui";
@@ -23,6 +23,7 @@ import { registerObservabilitySubscribers } from "./modules/observability/servic
 import { registerDeploySubscribers } from "./subscribers/on-deploy-finished";
 import { startDriftJob } from "./jobs/reconcile-drift";
 import { startAutoScaler } from "./jobs/auto-scaler";
+import fastify, { type FastifyInstance} from "fastify";
 
 
 
@@ -39,10 +40,11 @@ const PORT = Number(process.env.API_PORT || 4000);
 export interface BuildAppOptions {
   logger?: boolean | object;
   skipSideEffects?: boolean;
+  skipRoutes?: boolean;
 }
 
 export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyInstance> {
-  const { logger = true, skipSideEffects = false } = options;
+  const { logger = true, skipSideEffects = false, skipRoutes = false } = options;
 
   const app = Fastify({
     logger: logger ? {
@@ -69,13 +71,13 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
   app.setSerializerCompiler(serializerCompiler);
 
   
-app.setErrorHandler((error, request, reply) => {
+app.setErrorHandler((error: FastifyError, request, reply) => {
   if (error.validation) {
     const fieldErrors: Record<string, string[]> = {};
     error.validation.forEach((v) => {
       const path = v.instancePath?.replace("/", "") || "body";
       if (!fieldErrors[path]) fieldErrors[path] = [];
-      fieldErrors[path].push(v.message);
+      fieldErrors[path].push(v.message ?? "Une Erreur est survenue lors de la Validation");
     });
 
     return reply.code(400).send({
@@ -138,13 +140,15 @@ app.setErrorHandler((error, request, reply) => {
   });
 
   // Routes métier.
-  await registerAuthRoutes(app);
-  await registerProjectRoutes(app);
-  await registerReconcilerRoutes(app);
-  await registerRegistryRoutes(app);
-  await registerServersRoutes(app);
-  await registerObservabilityRoutes(app);
-  await registerSecretsRoutes(app);
+  if (!skipRoutes) {
+    await registerAuthRoutes(app);
+    await registerProjectRoutes(app);
+    await registerReconcilerRoutes(app);
+    await registerRegistryRoutes(app);
+    await registerServersRoutes(app);
+    await registerObservabilityRoutes(app);
+    await registerSecretsRoutes(app);
+  }
 
   if (!skipSideEffects) {
     // socket.io attaché au serveur HTTP de Fastify (calque chat-websocket.ts).
