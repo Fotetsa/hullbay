@@ -4,7 +4,7 @@ on:
   pull_request:
     branches: [release]
   push:
-    branches: [release, docker-buildx-cache]
+    branches: [release]
 
 permissions:
   contents: read

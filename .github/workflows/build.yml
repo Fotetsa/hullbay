@@ -2,7 +2,7 @@ name: Build & Publish
 
 on:
   push:
-    branches: [release, docker-buildx-cache]
+    branches: [release]
     tags: ["v*"]
 
 # Publie les images vers GHCR (lecture publique). Pas d'input non fiable utilisé
