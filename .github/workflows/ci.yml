@@ -53,6 +53,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Build Shared
+        run: npm run build --workspace @bozando-ops/shared
+
       - name: Génération du client prisma
         run: npx prisma generate --schema packages/api/prisma/schema.prisma
 
