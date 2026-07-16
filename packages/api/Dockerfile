@@ -2,6 +2,8 @@
 FROM node:22-alpine AS base
 WORKDIR /app
 
+RUN apk add --no-cache openssl
+
 # Manifests pour installer les workspaces avec cache
 COPY package.json package-lock.json* ./
 COPY packages/shared/package.json ./packages/shared/
@@ -12,6 +14,8 @@ RUN npm install --workspace @bozando-ops/api --workspace @bozando-ops/shared --i
 # Sources
 COPY packages/shared ./packages/shared
 COPY packages/api ./packages/api
+
+RUN npm run build --workspace @bozando-ops/shared
 
 # Client Prisma + build TS
 RUN npx prisma generate --schema packages/api/prisma/schema.prisma

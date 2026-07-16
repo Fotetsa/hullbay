@@ -2,20 +2,64 @@ name: CI
 
 on:
   pull_request:
+    branches: [release]
   push:
-    branches: [master]
+    branches: [release]
+
+permissions:
+  contents: read
 
 jobs:
   typecheck:
+    name: Typecheck
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
-      - run: npm ci
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build Shared
+        run: npm run build --workspace @bozando-ops/shared
+
       - name: Génération du client Prisma
         run: npx prisma generate --schema packages/api/prisma/schema.prisma
+
       - name: Typecheck (shared + api + web)
         run: npm run typecheck
+
+  test:
+    name: Tests
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        node-version: [20, 22]
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup nodejs ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version}}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build Shared
+        run: npm run build --workspace @bozando-ops/shared
+
+      - name: Génération du client prisma
+        run: npx prisma generate --schema packages/api/prisma/schema.prisma
+
+      - name: Run Tests
+        run: npm run test --workspace @bozando-ops/api
+        env:
+          NODE_ENV: test
