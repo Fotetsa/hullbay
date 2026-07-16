@@ -14,6 +14,8 @@ type Options<TData, TVars> = {
   invalidate?: QueryKey[]
   /** Titre du toast d'erreur (défaut : "Erreur"). */
   errorTitle?: string
+  /** Durée d'affichage du toast d'erreur en millisecondes (défaut: 5000). Utilisé pour les erreurs critiques. */
+  errorDuration?: number
   /** Callback additionnel après le succès (comportements spécifiques à la page). */
   onSuccess?: (data: TData, vars: TVars) => void
   /** Callback additionnel après l'erreur. */
@@ -32,6 +34,7 @@ export function useMutationToast<TData = unknown, TVars = void>({
   successDescription,
   invalidate,
   errorTitle = "Erreur",
+  errorDuration,
   onSuccess,
   onError,
 }: Options<TData, TVars>) {
@@ -51,7 +54,11 @@ export function useMutationToast<TData = unknown, TVars = void>({
       onSuccess?.(data, vars)
     },
     onError: (err, vars) => {
-      toast.error(errorTitle, { description: err.message })
+      const errorOptions: any = { description: err.message }
+      if (errorDuration !== undefined) {
+        errorOptions.duration = errorDuration
+      }
+      toast.error(errorTitle, errorOptions)
       onError?.(err, vars)
     },
   })

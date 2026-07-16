@@ -453,6 +453,7 @@ function CanvasInner({ projectId }: { projectId: string }) {
     successDescription: (r) => `${r.log.length} opérations`,
     invalidate: [["project", projectId]],
     errorTitle: "Déploiement échoué",
+    errorDuration: 30000,
     onSuccess: (r) => {
       setPlanOpen(false)
       setActivityLog(r.log)
@@ -464,6 +465,7 @@ function CanvasInner({ projectId }: { projectId: string }) {
     mutationFn: () => api.destroy(projectId),
     success: "Détruit",
     invalidate: [["project", projectId]],
+    errorDuration: 10000,
     onSuccess: (r) => {
       setActivityLog(r.log)
       setActivityOpen(true)
