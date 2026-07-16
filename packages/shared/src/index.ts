@@ -5,6 +5,6 @@
  * - entities    : Project / Node / Edge / ProjectGraph
  * - labels      : helpers des labels Docker bozando.* (encode/decode, hash, build/decode)
  */
-export * from "./node-config"
-export * from "./entities"
-export * from "./labels"
+export * from "./node-config.js"
+export * from "./entities.js"
+export * from "./labels.js"

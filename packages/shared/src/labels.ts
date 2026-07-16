@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto"
-import type { Node, Edge } from "./entities"
-import { NodeType } from "./node-config"
+import type { Node, Edge } from "./entities.js"
+import { NodeType } from "./node-config.js"
 
 /**
  * Helpers des labels Docker `bozando.*`.

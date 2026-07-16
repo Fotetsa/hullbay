@@ -8,6 +8,7 @@ COPY packages/web/package.json ./packages/web/
 RUN npm install --workspace @bozando-ops/web --workspace @bozando-ops/shared --include-workspace-root
 COPY packages/shared ./packages/shared
 COPY packages/web ./packages/web
+RUN npm run build --workspace @bozando-ops/shared
 RUN npm run build --workspace @bozando-ops/web
 
 FROM nginx:alpine

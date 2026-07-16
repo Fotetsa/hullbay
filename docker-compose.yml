@@ -21,6 +21,9 @@ services:
       timeout: 5s
       retries: 5
 
+    ports:
+      - "5432:5432"
+
   redis:
     image: redis:7-alpine
     restart: unless-stopped
@@ -28,6 +31,9 @@ services:
       - ops_redisdata:/data
     labels:
       bozando.system: "true"
+
+    ports:
+      - "6379:6379"
 
   # docker-socket-proxy (Tecnativa) : filtre l'API Docker. L'api ne monte PLUS le
   # socket directement ; elle parle au proxy en TCP. On autorise ce qu'il faut pour

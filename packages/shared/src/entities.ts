@@ -1,5 +1,5 @@
 import { z } from "zod"
-import { NodeType } from "./node-config"
+import { NodeType } from "./node-config.js"
 
 /**
  * Entités du modèle de données, alignées sur le schéma Prisma de l'api.

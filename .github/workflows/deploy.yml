@@ -1,0 +1,43 @@
+name:  Deploy
+
+on: 
+    workflow_run: 
+        workflows: ["Build & Push"]
+        types: [completed]
+        branches: [release]
+
+jobs:
+    deploy:
+        runs-on: ubuntu-latest
+        if: ${{ github.event.workflow_run.conclusion == 'success' }}
+
+        steps:
+            - name: Checkout code
+              uses: actions/checkout@v6
+
+            - name: Install SSH key
+              uses: webfactory/ssh-agent@v0.9.0
+              with:
+                ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+
+            - name: Add server to known hosts
+              run: |
+                mkdir -p ~/.ssh
+                ssh-keyscan -H ${{ secrets.SSH_HOST }} >> ~/.ssh/known_hosts
+
+            - name: Deploy to server
+              run: |
+                ssh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} << 'EOF'
+                 cd /app
+                 docker compose pull
+                 docker compose up -d
+                 docker compose ps
+                EOF
+
+            - name: Notify success
+              if: success()
+              run: echo "Déploiement reussi !"
+
+            - name: Notify faillure
+              if: failure()
+              run: echo "Deploiement echoue"
