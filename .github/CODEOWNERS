@@ -1,0 +1,22 @@
+# Ce fichier définit qui est automatiquement assigné comme reviewer
+# selon les dossiers/fichiers modifiés dans une PR.
+# Règle : la ligne la PLUS SPÉCIFIQUE (la plus bas dans le fichier) l'emporte
+# sur une règle plus générale si les deux s'appliquent au même fichier.
+
+# Par défaut, tout le repo — Mr Bright en supervision globale
+*                           @bright77777
+
+# Package partagé (impact api + web à la fois) — supervision globale, pas de propriétaire unique
+/packages/shared/           @bright77777
+
+# API backend
+/packages/api/              @FoukengFranck
+
+# Frontend
+/packages/web/              @Dubrelh
+
+# CI/CD et infrastructure Docker
+/.github/workflows/         @FoukengFranck
+/packages/api/Dockerfile    @FoukengFranck
+/packages/web/Dockerfile    @FoukengFranck
+/docker-compose.yml         @FoukengFranck
