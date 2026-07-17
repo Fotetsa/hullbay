@@ -1,6 +1,8 @@
 import { Button, Input, Label, Select, Switch, Text } from "@medusajs/ui"
 import { Plus, Trash } from "@medusajs/icons"
+import { useQuery } from "@tanstack/react-query"
 import type { ContainerConfig } from "@bozando-ops/shared"
+import { api } from "../../lib/api"
 // Sous-chemin node-config : évite de tirer labels.ts (node:crypto) dans le bundle.
 import { effectivePullPolicy, type PullPolicy } from "@bozando-ops/shared/node-config"
 
@@ -21,6 +23,20 @@ export function ContainerForm({
   const ports = config.ports ?? []
   const envEntries = Object.entries(config.env ?? {})
   const secrets = config.secrets ?? []
+  const { data: availableSecrets, isLoading: secretsLoading, error: secretsError } = useQuery({
+    queryKey: ["secrets"],
+    queryFn: api.listSecrets,
+    refetchOnMount: "always",
+    retry: 1,
+  })
+  const secretNames = availableSecrets?.map((secret) => secret.name) ?? []
+  const { data: availableRegistries, isLoading: registriesLoading, error: registriesError } = useQuery({
+    queryKey: ["registry"],
+    queryFn: api.listRegistry,
+    refetchOnMount: "always",
+    retry: 1,
+  })
+  const registryHosts = availableRegistries?.map((reg) => reg.registry) ?? []
 
   const set = (patch: Cfg) => onChange({ ...config, ...patch })
 
@@ -55,10 +71,19 @@ export function ContainerForm({
         <div className="col-span-2">
           <Label size="small">Image</Label>
           <Input
+            list="canvas-image-options"
             value={config.image ?? ""}
             onChange={(e) => set({ image: e.target.value })}
-            placeholder="nginx"
+            placeholder="nginx ou ghcr.io/mon-org/mon-app"
           />
+          <Text size="xsmall" className="mt-1 text-ui-fg-muted">
+            Tu peux saisir ton image complète ou choisir un registre déjà configuré.
+          </Text>
+          <datalist id="canvas-image-options">
+            {registryHosts.map((registry) => (
+              <option key={registry} value={registry} />
+            ))}
+          </datalist>
         </div>
         <div>
           <Label size="small">Tag</Label>
@@ -225,16 +250,23 @@ export function ContainerForm({
         </div>
         <Text size="xsmall" className="mb-1 text-ui-fg-muted">
           Référence un secret créé dans "Secrets" (monté en /run/secrets/&lt;nom&gt;).
+          {secretsLoading ? " Chargement..." : ` ${secretNames.length} secret(s) disponibles`}
         </Text>
         {secrets.length === 0 && (
           <Text size="small" className="text-ui-fg-muted">
             Aucun secret référencé
           </Text>
         )}
+        {secretsError && (
+          <Text size="small" className="text-ui-fg-danger">
+            Impossible de charger les secrets : {secretsError.message}
+          </Text>
+        )}
         {secrets.map((s, i) => (
           <div key={i} className="mb-1 flex items-center gap-2">
             <Input
-              placeholder="nom du secret"
+              list="canvas-secret-options"
+              placeholder="Sélectionne un secret"
               value={s.secretName}
               onChange={(e) => {
                 const next = [...secrets]
@@ -260,6 +292,11 @@ export function ContainerForm({
             </Button>
           </div>
         ))}
+        <datalist id="canvas-secret-options">
+          {secretNames.map((name) => (
+            <option key={name} value={name} />
+          ))}
+        </datalist>
       </div>
 
       {/* Commande (override de l'entrypoint) */}
