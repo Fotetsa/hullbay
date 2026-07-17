@@ -1,0 +1,54 @@
+name: Feature Request
+description: Proposer une nouvelle fonctionnalité ou une amélioration
+title: "[Feature]: "
+labels: [enhancement, triage]
+body:
+  - type: checkboxes
+    id: package
+    attributes:
+      label: Package concerné
+      options:
+        - label: api
+        - label: web
+        - label: shared
+        - label: autre
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problème ou besoin
+      description: Quel problème cette fonctionnalité résout-elle ?
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Solution proposée
+      description: Comment imagines-tu le comportement de cette fonctionnalité ?
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives envisagées
+      description: Une description claire et concise des autres solutions ou fonctionnalités envisagées.
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Contexte supplémentaire
+      description: Ajoutez ici tout autre contexte ou des captures d'écran concernant la demande de fonctionnalité.
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priorité estimée
+      options:
+        - Faible
+        - Moyenne
+        - Haute
+        - Critique
+    validations:
+      required: true

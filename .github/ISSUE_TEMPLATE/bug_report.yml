@@ -1,0 +1,75 @@
+name: Bug Report
+description: Signaler un problème ou un comportement inattendu
+title: "[Bug]: "
+labels: [bug, triage]
+body:
+  - type: textarea
+    id: description
+    attributes:
+      label: Description du bug
+      description: Décris clairement le problème rencontré
+      placeholder: Une description claire et concise du bug...
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: package
+    attributes:
+      label: Package concerné
+      options:
+        - label: api
+        - label: web
+        - label: shared
+        - label: autre
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Étapes pour reproduire
+      description: Liste les étapes pour reproduire le problème
+      placeholder: |
+        1. Aller sur '...'
+        2. Cliquer sur '...'
+        3. Voir l'erreur
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Comportement attendu
+      description: Que devrait-il se passer normalement ?
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Comportement observé
+      description: Que se passe-t-il réellement ?
+    validations:
+      required: true
+
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: Capture d'écran
+      description: Ajoutez des captures d'écran pour aider à expliquer le problème
+
+  - type: input
+    id: os
+    attributes:
+      label: Système d'exploitation
+      placeholder: ex. macOS, Windows, Linux
+
+  - type: input
+    id: browser
+    attributes:
+      label: Navigateur
+      placeholder: ex. Chrome, Safari
+
+  - type: input
+    id: node
+    attributes:
+      label: Version de Node
+      placeholder: ex. 22
