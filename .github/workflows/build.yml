@@ -3,7 +3,6 @@ name: Build & Publish
 on:
   push:
     branches: [release]
-    tags: ["v*"]
 
 # Publie les images vers GHCR (lecture publique). Pas d'input non fiable utilisé
 # dans les run: (cf. guide injection workflow) — seules les métadonnées docker/metadata.
@@ -27,17 +26,21 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Variables (version auto + sha court)
+        id: vars
+        run: |
+          echo "SHA=${GITHUB_SHA::8}" >> "$GITHUB_OUTPUT"
+          echo "VERSION=1.0.${{ github.run_number }}" >> "$GITHUB_OUTPUT"
+
       - name: Métadonnées (tags / labels)
         id: meta
         uses: docker/metadata-action@v6
         with:
           images: ghcr.io/${{ github.repository }}/${{ matrix.package }}
           tags: |
-            type=raw,value=latest,enable={{is_default_branch}}
-            type=sha
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-
+            type=raw,value=latest
+            type=raw,value=${{ steps.vars.outputs.VERSION }}
+            type=raw,value=${{ steps.vars.outputs.SHA }}
 
       - name: Set up Docker Buildx
         id: buildx
@@ -50,7 +53,7 @@ jobs:
         with:
           context: .
           file: packages/${{ matrix.package }}/Dockerfile
-          builder: ${{steps.buildx.outputs.name}}
+          builder: ${{ steps.buildx.outputs.name }}
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
