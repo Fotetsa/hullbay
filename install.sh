@@ -16,7 +16,7 @@
 # =============================================================================
 set -euo pipefail
 
-GHCR_OWNER="${GHCR_OWNER:-bright77777}"
+GHCR_OWNER="${GHCR_OWNER:-fotetsa}"
 IMAGE_TAG="${IMAGE_TAG:-latest}"
 PUBLIC_HOST="${PUBLIC_HOST:-}"
 INSTALL_DIR="${INSTALL_DIR:-/opt/bozando-ops}"
