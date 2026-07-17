@@ -50,7 +50,7 @@ A core principle of the platform is that Docker labels act as a redundant source
 On a fresh server, the installation flow is handled by the provided script:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/bright77777/bozando-ops/master/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/fotetsa/hullbay/master/install.sh | sudo bash
 ```
 
 The installer is idempotent and will:

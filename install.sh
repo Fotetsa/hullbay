@@ -1,31 +1,31 @@
 #!/usr/bin/env bash
 # =============================================================================
-# bozando-ops — installeur one-liner
+# hullbay — installeur one-liner
 #
-#   curl -fsSL https://raw.githubusercontent.com/bright77777/bozando-ops/master/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/fotetsa/hullbay/master/install.sh | bash
 #
 # Sur un serveur Ubuntu/Debian frais : installe Docker, initialise le Swarm, crée
 # l'overlay système, génère les secrets, récupère le compose de prod (images GHCR)
 # et démarre l'ops-panel. Idempotent : relançable sans casser une install existante.
 #
 # Variables d'environnement (optionnelles) :
-#   GHCR_OWNER   propriétaire des images GHCR (défaut: bright77777)
+#   GHCR_OWNER   propriétaire des images GHCR (défaut: fotetsa)
 #   IMAGE_TAG    tag d'image (défaut: latest)
 #   PUBLIC_HOST  domaine public -> HTTPS auto Let's Encrypt (défaut: vide = HTTP :80)
-#   INSTALL_DIR  dossier d'install (défaut: /opt/bozando-ops)
+#   INSTALL_DIR  dossier d'install (défaut: /opt/hullbay)
 # =============================================================================
 set -euo pipefail
 
 GHCR_OWNER="${GHCR_OWNER:-fotetsa}"
 IMAGE_TAG="${IMAGE_TAG:-latest}"
 PUBLIC_HOST="${PUBLIC_HOST:-}"
-INSTALL_DIR="${INSTALL_DIR:-/opt/bozando-ops}"
-RAW_BASE="https://raw.githubusercontent.com/${GHCR_OWNER}/bozando-ops/master"
+INSTALL_DIR="${INSTALL_DIR:-/opt/hullbay}"
+RAW_BASE="https://raw.githubusercontent.com/${GHCR_OWNER}/hullbay/master"
 
 GREEN='\033[0;32m'; YELLOW='\033[1;33m'; RED='\033[0;31m'; NC='\033[0m'
-log()  { echo -e "${GREEN}[bozando-ops]${NC} $1"; }
-warn() { echo -e "${YELLOW}[bozando-ops]${NC} $1"; }
-die()  { echo -e "${RED}[bozando-ops]${NC} $1" >&2; exit 1; }
+log()  { echo -e "${GREEN}[hullbay]${NC} $1"; }
+warn() { echo -e "${YELLOW}[hullbay]${NC} $1"; }
+die()  { echo -e "${RED}[hullbay]${NC} $1" >&2; exit 1; }
 
 SUDO=""
 if [ "$(id -u)" -ne 0 ]; then

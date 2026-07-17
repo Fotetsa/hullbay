@@ -62,7 +62,7 @@ services:
       bozando.system: "true"
 
   api:
-    image: ghcr.io/${GHCR_OWNER:?set in .env}/bozando-ops/api:${IMAGE_TAG:-latest}
+    image: ghcr.io/${GHCR_OWNER:?set in .env}/hullbay/api:${IMAGE_TAG:-latest}
     restart: unless-stopped
     depends_on:
       postgres:
@@ -86,7 +86,7 @@ services:
       bozando.system: "true"
 
   web:
-    image: ghcr.io/${GHCR_OWNER:?set in .env}/bozando-ops/web:${IMAGE_TAG:-latest}
+    image: ghcr.io/${GHCR_OWNER:?set in .env}/hullbay/web:${IMAGE_TAG:-latest}
     restart: unless-stopped
     depends_on:
       - api
