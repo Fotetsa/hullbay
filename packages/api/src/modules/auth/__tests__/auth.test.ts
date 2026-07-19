@@ -389,7 +389,8 @@ describe("Auth Routes", () => {
     describe("POST /api/auth/mfa/confirm", () => {
         it("devrat confirmer l'enrolement MFA avec code validé", async () => {
             vi.mocked(authService.confirmMfaEnrollment).mockResolvedValue({
-                ok: true,
+              ok: true,
+              token: "mock_new_token_after_mfa_confirm",
             });
 
             const response = await app.inject({
@@ -404,7 +405,10 @@ describe("Auth Routes", () => {
             });
 
             expect(response.statusCode).toBe(200);
-            expect(response.json()).toEqual({ ok: true });
+            expect(response.json()).toEqual({
+              ok: true,
+              token: "mock_new_token_after_mfa_confirm",
+            });
         });
 
         it("devrat retourner 400 si le code est invalide", async () => {

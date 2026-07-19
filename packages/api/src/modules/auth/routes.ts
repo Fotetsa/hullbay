@@ -1,4 +1,3 @@
-import { api, auth } from './../../../../web/src/lib/api';
 import { email } from "zod/v4";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { z } from "zod";
