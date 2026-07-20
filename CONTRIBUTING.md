@@ -72,6 +72,7 @@ Do not edit Prisma migration files manually. Use Prisma migration commands for s
 Run the following in two separate terminals from the repository root:
 
 ```bash
+npm run predev --workspace @bozando-ops/shared
 npm run dev --workspace @bozando-ops/api
 npm run dev --workspace @bozando-ops/web
 ```

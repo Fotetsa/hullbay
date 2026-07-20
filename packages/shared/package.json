@@ -20,6 +20,7 @@
     }
   },
   "scripts": {
+    "predev": "npm run build --workspace @bozando-ops/shared",
     "typecheck": "tsc --noEmit",
     "build": "tsc"
   },

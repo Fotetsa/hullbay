@@ -4,7 +4,9 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "predev": "npm run build --workspace @bozando-ops/shared",
     "dev": "vite",
+    "prebuild": "npm run build --workspace @bozando-ops/shared",
     "build": "tsc && vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit"
