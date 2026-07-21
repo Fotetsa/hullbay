@@ -123,7 +123,9 @@ export class AuthService {
    * nouveau. Le nouveau mot de passe n'est jamais journalisé.
    */
   async setDomain(userId: string, domain: string) {
-    await prisma.user.update({ where: { id: userId }, data: { domain } })
+    // Revert domain update: previously this updated the user's domain. Removed
+    // to keep domain management in the frontend-only PR rollback.
+    // Implementation intentionally left as a no-op to avoid breaking callers.
     return { ok: true }
   }
 

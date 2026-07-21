@@ -183,29 +183,7 @@ export async function registerAuthRoutes(app: FastifyInstance) {
         email: u?.email,
         role: u?.role,
         mfaEnabled: u?.mfaEnabled,
-        domain: u?.domain,
       };
-    },
-  );
-
-  const domainBody = z.object({
-    domain: z.string().min(1),
-  });
-
-  app.post(
-    "/api/auth/domain",
-    {
-      schema: {
-        body: domainBody,
-        tags: ["auth"],
-        security: [{ bearerAuth: [] }],
-        summary: "Mise à jour du domaine public",
-      },
-    },
-    async (req) => {
-      const user = (req as FastifyRequest & { user: { sub: string } }).user;
-      const body = req.body as { domain: string };
-      return authService.setDomain(user.sub, body.domain.trim());
     },
   );
 
