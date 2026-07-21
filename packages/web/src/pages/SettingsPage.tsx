@@ -1,8 +1,6 @@
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { useQuery } from "@tanstack/react-query"
-import { Button, Container, Heading, Input, Label, Text, Badge } from "@medusajs/ui"
-import { ShieldCheck, CheckCircleSolid } from "@medusajs/icons"
-import { QRCodeSVG } from "qrcode.react"
+import { Button, Container, Heading, Input, Label, Text } from "@medusajs/ui"
 import { api } from "../lib/api"
 import { useMutationToast } from "../lib/useMutationToast"
 import { PageHeader, PageContainer } from "../components/PageHeader"
@@ -20,28 +18,15 @@ export function SettingsPage() {
   const [code, setCode] = useState("")
 
   // Changement de mot de passe.
+  const [domain, setDomain] = useState("")
   const [currentPassword, setCurrentPassword] = useState("")
   const [newPassword, setNewPassword] = useState("")
   const [confirmPassword, setConfirmPassword] = useState("")
 
-  const enroll = useMutationToast({
-    mutationFn: api.enrollMfa,
-    onSuccess: (r) => {
-      setSecret(r.secret)
-      setOtpauth(r.otpauth)
-    },
-  })
-
-  const confirm = useMutationToast({
-    mutationFn: () => api.confirmMfa(code),
-    success: "MFA activée",
+  const updateDomain = useMutationToast({
+    mutationFn: () => api.setDomain(domain.trim()),
+    success: "Domaine mis à jour",
     invalidate: [["me"]],
-    errorTitle: "Code invalide",
-    onSuccess: () => {
-      setSecret(null)
-      setOtpauth(null)
-      setCode("")
-    },
   })
 
   const changePw = useMutationToast({
@@ -60,6 +45,13 @@ export function SettingsPage() {
     currentPassword.length > 0 &&
     newPassword.length >= 8 &&
     newPassword === confirmPassword
+  const canSaveDomain = domain.trim().length > 0
+
+  useEffect(() => {
+    if (me) {
+      setDomain(me.domain ?? "")
+    }
+  }, [me])
 
   return (
     <PageContainer size="2xl">
@@ -78,6 +70,22 @@ export function SettingsPage() {
           <div>
             <Label size="small">Rôle</Label>
             <Text className="capitalize">{me?.role ?? "…"}</Text>
+          </div>
+          <div>
+            <Label size="small">Domaine public</Label>
+            <Input
+              value={domain}
+              onChange={(e) => setDomain(e.target.value)}
+              placeholder="ops.exemple.com"
+            />
+            <Button
+              onClick={() => updateDomain.mutate()}
+              isLoading={updateDomain.isPending}
+              disabled={!canSaveDomain}
+              className="mt-3 self-start"
+            >
+              Enregistrer
+            </Button>
           </div>
         </div>
       </Container>
@@ -137,67 +145,6 @@ export function SettingsPage() {
         </div>
       </Container>
 
-      {/* MFA */}
-      <Container className="p-6">
-        <div className="mb-3 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <ShieldCheck />
-            <Heading level="h3">Double authentification</Heading>
-          </div>
-          {me?.mfaEnabled ? (
-            <Badge color="green">
-              <CheckCircleSolid /> Activée
-            </Badge>
-          ) : (
-            <Badge color="orange">Désactivée</Badge>
-          )}
-        </div>
-
-        {me?.mfaEnabled ? (
-          <Text className="text-ui-fg-subtle">
-            La double authentification est active sur ton compte. Un code te sera
-            demandé à chaque connexion.
-          </Text>
-        ) : !secret ? (
-          <div>
-            <Text className="mb-3 text-ui-fg-subtle">
-              Protège l'accès à la console (qui pilote ton infrastructure) avec un
-              second facteur via une app d'authentification.
-            </Text>
-            <Button onClick={() => enroll.mutate()} isLoading={enroll.isPending}>
-              Activer la MFA
-            </Button>
-          </div>
-        ) : (
-          <div className="flex flex-col gap-3">
-            <Text className="text-ui-fg-subtle">
-              Scanne ce QR code avec ton app d'authentification (Google
-              Authenticator, Authy…), puis saisis le code généré.
-            </Text>
-            {otpauth && (
-              <div className="flex justify-center rounded-lg border border-ui-border-base bg-ui-bg-base p-4">
-                <QRCodeSVG value={otpauth} size={200} marginSize={2} />
-              </div>
-            )}
-            <div>
-              <Label size="small">Saisie manuelle (si tu ne peux pas scanner)</Label>
-              <Input readOnly value={secret} className="font-mono" />
-            </div>
-            <div>
-              <Label size="small">Code de vérification</Label>
-              <Input
-                value={code}
-                onChange={(e) => setCode(e.target.value)}
-                placeholder="123456"
-                inputMode="numeric"
-              />
-            </div>
-            <Button onClick={() => confirm.mutate()} isLoading={confirm.isPending}>
-              Confirmer l'activation
-            </Button>
-          </div>
-        )}
-      </Container>
     </PageContainer>
   )
 }

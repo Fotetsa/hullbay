@@ -15,7 +15,7 @@ export type Role = "owner" | "operator" | "viewer"
 
 const RANK: Record<Role, number> = { viewer: 0, operator: 1, owner: 2 }
 
-export type Me = { id: string; email: string; role: Role; mfaEnabled: boolean }
+export type Me = { id: string; email: string; role: Role; mfaEnabled: boolean; domain?: string }
 
 type MeContextValue = {
   me: Me | undefined
