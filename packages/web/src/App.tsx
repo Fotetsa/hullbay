@@ -1,15 +1,14 @@
 import { useState } from "react"
-import { Navigate, Outlet, Route, Routes, useLocation } from "react-router-dom"
+import { Navigate, Route, Routes, useLocation } from "react-router-dom"
 import { useQuery } from "@tanstack/react-query"
 import { Spinner } from "@medusajs/icons"
-import { Text } from "@medusajs/ui"
 import { api, auth } from "./lib/api"
 import { AppLayout } from "./components/AppLayout"
 import { LoginPage } from "./pages/LoginPage"
 import { BootstrapPage } from "./pages/BootstrapPage"
 import { UsersPage } from "./pages/UsersPage"
 import { AuditPage } from "./pages/AuditPage"
-import { MeProvider, useMe } from "./lib/useMe"
+import { MeProvider } from "./lib/useMe"
 import { ProjectsPage } from "./pages/ProjectsPage"
 import { CanvasPage } from "./pages/CanvasPage"
 import { SettingsPage } from "./pages/SettingsPage"
@@ -17,7 +16,6 @@ import { ServersPage } from "./pages/ServersPage"
 import { IntegrationsPage } from "./pages/IntegrationsPage"
 import { HealthPage } from "./pages/HealthPage"
 import { SecretsPage } from "./pages/SecretsPage"
-import { SetupDomainPage } from "./pages/SetupDomainPage"
 
 /**
  * Routing par URL (react-router) :
@@ -41,54 +39,25 @@ export function App() {
       <Routes>
         <Route path="/login" element={<Navigate to="/" replace />} />
 
-        <Route path="/setup-domain" element={<SetupDomainPage />} />
-
         {/* Canvas : plein écran, hors shell */}
         <Route path="/canvas/:projectId" element={<CanvasPage />} />
 
         {/* Pages internes sous le shell */}
-        <Route element={<RequireDomain />}>
-          <Route element={<AppLayout onLogout={() => setAuthed(false)} />}>
-            <Route path="/" element={<ProjectsPage />} />
-            <Route path="/health" element={<HealthPage />} />
-            <Route path="/servers" element={<ServersPage />} />
-            <Route path="/registries" element={<IntegrationsPage />} />
-            <Route path="/secrets" element={<SecretsPage />} />
-            <Route path="/users" element={<UsersPage />} />
-            <Route path="/audit" element={<AuditPage />} />
-            <Route path="/settings" element={<SettingsPage />} />
-          </Route>
+        <Route element={<AppLayout onLogout={() => setAuthed(false)} />}>
+          <Route path="/" element={<ProjectsPage />} />
+          <Route path="/health" element={<HealthPage />} />
+          <Route path="/servers" element={<ServersPage />} />
+          <Route path="/registries" element={<IntegrationsPage />} />
+          <Route path="/secrets" element={<SecretsPage />} />
+          <Route path="/users" element={<UsersPage />} />
+          <Route path="/audit" element={<AuditPage />} />
+          <Route path="/settings" element={<SettingsPage />} />
         </Route>
 
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </MeProvider>
   )
-}
-
-function RequireDomain() {
-  const { me, isLoading } = useMe()
-  const location = useLocation()
-
-  if (isLoading) {
-    return (
-      <div className="flex h-full items-center justify-center bg-ui-bg-subtle">
-        <div className="rounded-3xl bg-ui-bg-base p-6 shadow-sm">
-          <Text className="text-ui-fg-subtle">Vérification du domaine…</Text>
-        </div>
-      </div>
-    )
-  }
-
-  if (!me?.domain && location.pathname !== "/setup-domain") {
-    return <Navigate to="/setup-domain" replace />
-  }
-
-  if (me?.domain && location.pathname === "/setup-domain") {
-    return <Navigate to="/" replace />
-  }
-
-  return <Outlet />
 }
 
 /**

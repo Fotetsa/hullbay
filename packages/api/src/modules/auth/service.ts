@@ -122,11 +122,6 @@ export class AuthService {
    * ACTUEL (anti-détournement si la session est volée), puis enregistre le hash du
    * nouveau. Le nouveau mot de passe n'est jamais journalisé.
    */
-  async setDomain(userId: string, domain: string) {
-    await prisma.user.update({ where: { id: userId }, data: { domain } })
-    return { ok: true }
-  }
-
   async changePassword(userId: string, currentPassword: string, newPassword: string) {
     const user = await prisma.user.findUniqueOrThrow({ where: { id: userId } })
     if (!verifyPassword(currentPassword, user.passwordHash)) {

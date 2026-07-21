@@ -71,21 +71,6 @@ async function req<T>(path: string, init: RequestInit = {}): Promise<T> {
   return (text ? JSON.parse(text) : undefined) as T
 }
 
-async function reqWithToken<T>(path: string, token: string, init: RequestInit = {}): Promise<T> {
-  const headers: Record<string, string> = {
-    ...(init.headers as Record<string, string>),
-  }
-  if (init.body != null) headers["content-type"] = "application/json"
-  if (token) headers.authorization = `Bearer ${token}`
-  const res = await fetch(path, { ...init, headers })
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({}))
-    throw new Error(extractError(body, res.status))
-  }
-  const text = await res.text()
-  return (text ? JSON.parse(text) : undefined) as T
-}
-
 export const api = {
   // Onboarding / Auth
   needsBootstrap: () => req<{ needsBootstrap: boolean }>("/api/auth/needs-bootstrap"),
@@ -104,29 +89,14 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ pendingToken, code }),
     }),
-  me: () => req<{ id: string; email: string; role: string; mfaEnabled: boolean; domain?: string }>("/api/auth/me"),
-  meWithToken: (token: string) =>
-    reqWithToken<{ id: string; email: string; role: string; mfaEnabled: boolean; domain?: string }>("/api/auth/me", token),
+  me: () => req<{ id: string; email: string; role: string; mfaEnabled: boolean }>("/api/auth/me"),
   enrollMfa: () => req<{ otpauth: string; secret: string }>("/api/auth/mfa/enroll", { method: "POST" }),
-  enrollMfaWithToken: (token: string) =>
-    reqWithToken<{ otpauth: string; secret: string }>("/api/auth/mfa/enroll", token, { method: "POST" }),
   confirmMfa: (code: string) =>
     req<{ ok: boolean }>("/api/auth/mfa/confirm", { method: "POST", body: JSON.stringify({ code }) }),
-  confirmMfaWithToken: (token: string, code: string) =>
-    reqWithToken<{ ok: boolean; token?: string }>(
-      "/api/auth/mfa/confirm",
-      token,
-      { method: "POST", body: JSON.stringify({ code }) }
-    ),
   changePassword: (currentPassword: string, newPassword: string) =>
     req<{ ok: boolean }>("/api/auth/password", {
       method: "POST",
       body: JSON.stringify({ currentPassword, newPassword }),
-    }),
-  setDomain: (domain: string) =>
-    req<{ ok: boolean }>("/api/auth/domain", {
-      method: "POST",
-      body: JSON.stringify({ domain }),
     }),
 
   // Utilisateurs (owner uniquement)
