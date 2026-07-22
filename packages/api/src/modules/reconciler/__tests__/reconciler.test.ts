@@ -24,6 +24,7 @@ const mockOwnerToken = "mock_owner_token";
 const mockOperatorToken = "mock_operator_token";
 const mockViewerToken = "mock_viewer_token";
 const mockInvalidToken = "mock_invalid_token";
+const mockNoMfaToken = "mock_no_mfa_token";
 
 describe("POST /api/rebuild-from-docker", () => {
   let app: Awaited<ReturnType<typeof buildTestApp>>;
@@ -44,11 +45,10 @@ describe("POST /api/rebuild-from-docker", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(authService.verifyToken).mockImplementation((token: string) => {
-      if (token === mockOwnerToken) return { sub: "owner-id", role: "owner" };
-      if (token === mockOperatorToken)
-        return { sub: "operator-id", role: "operator" };
-      if (token === mockViewerToken)
-        return { sub: "viewer-id", role: "viewer" };
+      if (token === mockOwnerToken) return { sub: "owner-id", role: "owner", mfaEnabled: true };
+      if (token === mockOperatorToken) return { sub: "operator-id", role: "operator", mfaEnabled: true };
+      if (token === mockViewerToken) return { sub: "viewer-id", role: "viewer", mfaEnabled: true };
+      if (token === mockNoMfaToken) return { sub: "no-mfa-id", role: "operator", mfaEnabled: false };
       throw new Error("Token invalide");
     });
   });

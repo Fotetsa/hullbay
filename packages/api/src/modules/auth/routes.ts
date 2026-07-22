@@ -30,16 +30,28 @@ const PUBLIC_PATHS = new Set([
   "/api/auth/needs-bootstrap",
 ]);
 
+const MFA_SETUP_PATHS = new Set([
+  "/api/auth/mfa/enroll",
+  "/api/auth/mfa/confirm",
+  "/api/auth/me",
+])
+
 export function registerAuthGuard(app: FastifyInstance) {
   app.addHook("onRequest", async (req, reply) => {
     if (!req.url.startsWith("/api/")) return;
-    if (PUBLIC_PATHS.has(req.url.split("?")[0] ?? "")) return;
+    const path = req.url.split("?")[0] ?? ""
+    if (PUBLIC_PATHS.has(path)) return;
     const header = req.headers.authorization;
     const token = header?.startsWith("Bearer ") ? header.slice(7) : undefined;
     if (!token) return reply.code(401).send({ error: "non authentifié" });
     try {
       const decoded = authService.verifyToken(token);
       (req as FastifyRequest & { user?: unknown }).user = decoded;
+
+      //Verifions si la MFA est activer ou pas 
+      if (!decoded.mfaEnabled && !MFA_SETUP_PATHS.has(path)) {
+        return reply.code(403).send({error: "MFA non activée veillez l'activer"})
+      }
     } catch {
       return reply.code(401).send({ error: "token invalide" });
     }

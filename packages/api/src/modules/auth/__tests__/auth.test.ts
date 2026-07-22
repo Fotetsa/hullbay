@@ -45,6 +45,7 @@ const mockOwnerToken = "mock_owner_token";
 const mockOperatorToken = "mock_operator_token";
 const mockViewerToken = "mock_viewer_token";
 const mockInvalidToken = "mock_invalid_token";
+const mockNoMfaToken = "mock_no_mfa_token";
 
 describe("Auth Routes", () => {
     let app: Awaited<ReturnType<typeof buildTestApp>>;
@@ -71,15 +72,19 @@ describe("Auth Routes", () => {
         //Simulons une authentification en configurant verifyToken pour renvoyer des rôles spécifiques en fonction du token fourni
         vi.mocked(authService.verifyToken).mockImplementation((token: string) => {
             if (token === mockOwnerToken) {
-                return { sub: "owner-id", role: "owner" };
+                return { sub: "owner-id", role: "owner", mfaEnabled: true };
             }
 
             if (token === mockOperatorToken) {
-                return { sub: "operator-id", role: "operator" };
+                return { sub: "operator-id", role: "operator", mfaEnabled: true };
             }
             
             if (token === mockViewerToken) {
-                return { sub: "viewer-id", role: "viewer" };
+                return { sub: "viewer-id", role: "viewer", mfaEnabled: true };
+            }
+
+            if (token === mockNoMfaToken) {
+                return { sub: "no-mfa-id", role: "operator", mfaEnabled: false };
             }
 
             throw new Error("Token invalide");
@@ -384,7 +389,8 @@ describe("Auth Routes", () => {
     describe("POST /api/auth/mfa/confirm", () => {
         it("devrat confirmer l'enrolement MFA avec code validé", async () => {
             vi.mocked(authService.confirmMfaEnrollment).mockResolvedValue({
-                ok: true,
+              ok: true,
+              token: "mock_new_token_after_mfa_confirm",
             });
 
             const response = await app.inject({
@@ -399,7 +405,10 @@ describe("Auth Routes", () => {
             });
 
             expect(response.statusCode).toBe(200);
-            expect(response.json()).toEqual({ ok: true });
+            expect(response.json()).toEqual({
+              ok: true,
+              token: "mock_new_token_after_mfa_confirm",
+            });
         });
 
         it("devrat retourner 400 si le code est invalide", async () => {
@@ -908,6 +917,87 @@ describe("Auth Routes", () => {
             });
 
             expect(response.statusCode).toBe(401);
+        });
+    });
+
+    describe("Garde MFA obligatoire", () => {
+        it("devrait retourner 403 sur une route protégée si mfaEnabled=false", async () => {
+            const response = await app.inject({
+                method: "GET",
+                url: "/api/users", // route owner-only, mais peu importe le rôle ici
+                headers: {
+                    authorization: `Bearer ${mockNoMfaToken}`,
+                },
+            });
+
+            expect(response.statusCode).toBe(403);
+        });
+
+        it("devrait laisser passer /api/auth/me même si mfaEnabled=false", async () => {
+            vi.mocked(prisma.user.findUnique).mockResolvedValue({
+                id: "no-mfa-id",
+                email: "sansmfa@gmail.com",
+                role: "operator",
+                mfaEnabled: false,
+            } as any);
+
+            const response = await app.inject({
+                method: "GET",
+                url: "/api/auth/me",
+                headers: {
+                    authorization: `Bearer ${mockNoMfaToken}`,
+                },
+            });
+
+            expect(response.statusCode).toBe(200);
+        });
+
+        it("devrait laisser passer /api/auth/mfa/enroll même si mfaEnabled=false", async () => {
+            vi.mocked(authService.startMfaEnrollment).mockResolvedValue({
+                secret: "MFA_SECRET",
+                otpauth: "otpauth://totp/...",
+            });
+
+            const response = await app.inject({
+                method: "POST",
+                url: "/api/auth/mfa/enroll",
+                headers: {
+                    authorization: `Bearer ${mockNoMfaToken}`,
+                },
+            });
+
+            expect(response.statusCode).toBe(200);
+        });
+
+        it("devrait laisser passer /api/auth/mfa/confirm même si mfaEnabled=false", async () => {
+            vi.mocked(authService.confirmMfaEnrollment).mockResolvedValue({
+                ok: true,
+            } as any);
+
+            const response = await app.inject({
+                method: "POST",
+                url: "/api/auth/mfa/confirm",
+                headers: {
+                    authorization: `Bearer ${mockNoMfaToken}`,
+                },
+                payload: { code: "123456" },
+            });
+
+            expect(response.statusCode).toBe(200);
+        });
+
+        it("devrait laisser passer une route protégée si mfaEnabled=true", async () => {
+            vi.mocked(authService.listUsers).mockResolvedValue([]);
+
+            const response = await app.inject({
+                method: "GET",
+                url: "/api/users",
+                headers: {
+                    authorization: `Bearer ${mockOwnerToken}`, // mfaEnabled: true
+                },
+            });
+
+            expect(response.statusCode).toBe(200);
         });
     });
 });
