@@ -94,7 +94,15 @@ if [ -f .env ]; then
   warn ".env existant conservé (secrets inchangés)."
 else
   log "Génération des secrets (.env)..."
-  PUBLIC_URL_DEFAULT="http://$(hostname -I 2>/dev/null | awk '{print $1}')"
+  PUBLIC_IP="$(curl -fsS --max-time 5 https://ifconfig.me 2>/dev/null || true)"
+
+  if [ -z "$PUBLIC_IP" ]; then
+    warn "Impossible de déterminer une IP. vous allez cooriger cela manuellement dans le .env"
+    PUBLIC_IP="127.0.0.1"
+  fi
+
+
+  PUBLIC_URL_DEFAULT="http://${PUBLIC_IP}"
   [ -n "$PUBLIC_HOST" ] && PUBLIC_URL_DEFAULT="https://${PUBLIC_HOST}"
   cat > .env <<EOF
 # Généré par install.sh le $(date -u +%FT%TZ). NE PAS committer.
@@ -129,7 +137,7 @@ for _ in $(seq 1 30); do
   sleep 2
 done
 
-URL="${PUBLIC_HOST:+https://$PUBLIC_HOST}"; URL="${URL:-http://$(hostname -I 2>/dev/null | awk '{print $1}')}"
+URL="${PUBLIC_HOST:+https://$PUBLIC_HOST}"; URL="${URL:-http://${PUBLIC_IP:-127.0.0.1}}"
 echo ""
 log "Installation terminée."
 log "Ouvre : ${URL}"
