@@ -90,6 +90,10 @@ curl -fsSL "${RAW_BASE}/Caddyfile" -o Caddyfile
 # 5. Génération des secrets (.env) — créé une seule fois, jamais écrasé
 # --------------------------------------------------------------------------- #
 gen() { openssl rand -hex 32; }
+
+is_ipv4() {
+  [[ "$1" =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]]
+}
 if [ -f .env ]; then
   warn ".env existant conservé (secrets inchangés)."
 else
@@ -104,11 +108,18 @@ else
       PUBLIC_HOST="127.0.0.1"
     fi
   fi
+
+  if is_ipv4 "$PUBLIC_HOST"; then
+    WEB_ORIGIN="http://${PUBLIC_HOST}"
+  else
+    WEB_ORIGIN="https://${PUBLIC_HOST}"
+  fi
   cat > .env <<EOF
 # Généré par install.sh le $(date -u +%FT%TZ). NE PAS committer.
 GHCR_OWNER=${GHCR_OWNER}
 IMAGE_TAG=${IMAGE_TAG}
 PUBLIC_HOST=${PUBLIC_HOST}
+WEB_ORIGIN=${WEB_ORIGIN}
 
 POSTGRES_USER=ops
 POSTGRES_PASSWORD=$(gen)
@@ -136,9 +147,12 @@ for _ in $(seq 1 30); do
   sleep 2
 done
 
-SCHEME="http"
+if is_ipv4 "$PUBLIC_HOST"; then
+  SCHEME="http"
+else
+  SCHEME="https"
+fi
 
-[ "$PUBLIC_HOST" != "$(curl -fsS --max-time 3 https://ifconfig.me 2>/dev/null || echo __no_match__)" ] && [ "$PUBLIC_HOST" != "127.0.0.1" ] || SCHEME="http"
 URL="${SCHEME}://${PUBLIC_HOST}"
 echo ""
 log "Installation terminée."
