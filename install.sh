@@ -138,7 +138,7 @@ done
 
 SCHEME="http"
 
-[ "$PUBLIC_HOST" != "$(curl -fsS --max-time 3 https://ifconfig.me 2>/dev/null || echo __no_match__)"] && [ "$PUBLIC_HOST" != "127.0.0.1" ] || SCHEME="http"
+[ "$PUBLIC_HOST" != "$(curl -fsS --max-time 3 https://ifconfig.me 2>/dev/null || echo __no_match__)" ] && [ "$PUBLIC_HOST" != "127.0.0.1" ] || SCHEME="http"
 URL="${SCHEME}://${PUBLIC_HOST}"
 echo ""
 log "Installation terminée."
