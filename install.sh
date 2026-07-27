@@ -18,7 +18,7 @@ set -euo pipefail
 
 GHCR_OWNER="${GHCR_OWNER:-fotetsa}"
 IMAGE_TAG="${IMAGE_TAG:-latest}"
-PUBLIC_HOST="${PUBLIC_HOST:-}"
+PUBLIC_HOST="${PUBLIC_HOST:-$(curl -fsS --max-time 5 https://ifconfig.me 2>/dev/null || hostname -I 2>/dev/null | awk '{print $1}')}"
 INSTALL_DIR="${INSTALL_DIR:-/opt/hullbay}"
 RAW_BASE="https://raw.githubusercontent.com/${GHCR_OWNER}/hullbay/master"
 
