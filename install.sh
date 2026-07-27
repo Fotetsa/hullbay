@@ -110,16 +110,16 @@ else
   fi
 
   if is_ipv4 "$PUBLIC_HOST"; then
-    WEB_ORIGIN="http://${PUBLIC_HOST}"
+    PUBLIC_URL="http://${PUBLIC_HOST}"
   else
-    WEB_ORIGIN="https://${PUBLIC_HOST}"
+    PUBLIC_URL="https://${PUBLIC_HOST}"
   fi
   cat > .env <<EOF
 # Généré par install.sh le $(date -u +%FT%TZ). NE PAS committer.
 GHCR_OWNER=${GHCR_OWNER}
 IMAGE_TAG=${IMAGE_TAG}
 PUBLIC_HOST=${PUBLIC_HOST}
-WEB_ORIGIN=${WEB_ORIGIN}
+PUBLIC_URL=${PUBLIC_URL}
 
 POSTGRES_USER=ops
 POSTGRES_PASSWORD=$(gen)
