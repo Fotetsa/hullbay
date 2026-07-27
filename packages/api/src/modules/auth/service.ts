@@ -64,7 +64,7 @@ export class AuthService {
       )
       return { mfaRequired: true as const, pendingToken: pending }
     }
-    return { mfaRequired: false as const, token: this.issueToken(user.id, user.role) }
+    return { mfaRequired: false as const, token: this.issueToken(user.id, user.role, false) }
   }
 
   /** Étape 2 du login : vérifie le code TOTP et délivre le token de session. */
@@ -84,7 +84,7 @@ export class AuthService {
     if (!(await totpVerify({ token: code, secret, epochTolerance: 30 })).valid) {
       throw new Error("code invalide")
     }
-    return { token: this.issueToken(user.id, user.role) }
+    return { token: this.issueToken(user.id, user.role, true) }
   }
 
   /** Démarre l'enrôlement MFA : génère un secret + l'otpauth URI (QR côté front). */
@@ -114,7 +114,7 @@ export class AuthService {
       throw new Error("code invalide")
     }
     await prisma.user.update({ where: { id: userId }, data: { mfaEnabled: true } })
-    return { ok: true }
+    return { ok: true, token: this.issueToken(userId, user.role, true) }
   }
 
   /**
@@ -194,24 +194,28 @@ export class AuthService {
     return { ok: true as const }
   }
 
-  issueToken(userId: string, role: string): string {
+  issueToken(userId: string, role: string, mfaEnabled: boolean): string {
     // Audience session : seul ce type de token est accepté par verifyToken / la
     // garde /api/* / le handshake WebSocket.
-    return jwt.sign({ sub: userId, role }, process.env.JWT_SECRET as string, {
+    return jwt.sign({ sub: userId, role, mfaEnabled }, process.env.JWT_SECRET as string, {
       expiresIn: TOKEN_TTL,
       audience: AUD_SESSION,
     })
   }
 
-  verifyToken(token: string): { sub: string; role: string } {
+  verifyToken(token: string): { sub: string; role: string; mfaEnabled: boolean } {
     // audience: AUD_SESSION rejette tout token mfa-pending (jwt lève si aud != session).
     const decoded = jwt.verify(token, process.env.JWT_SECRET as string, {
       audience: AUD_SESSION,
-    }) as { sub?: string; role?: string; mfa?: string }
+    }) as { sub?: string; role?: string; mfa?: string; mfaEnabled?: boolean };
     if (decoded.mfa || !decoded.role || !decoded.sub) {
       throw new Error("token de session invalide")
     }
-    return { sub: decoded.sub, role: decoded.role }
+    return {
+      sub: decoded.sub,
+      role: decoded.role,
+      mfaEnabled: decoded.mfaEnabled ?? false
+    };
   }
 }
 
