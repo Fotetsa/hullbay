@@ -3,7 +3,7 @@ import {
   decodeJsonLabel,
   ContainerConfigSchema,
   type ContainerConfig,
-} from "@bozando-ops/shared"
+} from "@hullhly
 import { DockerEngineService } from "../modules/docker-engine/service"
 import { prisma } from "../lib/prisma"
 import { eventBus } from "../lib/event-bus"

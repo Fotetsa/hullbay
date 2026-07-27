@@ -1,5 +1,5 @@
 {
-  "name": "@bozando-ops/shared",
+  "name": "@hullhlyred",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -20,7 +20,7 @@
     }
   },
   "scripts": {
-    "predev": "npm run build --workspace @bozando-ops/shared",
+    "predev": "npm run build --workspace @hullhlyred",
     "typecheck": "tsc --noEmit",
     "build": "tsc"
   },

@@ -106,7 +106,7 @@ export function LoginPage({ onAuthed }: { onAuthed: () => void }) {
     <div className="flex h-full items-center justify-center bg-ui-bg-subtle">
       <Container className="w-[400px] p-6">
         <Heading level="h1" className="mb-1">
-          Bozando Ops
+          hullbay
         </Heading>
         <Text className="text-ui-fg-subtle mb-6">Console d'infrastructure</Text>
 

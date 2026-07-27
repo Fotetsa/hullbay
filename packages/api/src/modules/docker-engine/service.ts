@@ -4,8 +4,8 @@ import type {
   NetworkConfig,
   VolumeConfig,
   PullPolicy,
-} from "@bozando-ops/shared"
-import { managedFilter, projectFilter, LabelKeys } from "@bozando-ops/shared"
+} from "@hullbayred"
+import { managedFilter, projectFilter, LabelKeys } from "@hullbayred"
 import { getDocker } from "./client"
 
 /**

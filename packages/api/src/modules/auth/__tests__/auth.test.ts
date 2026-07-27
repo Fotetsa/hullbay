@@ -237,7 +237,7 @@ describe("Auth Routes", () => {
                 method: "POST",
                 url: "/api/auth/login",
                 payload: {
-                    email: "bozandoops@gmai.com",
+                    email: "hullbay@gmai.com",
                     password: "F1234567",
                 },
             });

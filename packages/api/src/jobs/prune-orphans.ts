@@ -1,4 +1,4 @@
-import { LabelKeys } from "@bozando-ops/shared"
+import { LabelKeys } from "@hullbayred"
 import { prisma } from "../lib/prisma"
 import { DockerEngineService } from "../modules/docker-engine/service"
 import { eventBus } from "../lib/event-bus"

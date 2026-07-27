@@ -1,6 +1,6 @@
 // Schéma Prisma de l'ops-panel.
 // RAPPEL : PostgreSQL est un CACHE de confort. La source de vérité redondante du
-// désiré déployé vit dans les labels Docker bozando.* (voir @bozando-ops/shared).
+// désiré déployé vit dans les labels Docker bozando.* (voir @hullbay/shared).
 // rebuildFromDocker() peut reconstruire ces tables depuis Docker seul.
 
 generator client {
@@ -36,7 +36,7 @@ model Node {
   posX Float
   posY Float
 
-  // Config typée selon `type` (validée par les schémas Zod de @bozando-ops/shared)
+  // Config typée selon `type` (validée par les schémas Zod de @hullbay/shared)
   // -> encodée dans bozando.spec
   config Json
 
