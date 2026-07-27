@@ -1,4 +1,4 @@
-import { decodeBozandoLabels, LabelKeys } from "@bozando-ops/shared"
+import { decodeBozandoLabels, LabelKeys } from "@hullbay
 import { DockerEngineService } from "../docker-engine/service"
 import { prisma } from "../../lib/prisma"
 

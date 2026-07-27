@@ -2,10 +2,10 @@ import { useEffect, useState } from "react"
 import { Button, Heading, Input, Label, Text, toast, usePrompt } from "@medusajs/ui"
 import { Trash, XMark, CommandLine } from "@medusajs/icons"
 import { z } from "zod"
-import type { Node } from "@bozando-ops/shared"
+import type { Node } from "@hullbay
 // Import depuis le sous-chemin node-config : évite de tirer labels.ts (node:crypto)
 // dans le bundle navigateur via le barrel index.ts.
-import { parseNodeConfig, type NodeType, type VolumeConfig } from "@bozando-ops/shared/node-config"
+import { parseNodeConfig, type NodeType, type VolumeConfig } from "@hullbay-config"
 import { api } from "../lib/api"
 import { ContainerForm } from "./forms/ContainerForm"
 import { NetworkForm } from "./forms/NetworkForm"

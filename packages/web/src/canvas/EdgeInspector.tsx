@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react"
 import { Button, Heading, Input, Label, Switch, Text, toast } from "@medusajs/ui"
 import { Trash, XMark } from "@medusajs/icons"
-import type { Edge } from "@bozando-ops/shared"
+import type { Edge } from "@hullbay
 import { api } from "../lib/api"
 import { useConfirmDelete } from "../lib/useConfirmDelete"
 

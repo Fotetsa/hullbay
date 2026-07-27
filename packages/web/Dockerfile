@@ -5,11 +5,11 @@ COPY package.json package-lock.json* ./
 COPY packages/shared/package.json ./packages/shared/
 COPY packages/api/package.json ./packages/api/
 COPY packages/web/package.json ./packages/web/
-RUN npm install --workspace @bozando-ops/web --workspace @bozando-ops/shared --include-workspace-root
+RUN npm install --workspace @hullbay --workspace @hullhullbay--include-workspace-root
 COPY packages/shared ./packages/shared
 COPY packages/web ./packages/web
-RUN npm run build --workspace @bozando-ops/shared
-RUN npm run build --workspace @bozando-ops/web
+RUN npm run build --workspace @hullbayred
+RUN npm run build --workspace @hullbay
 
 FROM nginx:alpine
 COPY --from=build /app/packages/web/dist /usr/share/nginx/html

@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query"
 import { Badge, Button, FocusModal, Heading, Text } from "@medusajs/ui"
 import { ExclamationCircle, InformationCircle, PlaySolid } from "@medusajs/icons"
-import type { ProjectGraph } from "@bozando-ops/shared"
+import type { ProjectGraph } from "@hullbay
 import { api, type DiffAction } from "../lib/api"
 import { validateGraph, type ValidationIssue } from "./validate"
 

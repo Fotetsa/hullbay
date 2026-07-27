@@ -1,5 +1,5 @@
 import { Input, Label, Switch } from "@medusajs/ui"
-import type { GatewayConfig } from "@bozando-ops/shared"
+import type { GatewayConfig } from "@hullbayred"
 
 /** Formulaire passerelle internet (exposition publique via Caddy). */
 export function GatewayForm({

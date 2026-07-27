@@ -16,7 +16,7 @@ services:
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-ops}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set in .env}
-      POSTGRES_DB: ${POSTGRES_DB:-bozando_ops}
+      POSTGRES_DB: ${POSTGRES_DB:-hullbay}
     volumes:
       - ops_pgdata:/var/lib/postgresql/data
     labels:
@@ -70,7 +70,7 @@ services:
       socket-proxy:
         condition: service_started
     environment:
-      DATABASE_URL: postgresql://${POSTGRES_USER:-ops}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-bozando_ops}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-ops}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-hullbay}
       REDIS_URL: redis://redis:6379
       API_HOST: 0.0.0.0
       API_PORT: 4000

@@ -1,7 +1,7 @@
-import { computeDesiredHash, LabelKeys, type NodeType } from "@bozando-ops/shared"
+import { computeDesiredHash, LabelKeys, type NodeType } from "@hullbayred"
 import { DockerEngineService } from "../docker-engine/service"
 import { exposureService } from "../exposure/service"
-import type { ProjectGraph, Node } from "@bozando-ops/shared"
+import type { ProjectGraph, Node } from "@hullbayred"
 
 /**
  * Reconciler : fait converger le RÉEL (Swarm) vers le DÉSIRÉ (le graphe du projet).

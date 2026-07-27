@@ -25,7 +25,7 @@ export function SetupDomainPage() {
         </Heading>
         <Text className="text-ui-fg-subtle mb-6">
           Indique le domaine public que tu veux utiliser pour accéder à ton
-          instance Bozando Ops.
+          instance hullbay.
         </Text>
 
         <div className="flex flex-col gap-4">

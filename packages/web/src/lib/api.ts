@@ -1,11 +1,11 @@
-import type { Project, ProjectGraph, NodeType, Node } from "@bozando-ops/shared"
+import type { Project, ProjectGraph, NodeType, Node } from "@hullbay
 
 /**
  * Client API de l'ops-panel. Le token JWT est conservé en localStorage et envoyé
  * en Bearer. En dev, Vite proxie /api vers le back (cf. vite.config.ts).
  */
 
-const TOKEN_KEY = "bozando_ops_token"
+const TOKEN_KEY = "hullbay_token"
 
 export const auth = {
   get token() {

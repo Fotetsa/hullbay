@@ -1,6 +1,6 @@
 import { Input, Label, Switch, Select, Text } from "@medusajs/ui"
 // Sous-chemin node-config : évite de tirer labels.ts (node:crypto) dans le bundle.
-import type { NetworkConfig } from "@bozando-ops/shared/node-config"
+import type { NetworkConfig } from "@hullbayred/node-config"
 import { KeyValueEditor } from "./KeyValueEditor"
 
 /** Formulaire réseau : driver, interne, attachable, IPAM (subnet/gateway), labels. */
