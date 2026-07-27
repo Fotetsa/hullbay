@@ -81,8 +81,8 @@ export function LoginPage({ onAuthed }: { onAuthed: () => void }) {
     if (!loginToken) return
     setLoading(true)
     try {
-      await api.confirmMfa(code)
-      auth.set(loginToken)
+      const res = await api.confirmMfa(code)
+      auth.set(res.token)
       onAuthed()
       setLoginToken(null)
       setSecret(null)
