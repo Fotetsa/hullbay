@@ -92,7 +92,7 @@ export const api = {
   me: () => req<{ id: string; email: string; role: string; mfaEnabled: boolean }>("/api/auth/me"),
   enrollMfa: () => req<{ otpauth: string; secret: string }>("/api/auth/mfa/enroll", { method: "POST" }),
   confirmMfa: (code: string) =>
-    req<{ ok: boolean }>("/api/auth/mfa/confirm", { method: "POST", body: JSON.stringify({ code }) }),
+    req<{ ok: boolean, token: string }>("/api/auth/mfa/confirm", { method: "POST", body: JSON.stringify({ code }) }),
   changePassword: (currentPassword: string, newPassword: string) =>
     req<{ ok: boolean }>("/api/auth/password", {
       method: "POST",
