@@ -90,10 +90,21 @@ curl -fsSL "${RAW_BASE}/Caddyfile" -o Caddyfile
 # 5. Génération des secrets (.env) — créé une seule fois, jamais écrasé
 # --------------------------------------------------------------------------- #
 gen() { openssl rand -hex 32; }
+
+is_ipv4() {
+  [[ "$1" =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]]
+}
 if [ -f .env ]; then
   warn ".env existant conservé (secrets inchangés)."
 else
   log "Génération des secrets (.env)..."
+
+  if is_ipv4 "$PUBLIC_HOST"; then
+    CADDY_AUTO_HTTPS= "auto_https off"
+  else
+    CADDY_AUTO_HTTPS=""
+  fi
+
   PUBLIC_URL_DEFAULT="http://$(hostname -I 2>/dev/null | awk '{print $1}')"
   [ -n "$PUBLIC_HOST" ] && PUBLIC_URL_DEFAULT="https://${PUBLIC_HOST}"
   cat > .env <<EOF
@@ -102,6 +113,7 @@ GHCR_OWNER=${GHCR_OWNER}
 IMAGE_TAG=${IMAGE_TAG}
 PUBLIC_HOST=${PUBLIC_HOST}
 PUBLIC_URL=${PUBLIC_URL_DEFAULT}
+CADDY_AUTO_HTTPS=${CADDY_AUTO_HTTPS}
 
 POSTGRES_USER=ops
 POSTGRES_PASSWORD=$(gen)
