@@ -97,7 +97,8 @@ if [ -f .env ]; then
 else
   log "Génération des secrets (.env)..."
 
-  PUBLIC_URL_DEFAULT="http://${PUBLIC_HOST}"
+  PUBLIC_URL_DEFAULT="http://$(hostname -I 2>/dev/null | awk '{print $1}')"
+  [ -n "$PUBLIC_HOST" ] && PUBLIC_URL_DEFAULT="https://${PUBLIC_HOST}"
   cat > .env <<EOF
 # Généré par install.sh le $(date -u +%FT%TZ). NE PAS committer.
 GHCR_OWNER=${GHCR_OWNER}
@@ -131,7 +132,7 @@ for _ in $(seq 1 30); do
   sleep 2
 done
 
-URL="http://${PUBLIC_HOST}"
+URL="${PUBLIC_HOST:+https://$PUBLIC_HOST}"; URL="${URL:-http://$(hostname -I 2>/dev/null | awk '{print $1}')}"
 echo ""
 log "Installation terminée."
 log "Ouvre : ${URL}"
