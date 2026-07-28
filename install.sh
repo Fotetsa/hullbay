@@ -101,12 +101,13 @@ else
 
   if is_ipv4 "$PUBLIC_HOST"; then
     CADDY_AUTO_HTTPS="auto_https off"
+    SCHEME="http"
   else
     CADDY_AUTO_HTTPS=""
+    SCHEME="https"
   fi
 
-  PUBLIC_URL_DEFAULT="http://$(hostname -I 2>/dev/null | awk '{print $1}')"
-  [ -n "$PUBLIC_HOST" ] && PUBLIC_URL_DEFAULT="https://${PUBLIC_HOST}"
+  PUBLIC_URL_DEFAULT="${SCHEME}://${PUBLIC_HOST}"
   cat > .env <<EOF
 # Généré par install.sh le $(date -u +%FT%TZ). NE PAS committer.
 GHCR_OWNER=${GHCR_OWNER}
@@ -141,7 +142,11 @@ for _ in $(seq 1 30); do
   sleep 2
 done
 
-URL="${PUBLIC_HOST:+https://$PUBLIC_HOST}"; URL="${URL:-http://$(hostname -I 2>/dev/null | awk '{print $1}')}"
+if is_ipv4 "$PUBLIC_HOST"; then
+  URL="http://${PUBLIC_HOST}"
+else
+  URL="https://${PUBLIC_HOST}"
+fi
 echo ""
 log "Installation terminée."
 log "Ouvre : ${URL}"
