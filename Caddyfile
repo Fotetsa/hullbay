@@ -14,7 +14,7 @@
 # Ops-panel lui-même : web (canvas) + api derrière /api + WebSocket sur /ws.
 # PUBLIC_HOST = vrai domaine en prod (ex: ops.bozando.com) -> HTTPS auto Let's
 # Encrypt. Défaut :80 en dev / IP nue.
-{$PUBLIC_HOST}/80 {
+{$PUBLIC_HOST}:80 {
 	handle /api/* {
 		reverse_proxy api:4000
 	}
