@@ -2,7 +2,7 @@
 
 ## Surface de risque
 
-hullbayer Docker Swarm. L'accès au démon Docker équivaut à un
+hullbay pilote un cluster  Docker Swarm. L'accès au démon Docker équivaut à un
 contrôle **root** sur les serveurs du cluster. Mesures en place :
 
 - **docker-socket-proxy** (Tecnativa) entre l'api et le socket : seules les API

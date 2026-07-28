@@ -45,7 +45,7 @@ function spkiToOpenSsh(spkiPem: string): string {
     lenPrefixed(type),
     lenPrefixed(raw),
   ])
-  return `ssh-ed25519 ${blob.toString("base64")} "hullbay/shared" `
+  return `ssh-ed25519 ${blob.toString("base64")} hullbay`
 }
 
 function lenPrefixed(buf: Buffer): Buffer {

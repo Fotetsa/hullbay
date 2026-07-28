@@ -5,7 +5,7 @@ COPY package.json package-lock.json* ./
 COPY packages/shared/package.json ./packages/shared/
 COPY packages/api/package.json ./packages/api/
 COPY packages/web/package.json ./packages/web/
-RUN npm install --workspace @hullbay --workspace @hullhullbay--include-workspace-root
+RUN npm install --workspace @hullbay/web --workspace @hullbay/shared--include-workspace-root
 COPY packages/shared ./packages/shared
 COPY packages/web ./packages/web
 RUN npm run build --workspace @hullbay/shared
