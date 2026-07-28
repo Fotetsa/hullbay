@@ -101,10 +101,8 @@ else
 
   if is_ipv4 "$PUBLIC_HOST"; then
     CADDY_AUTO_HTTPS="auto_https off"
-    SCHEME="http"
   else
     CADDY_AUTO_HTTPS=""
-    SCHEME="https"
   fi
 
   PUBLIC_URL_DEFAULT="http://$(hostname -I 2>/dev/null | awk '{print $1}')"
