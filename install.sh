@@ -91,30 +91,19 @@ curl -fsSL "${RAW_BASE}/Caddyfile" -o Caddyfile
 # --------------------------------------------------------------------------- #
 gen() { openssl rand -hex 32; }
 
-is_ipv4() {
-  [[ "$1" =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]]
-}
+
 if [ -f .env ]; then
   warn ".env existant conservé (secrets inchangés)."
 else
   log "Génération des secrets (.env)..."
 
-  if is_ipv4 "$PUBLIC_HOST"; then
-    CADDY_AUTO_HTTPS="auto_https off"
-    SCHEME="http"
-  else
-    CADDY_AUTO_HTTPS=""
-    SCHEME="https"
-  fi
-
-  PUBLIC_URL_DEFAULT="${SCHEME}://${PUBLIC_HOST}"
+  PUBLIC_URL_DEFAULT="http://${PUBLIC_HOST}"
   cat > .env <<EOF
 # Généré par install.sh le $(date -u +%FT%TZ). NE PAS committer.
 GHCR_OWNER=${GHCR_OWNER}
 IMAGE_TAG=${IMAGE_TAG}
 PUBLIC_HOST=${PUBLIC_HOST}
 PUBLIC_URL=${PUBLIC_URL_DEFAULT}
-CADDY_AUTO_HTTPS="${CADDY_AUTO_HTTPS}"
 
 POSTGRES_USER=ops
 POSTGRES_PASSWORD=$(gen)
@@ -142,11 +131,7 @@ for _ in $(seq 1 30); do
   sleep 2
 done
 
-if is_ipv4 "$PUBLIC_HOST"; then
-  URL="http://${PUBLIC_HOST}"
-else
-  URL="https://${PUBLIC_HOST}"
-fi
+URL="http://${PUBLIC_HOST}"
 echo ""
 log "Installation terminée."
 log "Ouvre : ${URL}"

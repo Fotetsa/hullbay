@@ -101,7 +101,6 @@ services:
       - web
     environment:
       PUBLIC_HOST: ${PUBLIC_HOST:-}
-      CADDY_AUTO_HTTPS: ${CADDY_AUTO_HTTPS:-}
     ports:
       - "80:80"
       - "443:443"
