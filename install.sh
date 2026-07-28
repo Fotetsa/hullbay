@@ -100,7 +100,7 @@ else
   log "Génération des secrets (.env)..."
 
   if is_ipv4 "$PUBLIC_HOST"; then
-    CADDY_AUTO_HTTPS="off"
+    CADDY_AUTO_HTTPS="auto_https off"
     SCHEME="http"
   else
     CADDY_AUTO_HTTPS=""
