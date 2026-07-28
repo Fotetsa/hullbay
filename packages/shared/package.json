@@ -1,5 +1,5 @@
 {
-  "name": "@hullhlyred",
+  "name": "@hullbay/shared",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -20,7 +20,7 @@
     }
   },
   "scripts": {
-    "predev": "npm run build --workspace @hullhlyred",
+    "predev": "npm run build --workspace @hullbay/shared",
     "typecheck": "tsc --noEmit",
     "build": "tsc"
   },

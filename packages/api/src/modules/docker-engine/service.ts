@@ -4,8 +4,8 @@ import type {
   NetworkConfig,
   VolumeConfig,
   PullPolicy,
-} from "@hullbayred"
-import { managedFilter, projectFilter, LabelKeys } from "@hullbayred"
+} from "@hullbay/shared"
+import { managedFilter, projectFilter, LabelKeys } from "@hullbay/shared"
 import { getDocker } from "./client"
 
 /**

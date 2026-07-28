@@ -1,4 +1,4 @@
-import { LabelKeys } from "@hullbayred"
+import { LabelKeys } from "@hullbay/shared"
 import { DockerEngineService } from "../docker-engine/service"
 import type { ServiceMetrics } from "../docker-engine/service"
 import { eventBus } from "../../lib/event-bus"

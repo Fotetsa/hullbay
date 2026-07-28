@@ -1,18 +1,19 @@
 {
-  "name": "@hullbay",
+  "name": "@hullbay/web",
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  
   "scripts": {
-    "predev": "npm run build --workspace @hullbayred",
+    "predev": "npm run build --workspace @hullbay/shared",
     "dev": "vite",
-    "prebuild": "npm run build --workspace @hullbayred",
+    "prebuild": "npm run build --workspace @hullbay/shared",
     "build": "tsc && vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@hullbayred": "*",
+    "@hullbay/shared": "*",
     "@medusajs/icons": "^2.5.0",
     "@medusajs/ui": "~4.0.5",
     "@tanstack/react-query": "^5.59.0",

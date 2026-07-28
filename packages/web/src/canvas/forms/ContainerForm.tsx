@@ -1,10 +1,10 @@
 import { Button, Input, Label, Select, Switch, Text } from "@medusajs/ui"
 import { Plus, Trash } from "@medusajs/icons"
 import { useQuery } from "@tanstack/react-query"
-import type { ContainerConfig } from "@hullbayred"
+import type { ContainerConfig } from "@hullbay/shared"
 import { api } from "../../lib/api"
 // Sous-chemin node-config : évite de tirer labels.ts (node:crypto) dans le bundle.
-import { effectivePullPolicy, type PullPolicy } from "@hullbayred/node-config"
+import { effectivePullPolicy, type PullPolicy } from "@hullbay/shared/node-config"
 
 /**
  * Formulaire complet de config d'un conteneur (référence Railway) : image, tag,

@@ -1,4 +1,4 @@
-import { LabelKeys } from "@hullbayred"
+import { LabelKeys } from "@hullbay/shared"
 import { prisma } from "../lib/prisma"
 import { DockerEngineService } from "../modules/docker-engine/service"
 import { eventBus } from "../lib/event-bus"
