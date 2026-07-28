@@ -19,7 +19,7 @@ export type OpsEvent = {
 
 export type EventHandler = (event: OpsEvent) => void | Promise<void>
 
-const REDIS_CHANNEL = "hullbay
+const REDIS_CHANNEL = "hullbay/shared"
 
 export class EventBus {
   private emitter = new EventEmitter()

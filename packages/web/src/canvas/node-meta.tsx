@@ -1,6 +1,6 @@
 import { CubeSolid, ServerStack, CircleStack, GlobeEurope } from "@medusajs/icons"
 import type { IconProps } from "@medusajs/icons/dist/types"
-import type { NodeType } from "@hullbay
+import type { NodeType } from "@hullbay/shared"
 
 /**
  * Métadonnées d'affichage par type de nœud — source unique partagée par la

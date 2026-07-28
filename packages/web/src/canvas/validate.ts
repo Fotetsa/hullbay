@@ -1,4 +1,4 @@
-import type { ProjectGraph, Node, Edge } from "@hullbay
+import type { ProjectGraph, Node, Edge } from "@hullbay/shared"
 
 /**
  * Validation de cohérence du graphe AVANT déploiement (référence : Azure "Review +

@@ -8,7 +8,7 @@ COPY packages/web/package.json ./packages/web/
 RUN npm install --workspace @hullbay --workspace @hullhullbay--include-workspace-root
 COPY packages/shared ./packages/shared
 COPY packages/web ./packages/web
-RUN npm run build --workspace @hullbayred
+RUN npm run build --workspace @hullbay/shared
 RUN npm run build --workspace @hullbay
 
 FROM nginx:alpine

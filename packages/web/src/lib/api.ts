@@ -1,4 +1,4 @@
-import type { Project, ProjectGraph, NodeType, Node } from "@hullbay
+import type { Project, ProjectGraph, NodeType, Node } from "@hullbay/shared"
 
 /**
  * Client API de l'ops-panel. Le token JWT est conservé en localStorage et envoyé
