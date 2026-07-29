@@ -1,7 +1,7 @@
-# Bozando Ops
+# hullbay
 
 <div align="center">
-  <img src="docs/image%20canvas.png" alt="Bozando Ops interface" width="1100" />
+  <img src="docs/image%20canvas.png" alt="hullbay interface" width="1100" />
   <p><strong>Visual infrastructure operations for Docker and Swarm</strong></p>
   <p>Design, review, and deploy container-based environments from a GNS3-style canvas with a clear and auditable workflow.</p>
   <p>
@@ -12,7 +12,7 @@
 
 ## Overview
 
-Bozando Ops is a visual operations plane for modern infrastructure teams. It transforms Docker-based deployments into a safe, guided experience where services, networks, volumes, and routing can be drawn, reviewed, and applied from a single interface.
+hullbay is a visual operations plane for modern infrastructure teams. It transforms Docker-based deployments into a safe, guided experience where services, networks, volumes, and routing can be drawn, reviewed, and applied from a single interface.
 
 The platform is designed for a single VPS or a Swarm cluster and aims to make infrastructure operations accessible, traceable, and less error-prone for both operators and teams with limited Docker experience.
 
@@ -30,7 +30,7 @@ The platform is designed for a single VPS or a Swarm cluster and aims to make in
 ### Health and observability
 
 <div align="center">
-  <img src="docs/image%20sant%C3%A9.png" alt="Bozando Ops health view" width="1000" />
+  <img src="docs/image%20sant%C3%A9.png" alt="hullbay health view" width="1000" />
 </div>
 
 ## Architecture

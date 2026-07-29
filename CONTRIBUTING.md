@@ -1,6 +1,6 @@
-# Contributing to Bozando Ops
+# Contributing to hullbay
 
-Thank you for considering a contribution to Bozando Ops. This guide outlines the development setup, contribution flow, and quality checks expected for changes to the project.
+Thank you for considering a contribution to hullbay. This guide outlines the development setup, contribution flow, and quality checks expected for changes to the project.
 
 ## Code of conduct
 
@@ -52,7 +52,7 @@ Common local development values are already documented in the template file:
 | API_PORT | 4000 |
 | WEB_ORIGIN | http://localhost:5273 |
 | REDIS_URL | redis://localhost:6379 |
-| DATABASE_URL | postgresql://ops:...@localhost/bozando_ops |
+| DATABASE_URL | postgresql://ops:...@localhost/hullbay |
 | DOCKER_HOST | leave empty to use the Unix socket by default |
 
 The DOCKER_SOCKET_PATH variable is only needed for non-standard socket paths.
@@ -61,8 +61,8 @@ The DOCKER_SOCKET_PATH variable is only needed for non-standard socket paths.
 
 ```bash
 npm install
-npm run prisma:generate --workspace @bozando-ops/api
-npm run prisma:migrate --workspace @bozando-ops/api
+npm run prisma:generate --workspace @hullbay/api
+npm run prisma:migrate --workspace @hullbay/api
 ```
 
 Do not edit Prisma migration files manually. Use Prisma migration commands for schema changes.
@@ -72,9 +72,9 @@ Do not edit Prisma migration files manually. Use Prisma migration commands for s
 Run the following in two separate terminals from the repository root:
 
 ```bash
-npm run predev --workspace @bozando-ops/shared
-npm run dev --workspace @bozando-ops/api
-npm run dev --workspace @bozando-ops/web
+npm run predev --workspace @hullbay/shared
+npm run dev --workspace @hullbay/api
+npm run dev --workspace @hullbay/web
 ```
 
 The web app runs on port 5273 and calls the API on port 4000. The first launch of the UI should guide you through the bootstrap flow to create the initial owner account.
@@ -121,8 +121,8 @@ Run the following commands before submitting changes:
 
 ```bash
 npm run typecheck
-npm run build --workspace @bozando-ops/api
-npm run build --workspace @bozando-ops/web
+npm run build --workspace @hullbay/api
+npm run build --workspace @hullbay/web
 ```
 
 ## Pull requests

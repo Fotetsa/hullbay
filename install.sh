@@ -105,7 +105,7 @@ PUBLIC_URL=${PUBLIC_URL_DEFAULT}
 
 POSTGRES_USER=ops
 POSTGRES_PASSWORD=$(gen)
-POSTGRES_DB=bozando_ops
+POSTGRES_DB=hullbay
 
 # JWT_SECRET et MFA_ENCRYPTION_KEY = clés MAÎTRESSES. Les perdre = tokens invalides
 # et secrets MFA/registre/SSH indéchiffrables. SAUVEGARDE CRITIQUE.

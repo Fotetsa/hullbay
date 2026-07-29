@@ -1,5 +1,5 @@
 {
-  "name": "bozando-ops",
+  "name": "hullbay",
   "version": "0.1.0",
   "private": true,
   "description": "Ops-panel GNS3-like pour piloter Docker (canvas visuel -> Docker via dockerode)",

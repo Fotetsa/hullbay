@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyRequest  } from "fastify"
 import { z } from "zod"
-import { NodeType, EdgeKind } from "@bozando-ops/shared"
+import { NodeType, EdgeKind } from "@hullbay/shared"
 import { projectsService } from "./service"
 import { requireRole } from "../auth/rbac"
 

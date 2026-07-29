@@ -98,7 +98,7 @@ export class AuthService {
     })
     const otpauth = generateURI({
       strategy: "totp",
-      issuer: "Bozando Ops",
+      issuer: "hullbay",
       label: user.email,
       secret,
     })

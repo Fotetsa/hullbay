@@ -11,7 +11,7 @@ import {
   type NetworkConfig,
   type VolumeConfig,
   type GatewayConfig,
-} from "@bozando-ops/shared"
+} from "@hullbay/shared"
 import { runWorkflow, type Step } from "../lib/workflow"
 import {
   DockerEngineService,

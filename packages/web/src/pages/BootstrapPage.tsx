@@ -48,7 +48,7 @@ export function BootstrapPage({ onAuthed }: { onAuthed: () => void }) {
       <Container className="w-[440px] p-6">
         <div className="mb-1 flex items-center gap-2">
           <ShieldCheck />
-          <Heading level="h1">Bienvenue sur Bozando Ops</Heading>
+          <Heading level="h1">Bienvenue sur hullbay</Heading>
         </div>
         <Text className="mb-6 text-ui-fg-subtle">
           Aucun compte n'existe encore. Crée le compte administrateur (owner) qui

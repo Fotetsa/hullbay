@@ -1,6 +1,6 @@
 import { request as httpRequest } from "node:http"
 import { request as httpsRequest } from "node:https"
-import type { GatewayConfig } from "@bozando-ops/shared"
+import type { GatewayConfig } from "@hullbay/shared"
 
 /**
  * Module exposure : pilote le reverse proxy Caddy via son API d'admin pour

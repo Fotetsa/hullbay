@@ -100,7 +100,7 @@ app.setErrorHandler((error: FastifyError, request, reply) => {
   await app.register(fastifySwagger, {
     openapi: {
       info: {
-        title: "Bozando Ops API",
+        title: "hullbay API",
         description:
           "Interface interactive pour découvrir et tester les endpoints du système.",
         version: "1.0.0",
@@ -133,7 +133,7 @@ app.setErrorHandler((error: FastifyError, request, reply) => {
 
   // Santé (publiques, hors /api).
   //Elle permet de se rassurer que le serveur est bien vivant et que l'API Docker est joignable.
-  app.get("/health", {schema: {tags: ["health"]},}, async () => ({ ok: true, service: "bozando-ops-api" }));
+  app.get("/health", {schema: {tags: ["health"]},}, async () => ({ ok: true, service: "hullbay" }));
   app.get("/health/docker", {schema: {tags: ["health"]},}, async (_req, reply) => {
     const result = await pingDocker();
     return reply.code(result.ok ? 200 : 503).send(result);
@@ -187,7 +187,7 @@ async function main() {
       app.log.info("[swarm] mode actif — déploiements en services Swarm");
     }
   }
-  app.log.info(`bozando-ops api on http://${HOST}:${PORT} (ws path /ws)`);
+  app.log.info(`hullbay on http://${HOST}:${PORT} (ws path /ws)`);
 }
 
 if (process.env.NODE_ENV !== "test") { 

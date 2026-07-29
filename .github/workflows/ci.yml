@@ -25,7 +25,7 @@ jobs:
         run: npm ci
 
       - name: Build Shared
-        run: npm run build --workspace @bozando-ops/shared
+        run: npm run build --workspace @hullbay/shared
 
       - name: Génération du client Prisma
         run: npx prisma generate --schema packages/api/prisma/schema.prisma
@@ -54,12 +54,12 @@ jobs:
         run: npm ci
 
       - name: Build Shared
-        run: npm run build --workspace @bozando-ops/shared
+        run: npm run build --workspace @hullbay/shared
 
       - name: Génération du client prisma
         run: npx prisma generate --schema packages/api/prisma/schema.prisma
 
       - name: Run Tests
-        run: npm run test --workspace @bozando-ops/api
+        run: npm run test --workspace @hullbay/api
         env:
           NODE_ENV: test

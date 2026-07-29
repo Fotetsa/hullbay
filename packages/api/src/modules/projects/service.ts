@@ -5,7 +5,7 @@ import {
   edgeKindForPair,
   type NodeType,
   type ProjectGraph,
-} from "@bozando-ops/shared"
+} from "@hullbay/shared"
 
 /** Dérive un slug Docker-valide depuis un nom libre (sans accents, minuscules, tirets). */
 function slugify(name: string): string {
@@ -22,7 +22,7 @@ function slugify(name: string): string {
  * Service CRUD des projets/nœuds/liens (le DÉSIRÉ, persisté dans Postgres).
  * Calque l'esprit MedusaService : opérations simples, la logique métier (deploy,
  * diff) vit dans les workflows. Valide la config des nœuds via les schémas Zod
- * partagés (@bozando-ops/shared).
+ * partagés (@hullbay/shared).
  */
 export class ProjectsService {
   // ── Projects ──────────────────────────────────────────────────────────────
