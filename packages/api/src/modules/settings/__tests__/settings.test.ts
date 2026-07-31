@@ -1,5 +1,3 @@
-// packages/api/src/modules/settings/__tests__/settings.test.ts
-
 import {
   describe,
   it,
@@ -14,11 +12,7 @@ import { registerSettingsRoutes } from "../routes";
 import { registerAuthGuard } from "../../auth/routes";
 import { authService } from "../../auth/service";
 
-// ── Mocks ─────────────────────────────────────────────────────────────────
-// Même logique que servers.test.ts : on ne teste JAMAIS la vraie base Postgres
-// ici (ça, c'est le rôle d'un test manuel ou d'un futur test "service" dédié).
-// On mocke settingsService entièrement, pour isoler ce qu'on veut réellement
-// vérifier dans CE fichier : le comportement HTTP (routes, rôles, validation).
+
 const { mockSettingsService } = vi.hoisted(() => ({
   mockSettingsService: {
     get: vi.fn(),
@@ -73,7 +67,7 @@ describe("Routes /api/settings/domain", () => {
     });
   });
 
-  // ── GET /api/settings/domain ─────────────────────────────────────────
+  //GET /api/settings/domain
 
   describe("GET /api/settings/domain", () => {
     it("devrait retourner domain: null tant que rien n'a été configuré", async () => {
@@ -144,7 +138,7 @@ describe("Routes /api/settings/domain", () => {
     });
   });
 
-  // ── POST /api/settings/domain ────────────────────────────────────────
+  // POST /api/settings/domain
 
   describe("POST /api/settings/domain", () => {
     it("devrait définir un domaine valide et renvoyer 200", async () => {
@@ -169,7 +163,7 @@ describe("Routes /api/settings/domain", () => {
     it.each([
       "ops.exemple.com",
       "mon-site.io",
-      "sub.exemple.co.uk", // vrai TLD à deux niveaux (co.uk) reconnu par la Public Suffix List
+      "sub.exemple.co.uk", 
     ])(
       "devrait accepter le domaine syntaxiquement valide : %s",
       async (domain) => {
@@ -193,9 +187,6 @@ describe("Routes /api/settings/domain", () => {
       ["label vide (double point)", "ops..exemple.com"],
       ["finit par un tiret", "ops.exemple.com-"],
       ["pas de TLD du tout", "localhost"],
-      // Cas régressif : point manquant avant le TLD. Un simple regex laissait
-      // passer ceci en interprétant "exemplecom" comme un TLD de 10 lettres.
-      // tldts sait que "exemplecom" n'est PAS un vrai suffixe public (ICANN).
       ["TLD inexistant (point manquant)", "ops.exemplecom"],
       ["TLD totalement inventé", "mon-site.faux-tld-invente"],
     ])(
@@ -260,9 +251,7 @@ describe("Routes /api/settings/domain", () => {
     });
 
     it("devrait retourner 400 si le service lève une erreur", async () => {
-      // Anticipe l'étape 4 (appel à l'API admin Caddy) : quand setDomain()
-      // pourra échouer pour de vraies raisons métier, ce test restera valide
-      // sans qu'on ait besoin de le réécrire.
+
       mockSettingsService.setDomain.mockRejectedValue(
         new Error("Caddy injoignable"),
       );

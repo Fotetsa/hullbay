@@ -2,11 +2,6 @@ import { prisma } from "../../lib/prisma"
 import { applyDomainToCaddy } from "./caddy-domain"
 
 const SINGLETON_ID = "singleton"
-
-/**
- * Parametres systeme (singleton)
- */
-
 export class SettingsService {
     /**Lit les parametres. Renvoie domain: null si rien n'a ete configure */
     async get() {

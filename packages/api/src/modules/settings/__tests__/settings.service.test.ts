@@ -1,12 +1,5 @@
-// packages/api/src/modules/settings/__tests__/settings.service.test.ts
-
 import { describe, it, expect, beforeEach, vi } from "vitest";
 
-// ── Mocks ─────────────────────────────────────────────────────────────────
-// Contrairement à settings.test.ts (qui teste la couche HTTP en mockant
-// settingsService entièrement), ici on descend d'un niveau : on teste le
-// VRAI SettingsService, mais en mockant ses deux dépendances externes
-// (Prisma et Caddy) pour ne jamais toucher une vraie base ni un vrai Caddy.
 const { mockPrisma, mockApplyDomainToCaddy } = vi.hoisted(() => ({
   mockPrisma: {
     settings: { upsert: vi.fn() },
@@ -19,8 +12,7 @@ vi.mock("../caddy-domain", () => ({
   applyDomainToCaddy: mockApplyDomainToCaddy,
 }));
 
-// Import APRÈS les vi.mock (hoistés automatiquement avant par Vitest, mais on
-// garde cet ordre par lisibilité : les mocks sont déclarés avant ce qu'ils remplacent).
+
 import { settingsService } from "../service";
 
 const SINGLETON_ID = "singleton";
@@ -82,10 +74,7 @@ describe("SettingsService", () => {
         update: { domain: "ops.exemple.com" },
       });
 
-      // Le coeur du test : Caddy doit être appelé AVANT l'écriture en base.
-      // mock.invocationCallOrder donne un numéro d'ordre global d'appel,
-      // partagé entre TOUS les mocks vi.fn() de ce fichier -- comparer ces
-      // deux nombres suffit à prouver l'ordre, sans dépendre du timing réel.
+
       const caddyCallOrder = mockApplyDomainToCaddy.mock.invocationCallOrder[0]!;
       const dbCallOrder = mockPrisma.settings.upsert.mock.invocationCallOrder[0]!;
       expect(caddyCallOrder).toBeLessThan(dbCallOrder);
@@ -100,8 +89,7 @@ describe("SettingsService", () => {
         settingsService.setDomain("ops.exemple.com"),
       ).rejects.toThrow("Caddy: route web échouée (500)");
 
-      // C'est l'assertion la plus importante de tout ce fichier : elle prouve
-      // qu'on ne se retrouve JAMAIS avec une base qui ment sur l'état réel de Caddy.
+     
       expect(mockPrisma.settings.upsert).not.toHaveBeenCalled();
     });
 
