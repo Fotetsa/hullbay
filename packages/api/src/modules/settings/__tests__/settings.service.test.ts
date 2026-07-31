@@ -38,7 +38,6 @@ describe("SettingsService", () => {
         create: { id: SINGLETON_ID },
         update: {},
       });
-      // get() ne doit JAMAIS toucher à Caddy -- c'est une lecture pure.
       expect(mockApplyDomainToCaddy).not.toHaveBeenCalled();
     });
 
