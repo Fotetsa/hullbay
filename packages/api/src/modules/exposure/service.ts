@@ -1,6 +1,5 @@
-import { request as httpRequest } from "node:http"
-import { request as httpsRequest } from "node:https"
 import type { GatewayConfig } from "@hullbay/shared"
+import { caddyAdmin, resolveServerName } from "../../lib/caddy-admin"
 
 /**
  * Module exposure : pilote le reverse proxy Caddy via son API d'admin pour
@@ -12,92 +11,12 @@ import type { GatewayConfig } from "@hullbay/shared"
  * mettre à jour / supprimer de façon idempotente.
  */
 
-const CADDY_ADMIN = process.env.CADDY_ADMIN_URL || "http://localhost:2019"
-
 function routeId(projectSlug: string, nodeName: string): string {
   return `boz-${projectSlug}-${nodeName}`
 }
 
-/** Forme partielle de la config http renvoyée par l'admin Caddy. */
-type CaddyServers = Record<
-  string,
-  { listen?: string[]; routes?: unknown[]; automatic_https?: { skip?: string[] } }
->
-
-type AdminResponse = { ok: boolean; status: number; body: string }
-
-/**
- * Appel à l'API d'admin Caddy via le module `http` natif de Node (PAS `fetch`).
- *
- * RAISON : `fetch` (undici) ajoute automatiquement l'en-tête `Sec-Fetch-Mode: cors`,
- * que Caddy 2 interprète comme une requête cross-origin et REJETTE en 403 (protection
- * anti-DNS-rebinding de l'API admin). Le client `http` natif n'envoie pas cet en-tête
- * (comme curl) -> l'admin répond normalement. Aucune config Caddy à relâcher.
- */
-function caddyAdmin(path: string, method = "GET", jsonBody?: unknown): Promise<AdminResponse> {
-  const url = new URL(`${CADDY_ADMIN}${path}`)
-  const isHttps = url.protocol === "https:"
-  const requester = isHttps ? httpsRequest : httpRequest
-  const payload = jsonBody !== undefined ? JSON.stringify(jsonBody) : undefined
-
-  return new Promise<AdminResponse>((resolve, reject) => {
-    const req = requester(
-      {
-        hostname: url.hostname,
-        port: url.port || (isHttps ? 443 : 80),
-        path: url.pathname + url.search,
-        method,
-        headers: payload
-          ? { "content-type": "application/json", "content-length": Buffer.byteLength(payload) }
-          : {},
-      },
-      (res) => {
-        let body = ""
-        res.on("data", (c) => (body += c))
-        res.on("end", () =>
-          resolve({ ok: (res.statusCode ?? 0) < 400, status: res.statusCode ?? 0, body })
-        )
-      }
-    )
-    req.on("error", reject)
-    if (payload) req.write(payload)
-    req.end()
-  })
-}
 
 export class ExposureService {
-  /**
-   * Résout le NOM réel du serveur HTTP Caddy dans lequel insérer les routes.
-   *
-   * On NE code PAS `srv0` en dur : le nom généré par l'adaptateur Caddyfile suit
-   * un schéma `srvX` non garanti dès qu'il y a plusieurs sites/listeners (limite
-   * connue de Caddy, issue #5322). On interroge donc l'admin et on choisit le
-   * serveur qui écoute sur le port public (80/443), avec repli sur le 1er serveur.
-   */
-  private async resolveServerName(): Promise<string> {
-    const res = await caddyAdmin(`/config/apps/http/servers`)
-    if (!res.ok) {
-      throw new Error(`Caddy: lecture des serveurs impossible (${res.status})`)
-    }
-    let servers: CaddyServers = {}
-    try {
-      servers = JSON.parse(res.body) as CaddyServers
-    } catch {
-      servers = {}
-    }
-    const names = Object.keys(servers ?? {})
-    if (names.length === 0) {
-      throw new Error(
-        "Caddy: aucun serveur HTTP configuré (le Caddyfile de l'ops-panel n'est pas chargé ?)"
-      )
-    }
-    // Préfère le serveur qui publie le trafic public (port 80 ou 443).
-    const onPublicPort = names.find((n) =>
-      (servers[n]?.listen ?? []).some((l) => l.endsWith(":80") || l.endsWith(":443"))
-    )
-    return onPublicPort ?? names[0]!
-  }
-
   /**
    * Active/désactive le HTTPS automatique de Caddy POUR UN HÔTE donné, via
    * `automatic_https.skip` du serveur (levier officiel Caddy, par hôte).
@@ -160,7 +79,7 @@ export class ExposureService {
     // Supprime l'éventuelle route existante (idempotence) puis ré-ajoute, dans le
     // serveur réellement présent (résolu dynamiquement, pas un `srv0` codé en dur).
     await this.deleteRoute(projectSlug, nodeName).catch(() => {})
-    const server = await this.resolveServerName()
+    const server = await resolveServerName()
     // tls:false (domaine interne/test) -> exclure du HTTPS auto ; tls:true -> HTTPS auto.
     await this.setHttpsSkip(server, config.domain, config.tls === false)
     // INSÈRE EN TÊTE (index 0), PAS en fin de liste. Le serveur de l'ops-panel se

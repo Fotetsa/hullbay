@@ -17,6 +17,7 @@ import { registerRegistryRoutes } from "./modules/registry/routes";
 import { registerServersRoutes } from "./modules/servers/routes";
 import { registerObservabilityRoutes } from "./modules/observability/routes";
 import { registerSecretsRoutes } from "./modules/secrets/routes";
+import { registerSettingsRoutes } from "./modules/settings/routes";
 import { attachWebSocket } from "./loaders/websocket";
 import { startObserver } from "./modules/observer/service";
 import { registerObservabilitySubscribers } from "./modules/observability/service";
@@ -148,6 +149,7 @@ app.setErrorHandler((error: FastifyError, request, reply) => {
     await registerServersRoutes(app);
     await registerObservabilityRoutes(app);
     await registerSecretsRoutes(app);
+    await registerSettingsRoutes(app);
   }
 
   if (!skipSideEffects) {
