@@ -126,3 +126,9 @@ model RegistryCredential {
   updatedAt DateTime @updatedAt
 }
 
+// ── Parametre systeme - domaine public configurable ──
+model Settings {
+  id          String @id @default("singleton")
+  domain      String?
+  updatedAt   DateTime @updatedAt
+}
