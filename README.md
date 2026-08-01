@@ -25,6 +25,26 @@ The platform is designed for a single VPS or a Swarm cluster and aims to make in
 - Observability, health monitoring, and drift detection
 - Secrets management and role-based access control for delegated operations
 
+> **Visual Provisioning Platform & Native Docker Swarm Orchestration**
+
+
+
+##  Currently Implemented Features
+
+###  Visual Provisioning & Deployment
+- **Interactive Canvas (Live Wiring):** Visually connect your services, volumes, and domains. The system automatically generates overlay networks and reverse-proxy configurations (Zero manual Caddyfile).
+- **Strict Deployment Plan:** Before any execution, the tool validates network dependencies and displays a precise diff of the containers that will be created, modified, or destroyed.
+- **Auto-Scaler & Reconciler:** A background engine ensures that the actual state of the cluster always matches the desired state drawn on the canvas.
+
+###  Security & Governance (Enterprise-Ready)
+- **Secure Authentication (2FA):** Administrator accounts are protected via two-factor authentication.
+- **Role-Based Access Control (RBAC):** Granular delegation of rights with different privilege levels (Owner, Operator, Viewer).
+- **Audit Logs:** Complete and tamper-proof traceability of all sensitive actions (deployments, node destructions, account modifications).
+
+###  Monitoring & High Availability (HA)
+- **Real-Time Cluster Health:** A dashboard monitoring the status of manager/worker nodes, CPU/Memory consumption, and detecting orphaned resources.
+- **Quorum Management (Control Plane):** A dedicated interface for adding servers and monitoring the fault-tolerance quorum (managing odd-numbered nodes for HA resilience).
+
 ## Screenshots
 
 ### Health and observability
