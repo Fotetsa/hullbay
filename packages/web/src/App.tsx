@@ -1,14 +1,16 @@
-import { useState } from "react"
+import { useState, type ReactNode } from "react"
 import { Navigate, Route, Routes, useLocation } from "react-router-dom"
 import { useQuery } from "@tanstack/react-query"
 import { Spinner } from "@medusajs/icons"
 import { api, auth } from "./lib/api"
 import { AppLayout } from "./components/AppLayout"
+import { SetupDomainPage } from "./pages/SetupDomainPage"
 import { LoginPage } from "./pages/LoginPage"
 import { BootstrapPage } from "./pages/BootstrapPage"
+import { ActivateMfaPage } from "./pages/ActivateMfaPage"
 import { UsersPage } from "./pages/UsersPage"
 import { AuditPage } from "./pages/AuditPage"
-import { MeProvider } from "./lib/useMe"
+import { MeProvider, useMe } from "./lib/useMe"
 import { ProjectsPage } from "./pages/ProjectsPage"
 import { CanvasPage } from "./pages/CanvasPage"
 import { SettingsPage } from "./pages/SettingsPage"
@@ -36,28 +38,76 @@ export function App() {
   // gater le déploiement, donc le provider doit être au-dessus du canvas ET du layout.
   return (
     <MeProvider>
-      <Routes>
-        <Route path="/login" element={<Navigate to="/" replace />} />
+      <DomainGate>
+        <Routes>
+          <Route path="/login" element={<Navigate to="/" replace />} />
+          <Route path="/setup-domain" element={<SetupDomainPage />} />
+          <Route path="/activate-mfa" element={<ActivateMfaPage />} />
 
-        {/* Canvas : plein écran, hors shell */}
-        <Route path="/canvas/:projectId" element={<CanvasPage />} />
+          {/* Canvas : plein écran, hors shell */}
+          <Route path="/canvas/:projectId" element={<CanvasPage />} />
 
-        {/* Pages internes sous le shell */}
-        <Route element={<AppLayout onLogout={() => setAuthed(false)} />}>
-          <Route path="/" element={<ProjectsPage />} />
-          <Route path="/health" element={<HealthPage />} />
-          <Route path="/servers" element={<ServersPage />} />
-          <Route path="/registries" element={<IntegrationsPage />} />
-          <Route path="/secrets" element={<SecretsPage />} />
-          <Route path="/users" element={<UsersPage />} />
-          <Route path="/audit" element={<AuditPage />} />
-          <Route path="/settings" element={<SettingsPage />} />
-        </Route>
+          {/* Pages internes sous le shell */}
+          <Route element={<AppLayout onLogout={() => setAuthed(false)} />}>
+            <Route path="/" element={<ProjectsPage />} />
+            <Route path="/health" element={<HealthPage />} />
+            <Route path="/servers" element={<ServersPage />} />
+            <Route path="/registries" element={<IntegrationsPage />} />
+            <Route path="/secrets" element={<SecretsPage />} />
+            <Route path="/users" element={<UsersPage />} />
+            <Route path="/audit" element={<AuditPage />} />
+            <Route path="/settings" element={<SettingsPage />} />
+          </Route>
 
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </DomainGate>
     </MeProvider>
   )
+}
+
+function DomainGate({ children }: { children: ReactNode }) {
+  const location = useLocation()
+  const { data, isLoading } = useQuery<{ domain: string }>({
+    queryKey: ["domain"],
+    queryFn: () => api.getDomain(),
+    staleTime: 0,
+  })
+  // Charger l'utilisateur courant pour vérifier l'état MFA
+  const { me, isLoading: meLoading, isError: meError } = useMe()
+
+  if (isLoading || meLoading) {
+    return (
+      <div className="flex h-full items-center justify-center bg-ui-bg-subtle">
+        <Spinner className="animate-spin text-ui-fg-muted" />
+      </div>
+    )
+  }
+
+  if (meError) {
+    auth.clear()
+    return <Navigate to="/login" replace />
+  }
+
+  const hasDomain = Boolean(data?.domain)
+
+  // Forcer l'activation MFA avant toute redirection vers setup-domain ou l'app
+  if (me && !me.mfaEnabled && location.pathname !== "/activate-mfa") {
+    return <Navigate to="/activate-mfa" replace />
+  }
+
+  // Ne rediriger vers setup-domain que si la MFA est activée
+  if (me?.mfaEnabled) {
+    if (!hasDomain && location.pathname !== "/setup-domain") {
+      return <Navigate to="/setup-domain" replace />
+    }
+
+    if (hasDomain && location.pathname === "/setup-domain") {
+      return <Navigate to="/" replace />
+    }
+  }
+
+  return <>{children}</>
 }
 
 /**

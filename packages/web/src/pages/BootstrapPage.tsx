@@ -25,14 +25,13 @@ export function BootstrapPage({ onAuthed }: { onAuthed: () => void }) {
     setLoading(true)
     try {
       await api.bootstrap(email, password)
-      // Connexion immédiate (pas de MFA encore : on l'activera dans Paramètres).
-      const res = await api.login(email, password)
-      if (res.token) {
-        auth.set(res.token)
+      // Après création, connecter automatiquement l'owner
+      const loginRes = await api.login(email, password)
+      if (loginRes.token) {
+        auth.set(loginRes.token)
+        toast.success("Compte créé et connecté")
         onAuthed()
-        navigate("/", { replace: true })
       } else {
-        // Cas improbable juste après création, mais on retombe proprement sur le login.
         toast.success("Compte créé", { description: "Connecte-toi." })
         navigate("/login", { replace: true })
       }

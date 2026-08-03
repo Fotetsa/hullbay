@@ -20,19 +20,27 @@ export type Me = { id: string; email: string; role: Role; mfaEnabled: boolean }
 type MeContextValue = {
   me: Me | undefined
   isLoading: boolean
+  isError: boolean
   can: (min: Role) => boolean
 }
 
 const MeContext = createContext<MeContextValue | null>(null)
 
 export function MeProvider({ children }: { children: ReactNode }) {
-  const { data, isLoading } = useQuery({ queryKey: ["me"], queryFn: api.me })
+  const { data, isLoading, isError } = useQuery({
+    queryKey: ["me"],
+    queryFn: api.me,
+    staleTime: 0,
+    retry: false,
+    refetchOnMount: "always",
+    refetchOnWindowFocus: true,
+  })
   const me = data as Me | undefined
   const can = (min: Role) => {
     if (!me) return false
     return (RANK[me.role] ?? -1) >= RANK[min]
   }
-  return <MeContext.Provider value={{ me, isLoading, can }}>{children}</MeContext.Provider>
+  return <MeContext.Provider value={{ me, isLoading, isError, can }}>{children}</MeContext.Provider>
 }
 
 export function useMe(): MeContextValue {
