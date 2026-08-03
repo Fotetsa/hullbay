@@ -1,13 +1,10 @@
+// LoginPage.tsx - Modifications principales
 import { useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { api, auth } from "../lib/api"
 import { Button, FocusModal, Heading, Text, Input, Label, toast, Container } from "@medusajs/ui"
 import { QRCodeSVG } from "qrcode.react"
 
-/**
- * Login en 2 temps : email/password puis, si MFA activée, code TOTP.
- * Conventions Medusa UI (Container/Heading/Input/Button).
- */
 export function LoginPage({ onAuthed }: { onAuthed: () => void }) {
   const navigate = useNavigate()
   const [email, setEmail] = useState("")
@@ -21,6 +18,22 @@ export function LoginPage({ onAuthed }: { onAuthed: () => void }) {
   const [code, setCode] = useState("")
   const [copied, setCopied] = useState(false)
 
+  /**
+   * Vérifie si un domaine est configuré et redirige si nécessaire
+   */
+  async function checkAndRedirectDomain() {
+    try {
+      const domainData = await api.getDomain()
+      if (domainData && domainData.domain) {
+        navigate("/", { replace: true })
+      } else {
+        navigate("/setup-domain", { replace: true })
+      }
+    } catch (error) {
+      navigate("/setup-domain", { replace: true })
+    }
+  }
+
   async function submitCredentials() {
     setLoading(true)
     try {
@@ -31,11 +44,13 @@ export function LoginPage({ onAuthed }: { onAuthed: () => void }) {
       }
       if (res.token) {
         auth.set(res.token)
+        onAuthed()
         const me = await api.me()
         if (me.mfaEnabled) {
-          onAuthed()
-          navigate("/", { replace: true })
+          // MFA déjà activée, vérifier le domaine
+          await checkAndRedirectDomain()
         } else {
+          // MFA non activée, proposer l'activation
           setLoginToken(res.token)
           setPendingToken(null)
           await loadMfaActivation()
@@ -69,7 +84,8 @@ export function LoginPage({ onAuthed }: { onAuthed: () => void }) {
       const res = await api.verifyMfa(pendingToken, code)
       auth.set(res.token)
       onAuthed()
-      navigate("/", { replace: true })
+      // Vérifier le domaine après MFA réussie
+      await checkAndRedirectDomain()
     } catch (e) {
       toast.error("Code invalide", { description: (e as Error).message })
     } finally {
@@ -88,7 +104,7 @@ export function LoginPage({ onAuthed }: { onAuthed: () => void }) {
       setSecret(null)
       setOtpauth(null)
       setCode("")
-      navigate("/", { replace: true })
+      await checkAndRedirectDomain()
     } catch (e) {
       toast.error("Code invalide", { description: (e as Error).message })
     } finally {
@@ -96,17 +112,11 @@ export function LoginPage({ onAuthed }: { onAuthed: () => void }) {
     }
   }
 
-  // const ModalMfa = () => {
-  //   return(
-      
-  //   )
-  // }
-
   return (
     <div className="flex h-full items-center justify-center bg-ui-bg-subtle">
       <Container className="w-[400px] p-6">
         <Heading level="h1" className="mb-1">
-          hullbay
+          Bozando Ops
         </Heading>
         <Text className="text-ui-fg-subtle mb-6">Console d'infrastructure</Text>
 
@@ -150,7 +160,14 @@ export function LoginPage({ onAuthed }: { onAuthed: () => void }) {
           </div>
         )}
 
-        <FocusModal open={!!loginToken} onOpenChange={(open) => !open && setLoginToken(null)}>
+        <FocusModal
+          open={!!loginToken}
+          onOpenChange={(open) => {
+            if (!open) {
+              setLoginToken(null)
+            }
+          }}
+        >
           <FocusModal.Content>
             <FocusModal.Header>
               <Heading level="h2">Active la MFA</Heading>
