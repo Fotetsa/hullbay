@@ -17,9 +17,9 @@ import { useQuery, useQueryClient, keepPreviousData } from "@tanstack/react-quer
 import { Navigate, useNavigate, useParams } from "react-router-dom"
 import { Button, Heading, Text, toast, usePrompt } from "@medusajs/ui"
 import { PlaySolid, Trash, ArrowLeft, ExclamationCircle, Spinner, XMark } from "@medusajs/icons"
-import type { NodeType, ActualState, Node, Edge } from "@bozando-ops/shared"
+import type { NodeType, ActualState, Node, Edge } from "@hullbay/shared"
 // Sous-chemin node-config : évite de tirer labels.ts (node:crypto) dans le bundle navigateur.
-import { isConnectionAllowed, edgeKindForPair } from "@bozando-ops/shared/node-config"
+import { isConnectionAllowed, edgeKindForPair } from "@hullbay/shared/node-config"
 import { api } from "../lib/api"
 import { useMe } from "../lib/useMe"
 import { useMutationToast } from "../lib/useMutationToast"

@@ -18,7 +18,7 @@ export function PageHeader({
 }) {
   // Titre d'onglet par page (les onglets étaient indistinguables sinon).
   useEffect(() => {
-    document.title = `${title} · Bozando Ops`
+    document.title = `${title} · hullbay`
   }, [title])
 
   return (

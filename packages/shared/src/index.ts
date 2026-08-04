@@ -1,5 +1,5 @@
 /**
- * @bozando-ops/shared — contrat de types partagé entre api et web.
+ * @hullbay/shared — contrat de types partagé entre api et web.
  *
  * - node-config : schémas Zod de config par type de nœud (container/network/volume/gateway)
  * - entities    : Project / Node / Edge / ProjectGraph

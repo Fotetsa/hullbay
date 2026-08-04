@@ -11,10 +11,10 @@
 	admin 0.0.0.0:2019
 }
 
-# Ops-panel lui-même : web (canvas) + api derrière /api + WebSocket sur /ws.
-# PUBLIC_HOST = vrai domaine en prod (ex: ops.bozando.com) -> HTTPS auto Let's
+# le panel lui-même : web (canvas) + api derrière /api + WebSocket sur /ws.
+# PUBLIC_HOST = vrai domaine en prod (ex: hullbay.dev) -> HTTPS auto Let's
 # Encrypt. Défaut :80 en dev / IP nue.
-{$PUBLIC_HOST::80} {
+:80 {
 	handle /api/* {
 		reverse_proxy api:4000
 	}

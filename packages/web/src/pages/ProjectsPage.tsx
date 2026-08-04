@@ -12,7 +12,7 @@ import {
   Textarea,
 } from "@medusajs/ui"
 import { Plus, ArrowPath, PencilSquare, Trash, SquaresPlus } from "@medusajs/icons"
-import type { Project } from "@bozando-ops/shared"
+import type { Project } from "@hullbay/shared"
 import { api } from "../lib/api"
 import { useMutationToast } from "../lib/useMutationToast"
 import { useConfirmDelete } from "../lib/useConfirmDelete"

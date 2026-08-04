@@ -1,5 +1,5 @@
 {
-  "name": "bozando-ops",
+  "name": "hullbay",
   "version": "0.1.0",
   "private": true,
   "description": "Ops-panel GNS3-like pour piloter Docker (canvas visuel -> Docker via dockerode)",
@@ -16,5 +16,14 @@
   },
   "engines": {
     "node": ">=20"
+  },
+  "devDependencies": {
+    "@semantic-release/changelog": "^7.0.0",
+    "@semantic-release/commit-analyzer": "^13.0.1",
+    "@semantic-release/git": "^11.0.1",
+    "@semantic-release/github": "^12.0.9",
+    "@semantic-release/npm": "^13.1.5",
+    "@semantic-release/release-notes-generator": "^14.1.1",
+    "semantic-release": "^25.0.8"
   }
 }

@@ -68,7 +68,7 @@ export function AppLayout({ onLogout }: { onLogout: () => void }) {
             <ServerStack />
           </div>
           <Text size="base" weight="plus">
-            Bozando Ops
+            hullbay
           </Text>
         </div>
         {/* Fermer (mobile uniquement) */}
@@ -177,7 +177,7 @@ export function AppLayout({ onLogout }: { onLogout: () => void }) {
             <BarsThree />
           </IconButton>
           <Text size="small" weight="plus">
-            Bozando Ops
+            hullbay
           </Text>
         </div>
 

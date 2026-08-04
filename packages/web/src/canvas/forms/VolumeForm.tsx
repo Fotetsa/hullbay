@@ -1,6 +1,6 @@
 import { Input, Label, Switch, Text } from "@medusajs/ui"
 // Sous-chemin node-config : évite de tirer labels.ts (node:crypto) dans le bundle.
-import type { VolumeConfig } from "@bozando-ops/shared/node-config"
+import type { VolumeConfig } from "@hullbay/shared/node-config"
 import { KeyValueEditor } from "./KeyValueEditor"
 
 /** Formulaire volume : driver/driver_opts/labels, ou référence à un volume externe. */

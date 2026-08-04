@@ -1,5 +1,5 @@
 import { Text } from "@medusajs/ui"
-import type { NodeType } from "@bozando-ops/shared"
+import type { NodeType } from "@hullbay/shared"
 import { NODE_META } from "./node-meta"
 
 /**

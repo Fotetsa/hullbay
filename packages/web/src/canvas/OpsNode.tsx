@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react"
 import { Handle, Position, type NodeProps } from "@xyflow/react"
-import type { NodeType, ActualState } from "@bozando-ops/shared"
+import type { NodeType, ActualState } from "@hullbay/shared"
 import { NODE_META } from "./node-meta"
 
 /**
