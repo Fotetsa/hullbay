@@ -1,7 +1,7 @@
-# Bozando Ops
+# hullbay
 
 <div align="center">
-  <img src="docs/image%20canvas.png" alt="Bozando Ops interface" width="1100" />
+  <img src="docs/image%20canvas.png" alt="hullbay interface" width="1100" />
   <p><strong>Visual infrastructure operations for Docker and Swarm</strong></p>
   <p>Design, review, and deploy container-based environments from a GNS3-style canvas with a clear and auditable workflow.</p>
   <p>
@@ -12,7 +12,7 @@
 
 ## Overview
 
-Bozando Ops is a visual operations plane for modern infrastructure teams. It transforms Docker-based deployments into a safe, guided experience where services, networks, volumes, and routing can be drawn, reviewed, and applied from a single interface.
+hullbay is a visual operations plane for modern infrastructure teams. It transforms Docker-based deployments into a safe, guided experience where services, networks, volumes, and routing can be drawn, reviewed, and applied from a single interface.
 
 The platform is designed for a single VPS or a Swarm cluster and aims to make infrastructure operations accessible, traceable, and less error-prone for both operators and teams with limited Docker experience.
 
@@ -25,12 +25,32 @@ The platform is designed for a single VPS or a Swarm cluster and aims to make in
 - Observability, health monitoring, and drift detection
 - Secrets management and role-based access control for delegated operations
 
+> **Visual Provisioning Platform & Native Docker Swarm Orchestration**
+
+
+
+##  Currently Implemented Features
+
+###  Visual Provisioning & Deployment
+- **Interactive Canvas (Live Wiring):** Visually connect your services, volumes, and domains. The system automatically generates overlay networks and reverse-proxy configurations (Zero manual Caddyfile).
+- **Strict Deployment Plan:** Before any execution, the tool validates network dependencies and displays a precise diff of the containers that will be created, modified, or destroyed.
+- **Auto-Scaler & Reconciler:** A background engine ensures that the actual state of the cluster always matches the desired state drawn on the canvas.
+
+###  Security & Governance (Enterprise-Ready)
+- **Secure Authentication (2FA):** Administrator accounts are protected via two-factor authentication.
+- **Role-Based Access Control (RBAC):** Granular delegation of rights with different privilege levels (Owner, Operator, Viewer).
+- **Audit Logs:** Complete and tamper-proof traceability of all sensitive actions (deployments, node destructions, account modifications).
+
+###  Monitoring & High Availability (HA)
+- **Real-Time Cluster Health:** A dashboard monitoring the status of manager/worker nodes, CPU/Memory consumption, and detecting orphaned resources.
+- **Quorum Management (Control Plane):** A dedicated interface for adding servers and monitoring the fault-tolerance quorum (managing odd-numbered nodes for HA resilience).
+
 ## Screenshots
 
 ### Health and observability
 
 <div align="center">
-  <img src="docs/image%20sant%C3%A9.png" alt="Bozando Ops health view" width="1000" />
+  <img src="docs/image%20sant%C3%A9.png" alt="hullbay health view" width="1000" />
 </div>
 
 ## Architecture
