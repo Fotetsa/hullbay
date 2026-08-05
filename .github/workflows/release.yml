@@ -2,38 +2,20 @@ name: Release
 on:
   schedule:
     - cron: '0 17 * * 5'
+  push:
+    branches: [master]
   workflow_dispatch: {}
 
 permissions:
   contents: write
-  issues: write
   pull-requests: write
 
 jobs:
-  release:
+  release-please:
     runs-on: ubuntu-latest
     if: github.repository == 'Fotetsa/hullbay'
-
     steps:
-      - name: Checkout du code
-        uses: actions/checkout@v6
+      - uses: googleapis/release-please-action@v4
         with:
-          fetch-depth: 0
-          persist-credentials: true
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-
-      - name: Installer les dépendances
-        run: npm ci
-
-      - name: Build Shared
-        run: npm run build --workspace @hullbay/shared
-
-      - name: Release
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: npx semantic-release
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
