@@ -10,6 +10,7 @@
   ],
   "scripts": {
     "typecheck": "npm run typecheck --workspaces --if-present"
+    "release": "semantic-release"
   },
   "overrides": {
     "browserslist": "4.28.0"
