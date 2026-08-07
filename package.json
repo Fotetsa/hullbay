@@ -1,6 +1,6 @@
 {
   "name": "hullbay",
-  "version": "1.2.1",
+  "version": "1.2.2",
   "private": true,
   "description": "Ops-panel GNS3-like pour piloter Docker (canvas visuel -> Docker via dockerode)",
   "workspaces": [
