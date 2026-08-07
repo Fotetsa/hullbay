@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.1](https://github.com/Fotetsa/hullbay/compare/v1.2.0...v1.2.1) (2026-08-07)
+
+
+### Bug Fixes
+
+* Update release-publish.yml ([#57](https://github.com/Fotetsa/hullbay/issues/57)) ([1d97878](https://github.com/Fotetsa/hullbay/commit/1d9787874b4d1070457aaaab7f4af9c0d986db98))
+
 ## [1.2.0](https://github.com/Fotetsa/hullbay/compare/v1.1.0...v1.2.0) (2026-08-07)
 
 
