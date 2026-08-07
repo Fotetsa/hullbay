@@ -2,35 +2,23 @@ name: Release
 
 on:
   schedule:
-    # Every Friday at 17:00 Cameroon time (UTC+
-    - cron: '0 17 * * 5'
+    # Every Friday at 17:00 Cameroon time (UTC+1)
+    - cron: '0 16 * * 5'
   workflow_dispatch:
 
 permissions:
   contents: write
+  pull-requests: write
 
 jobs:
-  release:
+  release-please:
     runs-on: ubuntu-latest
 
     if: github.repository == 'Fotetsa/hullbay'
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - name: Release Please
+        uses: googleapis/release-please-action@v4
         with:
-          fetch-depth: 0
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Semantic Release
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: npx semantic-release
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
