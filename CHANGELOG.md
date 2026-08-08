@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.2.4](https://github.com/Fotetsa/hullbay/compare/v1.2.3...v1.2.4) (2026-08-08)
+
+
+### Bug Fixes
+
+* formatting and update build-beta.yml workflow ([#71](https://github.com/Fotetsa/hullbay/issues/71)) ([bfd77f1](https://github.com/Fotetsa/hullbay/commit/bfd77f19e40a1498be45e488df2faac019285d64))
+* update release workflow to include build images ([#68](https://github.com/Fotetsa/hullbay/issues/68)) ([1e8e0c1](https://github.com/Fotetsa/hullbay/commit/1e8e0c1830b16620f79356dfc80dbbec893de9f0))
+
 ## [1.2.3](https://github.com/Fotetsa/hullbay/compare/v1.2.2...v1.2.3) (2026-08-08)
 
 
