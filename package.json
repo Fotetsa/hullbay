@@ -16,5 +16,9 @@
   },
   "engines": {
     "node": ">=20"
+  },
+  "dependencies": {
+    "i18next": "^26.3.6",
+    "react-i18next": "^17.0.11"
   }
 }
