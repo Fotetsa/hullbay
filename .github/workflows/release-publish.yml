@@ -31,4 +31,4 @@ jobs:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.RELEASE_PAT }}
