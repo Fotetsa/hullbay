@@ -3,6 +3,7 @@ import { getDocker } from "../docker-engine/client"
 import { DockerEngineService } from "../docker-engine/service"
 import { eventBus } from "../../lib/event-bus"
 import { prisma } from "../../lib/prisma"
+import { ContainerStateTracker, type ContainerState } from "./state-tracker"
 
 const docker = new DockerEngineService()
 
@@ -23,15 +24,36 @@ const docker = new DockerEngineService()
  * event réel : `Actor.Attributes` contient bozando.nodeId, bozando.managed, etc.),
  * donc c'est la bonne — et seule — source fiable pour l'état fin d'un conteneur.
  *
- * Reconnexion : si le stream Docker se coupe (redémarrage du daemon, perte du
+ * AGREGATION / ANTI-FLAPPING : pendant un rolling update ou un déploiement,
+ * plusieurs conteneurs physiques (ancien + nouveau, ou plusieurs replicas)
+ * partagent le même `bozando.nodeId`. Le `ContainerStateTracker` résout l'état
+ * PAR NŒUD avec une priorité ("running" domine "exited") : l'ancien conteneur qui
+ * meurt ne fait plus basculer l'affichage tant qu'un nouveau tourne. Les events ne
+ * déclenchent ni écriture DB ni émission socket si l'état résolu n'a pas changé.
+ *
+ * RECONNEXION : si le stream Docker se coupe (redémarrage du daemon, perte du
  * socket), on retente après un délai au lieu de laisser l'observer mourir en
  * silence pour toujours (c'était le cas avant — aucun `on("end"/"error")`).
+ * Délais de retry croissants (5s -> 10s -> 30s -> 60s) pour éviter le re-loop
+ * de souscription/re-snapshot en cas de daemon instable.
  *
- * Snapshot initial : au démarrage, avant de s'abonner au flux d'events, on lit
+ * SNAPSHOT INITIAL : au démarrage, avant de s'abonner au flux d'events, on lit
  * une fois l'état réel de tous les conteneurs gérés (voir `syncInitialState`) pour
  * que les ressources déjà en cours avant ce démarrage soient immédiatement
  * correctes (sinon elles restent figées jusqu'à leur prochaine transition).
+ * Les états du snapshot passent aussi par le tracker (déduplication).
  */
+
+const retryDelays = [5_000, 10_000, 30_000, 60_000]
+let retryIndex = 0
+
+let tracker = new ContainerStateTracker()
+
+/** Reset du tracker (hook de test uniquement — état mémoire de l'observer). */
+export function resetTrackerForTests(): void {
+  tracker = new ContainerStateTracker()
+}
+
 export function startObserver(): void {
   void syncInitialState()
 
@@ -48,7 +70,9 @@ export function startObserver(): void {
       if (err || !stream) {
         // Pas de socket / daemon pas encore prêt : on retente plus tard plutôt
         // que d'abandonner définitivement.
-        setTimeout(startObserver, 10_000)
+        const delay = retryDelays[Math.min(retryIndex, retryDelays.length - 1)]
+        retryIndex++
+        setTimeout(startObserver, delay)
         return
       }
 
@@ -59,7 +83,7 @@ export function startObserver(): void {
             const evt = JSON.parse(line) as {
               Type?: string
               Action?: string
-              Actor?: { Attributes?: Record<string, string> }
+              Actor?: { ID?: string; Attributes?: Record<string, string> }
             }
             void handleContainerEvent(evt)
           } catch {
@@ -67,13 +91,21 @@ export function startObserver(): void {
           }
         }
       })
+      // Stream ouvert avec succès : on remet le compteur de backoff à zéro.
+      retryIndex = 0
       // Le stream Docker peut se fermer (daemon restart, coupure du socket) sans
       // jamais rouvrir tout seul — sans ce ré-armement, l'observer reste mort
       // jusqu'au prochain restart du process API (c'était le bug initial).
-      stream.on("end", () => setTimeout(startObserver, 5_000))
-      stream.on("error", () => setTimeout(startObserver, 5_000))
+      stream.on("end", () => reschedule(startObserver))
+      stream.on("error", () => reschedule(startObserver))
     }
   )
+}
+
+function reschedule(fn: () => void): void {
+  const delay = retryDelays[Math.min(retryIndex, retryDelays.length - 1)]
+  retryIndex++
+  setTimeout(fn, delay)
 }
 
 /**
@@ -83,7 +115,7 @@ export function startObserver(): void {
  * disparu. Vocabulaire aligné sur `ContainerInfo.State` (created/running/paused/
  * restarting/exited/dead) utilisé aussi par le snapshot initial.
  */
-const CONTAINER_ACTION_TO_STATE: Record<string, string> = {
+const CONTAINER_ACTION_TO_STATE: Record<string, ContainerState> = {
   create: "created",
   start: "running",
   unpause: "running",
@@ -96,10 +128,14 @@ const CONTAINER_ACTION_TO_STATE: Record<string, string> = {
   destroy: "missing",
 }
 
-async function handleContainerEvent(evt: {
+/**
+ * Traitement unitaire d'un event Docker (agrégation + dédup par tracker).
+ * Exporté pour les tests unitaires.
+ */
+export async function handleContainerEvent(evt: {
   Type?: string
   Action?: string
-  Actor?: { Attributes?: Record<string, string> }
+  Actor?: { ID?: string; Attributes?: Record<string, string> }
 }): Promise<void> {
   if (evt.Type !== "container") return
   const attrs = evt.Actor?.Attributes ?? {}
@@ -107,9 +143,29 @@ async function handleContainerEvent(evt: {
   const projectId = attrs[LabelKeys.projectId]
   const action = evt.Action ?? ""
   const state = CONTAINER_ACTION_TO_STATE[action]
-  if (!nodeId || !state) return
+  const dockerId = evt.Actor?.ID
+  if (!nodeId || !state || !dockerId) return
 
-  // Met à jour le reflet runtime (NON source de vérité).
+  // Agrégation par conteneur réel : emit/écritures UNIQUEMENT si l'état résolu
+  // du nœud change (anti-flapping rolling update / replicas).
+  const changed = tracker.apply(dockerId, nodeId, state)
+  if (changed) {
+    await persistAndEmit(nodeId, projectId, changed, `container:${action}`)
+  }
+
+  scheduleReplicaRecount(nodeId, projectId)
+}
+
+/**
+ * Persiste l'état résolu en base (reflet runtime, NON source de vérité) puis
+ * émet l'event "node.state" pour le canvas. Ne se déclenche que sur changement.
+ */
+async function persistAndEmit(
+  nodeId: string,
+  projectId: string | undefined,
+  state: ContainerState,
+  dockerStatus: string
+): Promise<void> {
   await prisma.node
     .update({ where: { id: nodeId }, data: { actualState: state } })
     .catch(() => {
@@ -120,10 +176,8 @@ async function handleContainerEvent(evt: {
     projectId,
     nodeId,
     state,
-    dockerStatus: `container:${action}`,
+    dockerStatus,
   })
-
-  scheduleReplicaRecount(nodeId, projectId)
 }
 
 /**
@@ -171,7 +225,8 @@ async function recountReplicas(nodeId: string, projectId: string | undefined): P
 }
 
 /**
- * Snapshot d'état initial au démarrage de l'observer (boot ou redémarrage de l'API).
+ * Snapshot d'état initial au démarrage de l'observer (boot ou réarmement après
+ * coupure du stream).
  *
  * Le flux d'events Docker ne signale que des TRANSITIONS — un conteneur déjà en
  * "running" avant ce démarrage ne déclenche aucun nouvel event tant que rien ne
@@ -194,21 +249,16 @@ async function syncInitialState(): Promise<void> {
     const nodeId = labels[LabelKeys.nodeId]
     const projectId = labels[LabelKeys.projectId]
     const state = c.State // déjà au format created/running/paused/restarting/exited/dead
-    if (!nodeId || !state) continue
+    const dockerId = c.Id
+    if (!nodeId || !state || !dockerId) continue
 
-    await prisma.node
-      .update({ where: { id: nodeId }, data: { actualState: state } })
-      .catch(() => {})
+    // Le même nodeId peut apparaître plusieurs fois (replicas) : le tracker
+    // déduplique et renvoie uniquement un changement réel d'état résolu.
+    const changed = tracker.apply(dockerId, nodeId, state as ContainerState)
+    if (changed) {
+      await persistAndEmit(nodeId, projectId, changed, `container:snapshot:${state}`)
+    }
 
-    await eventBus.emit("node.state", {
-      projectId,
-      nodeId,
-      state,
-      dockerStatus: `container:snapshot:${state}`,
-    })
-
-    // Plusieurs conteneurs (replicas) peuvent partager le même nodeId : le debounce
-    // de scheduleReplicaRecount déduplique déjà les appels redondants par nœud.
     scheduleReplicaRecount(nodeId, projectId)
   }
 }
