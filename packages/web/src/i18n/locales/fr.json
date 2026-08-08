@@ -1,0 +1,9 @@
+{
+  "header": {
+    "title": "Tableau de bord",
+    "logout": "Se déconnecter"
+  },
+  "canvas": {
+    "empty_state": "Glissez vos services ici pour commencer le déploiement."
+  }
+}
