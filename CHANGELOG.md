@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.2.3](https://github.com/Fotetsa/hullbay/compare/v1.2.2...v1.2.3) (2026-08-08)
+
+
+### Bug Fixes
+
+* add build-beta workflow for Docker images ([#63](https://github.com/Fotetsa/hullbay/issues/63)) ([b400f8e](https://github.com/Fotetsa/hullbay/commit/b400f8ecea4037101d2052487bace5f2c382b9d9))
+* cache-to line in build-beta.yml ([#66](https://github.com/Fotetsa/hullbay/issues/66)) ([e20fd61](https://github.com/Fotetsa/hullbay/commit/e20fd6140a4248e19b443982b2495d4f4b0305cc))
+* fix Dockerfile syntax for npm install and build ([#61](https://github.com/Fotetsa/hullbay/issues/61)) ([510bb5d](https://github.com/Fotetsa/hullbay/commit/510bb5de1ede35bda08af621961c123fb4295bd5))
+* stabiliser les statuts conteneurs du canvas (anti-flapping) ([#62](https://github.com/Fotetsa/hullbay/issues/62)) ([20fb024](https://github.com/Fotetsa/hullbay/commit/20fb024421dc8c7b78c6b240887cc5f9fda10978))
+
 ## [1.2.2](https://github.com/Fotetsa/hullbay/compare/v1.2.1...v1.2.2) (2026-08-07)
 
 
