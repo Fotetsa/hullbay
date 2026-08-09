@@ -79,6 +79,10 @@ services:
       WEB_ORIGIN: ${PUBLIC_URL:?set in .env}
       DOCKER_HOST: tcp://socket-proxy:2375
       CADDY_ADMIN_URL: http://caddy:2019
+      # Version déployée (source de vérité currentVersion) + backup DB updates.
+      IMAGE_TAG: ${IMAGE_TAG:-latest}
+    volumes:
+      - ops_backups:/app/backups
     networks:
       - default
       - boz_system
@@ -119,6 +123,7 @@ volumes:
   ops_redisdata:
   caddy_data:
   caddy_config:
+  ops_backups:
 
 networks:
   boz_system:

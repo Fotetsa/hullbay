@@ -1,6 +1,6 @@
-import { useState, type ComponentType } from "react"
+import { useEffect, useState, type ComponentType } from "react"
 import { NavLink, Outlet, useNavigate } from "react-router-dom"
-import { Badge, Button, IconButton, Text, clx } from "@medusajs/ui"
+import { Badge, Button, IconButton, Text, clx, toast } from "@medusajs/ui"
 import {
   SquaresPlus,
   ChartBar,
@@ -13,9 +13,12 @@ import {
   BarsThree,
   Users,
   DocumentText,
+  ArrowPath,
+  Sparkles,
 } from "@medusajs/icons"
 import { auth } from "../lib/api"
 import { useMe, type Role } from "../lib/useMe"
+import { useUpdatesCheck } from "../lib/useUpdates"
 
 type NavItem = { to: string; label: string; Icon: ComponentType; min: Role }
 
@@ -30,6 +33,7 @@ const NAV: NavItem[] = [
   { to: "/registries", label: "Registres", Icon: CircleStack, min: "owner" },
   { to: "/secrets", label: "Secrets", Icon: Key, min: "operator" },
   { to: "/users", label: "Utilisateurs", Icon: Users, min: "owner" },
+  { to: "/updates", label: "Mises à jour", Icon: ArrowPath, min: "owner" },
   { to: "/settings", label: "Paramètres", Icon: CogSixTooth, min: "viewer" },
 ]
 
@@ -47,6 +51,28 @@ export function AppLayout({ onLogout }: { onLogout: () => void }) {
   const [mobileOpen, setMobileOpen] = useState(false)
   const { me, can } = useMe()
 
+  const isOwner = can("owner")
+  const updates = useUpdatesCheck(isOwner)
+  const updateAvailable = updates.data?.updateAvailable ?? false
+  const isStableChannel = updates.data?.updateChannel === "stable"
+  const isKnownVersion = (updates.data?.currentVersion ?? "unknown") !== "unknown"
+  const currentVersion = updates.data?.currentVersion ?? "unknown"
+  const updateChannel = updates.data?.updateChannel ?? "stable"
+  // Toast discret une seule fois par version (flag localStorage), déclenché au
+  // chargement du check (au login AND au refresh 6h). Canal stable uniquement,
+  // et seulement si la version déployée est réellement connue (pas "unknown" :
+  // install sans IMAGE_TAG → updateAvailable est systématiquement vrai).
+  const latestVersion = updates.data?.latestVersion
+  useEffect(() => {
+    if (!updateAvailable || !isStableChannel || !isKnownVersion || !latestVersion) return
+    const seenKey = `hullbay_update_seen_${latestVersion}`
+    if (localStorage.getItem(seenKey)) return
+    localStorage.setItem(seenKey, "1")
+    toast.info(`Mise à jour ${latestVersion} disponible`, {
+      description: "Ouvre Mises à jour dans la navigation pour le détail.",
+    })
+  }, [updateAvailable, isStableChannel, isKnownVersion, latestVersion])
+
   const logout = () => {
     auth.clear()
     onLogout()
@@ -62,7 +88,7 @@ export function AppLayout({ onLogout }: { onLogout: () => void }) {
 
   const sidebar = (
     <div className="flex h-full flex-col bg-ui-bg-base">
-      <div className="flex items-center justify-between px-4 py-4">
+      <div className="flex items-center justify-between px-4 pt-4">
         <div className="flex items-center gap-2">
           <div className="flex h-7 w-7 items-center justify-center rounded-md bg-ui-bg-base-pressed">
             <ServerStack />
@@ -82,8 +108,17 @@ export function AppLayout({ onLogout }: { onLogout: () => void }) {
           <XMark />
         </IconButton>
       </div>
+      <div className="flex items-center gap-2 px-4 pt-1">
+        <Text size="small" className="text-ui-fg-muted">
+          {currentVersion === "unknown" ? "Version inconnue" : `${currentVersion}`}
+        </Text>
+        <Badge color={updateChannel === "beta" ? "purple" : "green"} size="2xsmall">
+          {updateChannel === "beta" ? "Beta" : "Stable"}
+        </Badge>
+      </div>
 
-      <nav className="flex flex-1 flex-col gap-1 px-2" aria-label="Navigation principale">
+      <div className="mx-3 mt-3 border-t border-ui-border-base" />
+      <nav className="flex flex-1 flex-col gap-1 px-2 pt-4" aria-label="Navigation principale">
         {visibleNav.map(({ to, label, Icon }) => (
           <NavLink
             key={to}
@@ -103,6 +138,12 @@ export function AppLayout({ onLogout }: { onLogout: () => void }) {
             <Text size="small" weight="plus">
               {label}
             </Text>
+            {to === "/updates" && updateAvailable && isKnownVersion && (
+              <Badge color="blue" size="2xsmall" className="ml-auto animate-pulse capitalize motion-reduce:animate-none">
+                <Sparkles />
+                Nouveau
+              </Badge>
+            )}
           </NavLink>
         ))}
       </nav>
