@@ -7,6 +7,7 @@ import "@xyflow/react/dist/style.css"
 import "./index.css"
 import { App } from "./App"
 import { ErrorBoundary } from "./components/ErrorBoundary"
+import './i18n/config'
 
 // Defaults bornés : sans ça les erreurs réseau retentaient en boucle et chaque
 // focus de fenêtre déclenchait un refetch. retry:1 + staleTime court = un outil

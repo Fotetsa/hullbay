@@ -1,0 +1,9 @@
+{
+  "header": {
+    "title": "Dashboard",
+    "logout": "Log out"
+  },
+  "canvas": {
+    "empty_state": "Drag your services here to start provisioning."
+  }
+}
