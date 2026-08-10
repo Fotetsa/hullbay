@@ -230,7 +230,7 @@ describe("Auth Routes", () => {
 
         it("devrait retourner 401 avec des credentials invalides", async () => {
             vi.mocked(authService.login).mockRejectedValue(
-                new Error("Email ou mot de passe incorrect")
+                Object.assign(new Error("Email ou mot de passe incorrect"), { code: "invalid_credentials", status: 401 })
             );
 
             const response = await app.inject({
@@ -243,7 +243,10 @@ describe("Auth Routes", () => {
             });
 
             expect(response.statusCode).toBe(401);
-            expect(response.json()).toEqual({ error: "Email ou mot de passe incorrect" });
+            expect(response.json()).toEqual({
+                error: "Email ou mot de passe incorrect",
+                code: "invalid_credentials",
+            });
         });
 
         it("devrait retourner 400 si l'email est invalide", async () => {
@@ -296,7 +299,7 @@ describe("Auth Routes", () => {
 
         it("devrait retourner 401 si le code MFA est invalide", async () => {
             vi.mocked(authService.verifyMfa).mockRejectedValue(
-                new Error("code MFA invalide")
+                Object.assign(new Error("code MFA invalide"), { code: "mfa_code_invalid", status: 401 })
             );
 
             const response = await app.inject({
@@ -309,7 +312,10 @@ describe("Auth Routes", () => {
             });
 
             expect(response.statusCode).toBe(401);
-            expect(response.json()).toEqual({ error: "code MFA invalide" });
+            expect(response.json()).toEqual({
+                error: "code MFA invalide",
+                code: "mfa_code_invalid",
+            });
         });
 
         it("devrait retourner 400 si pendingToken est marquant", async () => {

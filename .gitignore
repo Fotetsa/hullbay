@@ -12,6 +12,7 @@ build/
 .env
 .env.*
 !.env.template
+packagesapi.env
 
 # Prisma
 packages/api/prisma/*.db

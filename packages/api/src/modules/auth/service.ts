@@ -5,6 +5,27 @@ import { prisma } from "../../lib/prisma"
 import { encryptSecret, decryptSecret } from "./crypto"
 import type { Role } from "./rbac"
 
+export type AuthErrorCode =
+  | "invalid_credentials"
+  | "mfa_token_invalid"
+  | "mfa_code_invalid"
+  | "mfa_not_configured"
+  | "mfa_enrollment_missing"
+  | "mfa_not_enabled"
+  | "password_incorrect"
+
+export class AuthError extends Error {
+  code: AuthErrorCode
+  status: number
+
+  constructor(code: AuthErrorCode, message: string, status = 400) {
+    super(message)
+    this.name = "AuthError"
+    this.code = code
+    this.status = status
+  }
+}
+
 /**
  * Auth de l'ops-panel : compte unique (owner) en V1, mais le modèle User/rôles
  * est prêt pour la délégation (V2). MFA TOTP OBLIGATOIRE dès la V1 (cf. plan :
@@ -52,7 +73,7 @@ export class AuthService {
   async login(email: string, password: string) {
     const user = await prisma.user.findUnique({ where: { email } })
     if (!user || !verifyPassword(password, user.passwordHash)) {
-      throw new Error("identifiants invalides")
+      throw new AuthError("invalid_credentials", "identifiants invalides", 401)
     }
     if (user.mfaEnabled) {
       // Token court de "pré-auth" : audience dédiée mfa-pending, JAMAIS acceptée
@@ -77,12 +98,16 @@ export class AuthService {
       sub?: string
       mfa?: string
     }
-    if (decoded.mfa !== "pending" || !decoded.sub) throw new Error("token MFA invalide")
+    if (decoded.mfa !== "pending" || !decoded.sub) {
+      throw new AuthError("mfa_token_invalid", "token MFA invalide", 401)
+    }
     const user = await prisma.user.findUniqueOrThrow({ where: { id: decoded.sub } })
-    if (!user.mfaSecretEnc) throw new Error("MFA non configurée")
+    if (!user.mfaSecretEnc) {
+      throw new AuthError("mfa_not_configured", "MFA non configurée", 400)
+    }
     const secret = decryptSecret(user.mfaSecretEnc)
     if (!(await totpVerify({ token: code, secret, epochTolerance: 30 })).valid) {
-      throw new Error("code invalide")
+      throw new AuthError("mfa_code_invalid", "code invalide", 401)
     }
     return { token: this.issueToken(user.id, user.role, true) }
   }
@@ -108,10 +133,12 @@ export class AuthService {
   /** Confirme l'enrôlement : vérifie un 1er code puis active la MFA. */
   async confirmMfaEnrollment(userId: string, code: string) {
     const user = await prisma.user.findUniqueOrThrow({ where: { id: userId } })
-    if (!user.mfaSecretEnc) throw new Error("aucun enrôlement en cours")
+    if (!user.mfaSecretEnc) {
+      throw new AuthError("mfa_enrollment_missing", "aucun enrôlement en cours", 400)
+    }
     const secret = decryptSecret(user.mfaSecretEnc)
     if (!(await totpVerify({ token: code, secret, epochTolerance: 30 })).valid) {
-      throw new Error("code invalide")
+      throw new AuthError("mfa_code_invalid", "code invalide", 401)
     }
     await prisma.user.update({ where: { id: userId }, data: { mfaEnabled: true } })
     return { ok: true, token: this.issueToken(userId, user.role, true) }
@@ -125,7 +152,7 @@ export class AuthService {
   async changePassword(userId: string, currentPassword: string, newPassword: string) {
     const user = await prisma.user.findUniqueOrThrow({ where: { id: userId } })
     if (!verifyPassword(currentPassword, user.passwordHash)) {
-      throw new Error("mot de passe actuel incorrect")
+      throw new AuthError("password_incorrect", "mot de passe actuel incorrect", 400)
     }
     await prisma.user.update({
       where: { id: userId },
