@@ -1,0 +1,127 @@
+name: Pre-release
+on:
+  workflow_dispatch:
+    inputs:
+      release_type:
+        description: "Type of pre-release"
+        required: true
+        type: choice
+        options:
+          - beta
+          - rc
+permissions:
+  contents: write
+  packages: write
+concurrency:
+  group: prerelease-${{ github.repository }}
+  cancel-in-progress: false
+jobs:
+  version:
+    name: Prepare Pre-release
+    runs-on: ubuntu-latest
+    outputs:
+      tag_name: ${{ steps.version.outputs.tag_name }}
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+      - name: Get latest stable release
+        id: stable
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG=$(gh release list \
+            --limit 1 \
+            --exclude-drafts \
+            --exclude-pre-releases \
+            --json tagName \
+            --jq '.[0].tagName')
+          if [ -z "$TAG" ]; then
+            echo "No stable release found."
+            exit 1
+          fi
+          VERSION="${TAG#v}"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Latest stable release: $TAG"
+      - name: Calculate next pre-release version
+        id: version
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          BASE="${{ steps.stable.outputs.version }}"
+          TYPE="${{ inputs.release_type }}"
+          TAGS=$(gh release list \
+            --limit 100 \
+            --json tagName \
+            --jq '.[].tagName')
+          if [ "$TYPE" = "beta" ]; then
+            PREFIX="v${BASE}-beta."
+          else
+            PREFIX="v${BASE}-rc."
+          fi
+          LAST=$(echo "$TAGS" \
+            | grep -E "^${PREFIX}[0-9]+$" \
+            | sed "s/^${PREFIX}//" \
+            | sort -n \
+            | tail -1 || true)
+          if [ -z "$LAST" ]; then
+            NEXT=1
+          else
+            NEXT=$((LAST + 1))
+          fi
+          VERSION="${BASE}-${TYPE}.${NEXT}"
+          TAG_NAME="v${VERSION}"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag_name=$TAG_NAME" >> "$GITHUB_OUTPUT"
+          echo "Pre-release type: $TYPE"
+          echo "Next version: $VERSION"
+          echo "Tag: $TAG_NAME"
+      - name: Create GitHub Pre-release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_NAME: ${{ steps.version.outputs.tag_name }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          gh release create "$TAG_NAME" \
+            --target "${{ github.sha }}" \
+            --title "$TAG_NAME" \
+            --prerelease \
+            --notes "Pre-release $VERSION"
+  build:
+    name: Build ${{ matrix.package }}
+    needs: version
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        package: [api, web]
+    steps:
+      - name: Checkout release
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.version.outputs.tag_name }}
+      - name: Login GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Metadata Docker
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ghcr.io/${{ github.repository }}/${{ matrix.package }}
+          tags: |
+            type=raw,value=${{ needs.version.outputs.tag_name }}
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+      - name: Build & Push
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: packages/${{ matrix.package }}/Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          provenance: false
+          sbom: false
