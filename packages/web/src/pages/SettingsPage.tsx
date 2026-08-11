@@ -201,6 +201,7 @@ export function SettingsPage() {
                 >
                   Activer la MFA
                 </Button>
+      
               )}
             </div>
           </div>
