@@ -19,6 +19,20 @@ export const auth = {
   },
 };
 
+export type ApiError = Error & {
+  status?: number
+  code?: string
+  details?: unknown
+}
+
+function createApiError(message: string, status: number, code?: string, details?: unknown): ApiError {
+  const error = new Error(message) as ApiError
+  error.status = status
+  if (code) error.code = code
+  if (details !== undefined) error.details = details
+  return error
+}
+
 /**
  * Construit un message d'erreur lisible depuis le corps d'une réponse non-OK.
  * Le backend renvoie `error` soit comme string, soit comme objet Zod `flatten()`
@@ -58,6 +72,14 @@ async function req<T>(path: string, init: RequestInit = {}): Promise<T> {
 
   const res = await fetch(path, { ...init, headers });
   if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    const message = extractError(body, res.status)
+    const code =
+      body && typeof body === "object" && body !== null && typeof (body as any).code === "string"
+        ? (body as any).code
+        : undefined
+    const error = createApiError(message, res.status, code, body)
+
     // 401 avec un token présent = session expirée/invalide. On purge le token et on
     // renvoie au login (sinon React Query boucle indéfiniment sur des 401). On exclut
     // les routes d'auth pour ne pas casser le flux de connexion lui-même.
@@ -69,10 +91,11 @@ async function req<T>(path: string, init: RequestInit = {}): Promise<T> {
       ) {
         window.location.assign("/login");
       }
-      throw new Error("Session expirée. Reconnecte-toi.");
+
+      throw createApiError("Session expirée. Reconnecte-toi.", res.status, code, body);
     }
-    const body = await res.json().catch(() => ({}));
-    throw new Error(extractError(body, res.status));
+    throw error
+
   }
   // 204 / corps vide : pas de JSON à parser.
   const text = await res.text();
@@ -283,7 +306,6 @@ export const api = {
   pruneApply: () => req<PruneResult>("/api/prune", { method: "POST" }),
 
   // Secrets (Docker Secrets — valeurs write-only, jamais relues)
-  // 🆕 Version multi-cluster conservée
   listSecrets: (clusterId: string) =>
     req<{ id: string; name: string }[]>(`/api/clusters/${clusterId}/secrets`),
   setSecret: (clusterId: string, data: { name: string; value: string }) =>
@@ -299,8 +321,15 @@ export const api = {
       },
     ),
 
+    // Domaine
+  getDomain: () => req<{ domain: string }>("/api/domain"),
+  setDomain: (domain: string) =>
+    req<{ ok: boolean; url?: string }>("/api/domain", {
+      method: "POST",
+      body: JSON.stringify({ domain }),
+    }),
+
   // Mises à jour de l'instance (owner uniquement)
-  // 🆕 Fusion propre sans duplication
   updatesCheck: (params: { channel?: UpdateChannel | "all" } = {}) => {
     const qs = params.channel ? `?channel=${params.channel}` : "";
     return req<UpdatesCheck>(`/api/updates/check${qs}`);

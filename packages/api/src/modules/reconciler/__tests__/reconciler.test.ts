@@ -14,19 +14,32 @@ import { authService } from "../../auth/service";
 import * as rebuildModule from "../rebuild";
 import { prisma } from "../../../lib/prisma";
 
-
+// 1. Mock du module de rebuild
 vi.mock("../rebuild", () => ({
   rebuildFromDocker: vi.fn(),
 }));
 
+// 2. Mock du service de réconciliation
 vi.mock("../service", () => ({
   ReconcilerService: class {
     reconcile = vi.fn();
   },
 }));
 
+// 3. Mock du service d'authentification
 vi.mock("../../auth/service", () => ({
   authService: { verifyToken: vi.fn() },
+}));
+
+vi.mock("../../../lib/prisma", () => ({
+  prisma: {
+    cluster: {
+      deleteMany: vi.fn(),
+      create: vi.fn(),
+      findFirstOrThrow: vi.fn(),
+      findMany: vi.fn(),
+    },
+  },
 }));
 
 const mockOwnerToken = "mock_owner_token";
@@ -68,6 +81,9 @@ describe("POST /api/rebuild-from-docker", () => {
     vi.mocked(prisma.cluster.findFirstOrThrow).mockResolvedValue(
       mockCluster as any,
     );
+    vi.mocked(prisma.cluster.findMany).mockResolvedValue([
+      { id: "mock-cluster-id" },
+    ] as any);
 
     vi.mocked(authService.verifyToken).mockImplementation((token: string) => {
       if (token === mockOwnerToken)
@@ -95,6 +111,7 @@ describe("POST /api/rebuild-from-docker", () => {
     });
 
     expect(response.statusCode).toBe(200);
+    console.log(response.json())
     expect(response.json()).toEqual({ ok: true, ...mockResult });
     expect(rebuildModule.rebuildFromDocker).toHaveBeenCalledTimes(1);
   });
@@ -112,6 +129,8 @@ describe("POST /api/rebuild-from-docker", () => {
       url: "/api/rebuild-from-docker",
       headers: { authorization: `Bearer ${mockOwnerToken}` },
     });
+
+    console.log(response.json());
 
     expect(response.statusCode).toBe(200);
     const body = response.json();
