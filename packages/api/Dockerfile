@@ -2,7 +2,12 @@
 FROM node:22-alpine AS base
 WORKDIR /app
 
-RUN apk add --no-cache openssl
+# postgresql-client 16 : pg_dump/pg_restore embarqués pour le backup/rollback
+# des mises à jour self-hosted (le dump se fait depuis le conteneur API, pas via
+# docker exec — le socket-proxy bloque EXEC). Version alignée sur le serveur
+# postgres:16 : un client plus récent émet des SET de GUC inconnues du serveur
+# (ex. transaction_timeout, PG17+) que pg_restore ne sait pas ignorer.
+RUN apk add --no-cache openssl postgresql16-client
 
 # Manifests pour installer les workspaces avec cache
 COPY package.json package-lock.json* ./

@@ -18,6 +18,7 @@ import { ServersPage } from "./pages/ServersPage"
 import { IntegrationsPage } from "./pages/IntegrationsPage"
 import { HealthPage } from "./pages/HealthPage"
 import { SecretsPage } from "./pages/SecretsPage"
+import { UpdatesPage } from "./pages/UpdatesPage"
 
 /**
  * Routing par URL (react-router) :
@@ -35,6 +36,7 @@ export function App() {
 
   return (
     <MeProvider>
+      
       <DomainGate onUnauthenticated={() => setAuthed(false)}>
         <Routes>
           <Route path="/login" element={<Navigate to="/" replace />} />
@@ -57,6 +59,7 @@ export function App() {
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </DomainGate>
+        
     </MeProvider>
   )
 }

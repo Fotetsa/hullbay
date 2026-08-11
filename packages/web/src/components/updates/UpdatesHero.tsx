@@ -1,0 +1,410 @@
+import { useEffect, useState } from "react"
+import type { ElementType } from "react"
+import { Badge, Button, Container, Heading, Text, clx } from "@medusajs/ui"
+import {
+  ArrowPath, CheckCircle, CircleCheckSolid, CircleStack, CircleXmarkSolid, CloudArrowDown,
+  CubeSolid, Globe, Layers3, Server, Tag, XMark,
+} from "@medusajs/icons"
+import type { SystemUpdateRecord, UpdatesCheck } from "../../lib/api"
+import { CHANNEL_LABELS, STATUS_LABELS } from "./updatesShared"
+
+/** Étapes du pipeline : libellé + icône Medusa pour le stepper. */
+const STEP_META: Record<string, { label: string; icon: ElementType }> = {
+  backup: { label: "Sauvegarde", icon: CircleStack },
+  version: { label: "Version", icon: Tag },
+  pull: { label: "Images", icon: CubeSolid },
+  web: { label: "Interface", icon: Globe },
+  api: { label: "API", icon: Server },
+  pipeline: { label: "Finalisation", icon: Layers3 },
+  restore: { label: "Restauration", icon: CircleStack },
+}
+
+/** Pastille d'état d'une étape du stepper (icône Medusa + formes/animations). */
+function StepBadge({ step }: { step: { name: string; status: string } }) {
+  const Icon = STEP_META[step.name]?.icon ?? Layers3
+  if (step.status === "success") {
+    return (
+      <span className="hb-animate-step-pop relative flex h-9 w-9 items-center justify-center" aria-label="réussie">
+        <span className="relative flex h-9 w-9 items-center justify-center rounded-full border-2 border-uf-green bg-ui-bg-success text-uf-green">
+          <CheckCircle className="h-4 w-4" aria-hidden />
+        </span>
+      </span>
+    )
+  }
+  if (step.status === "failed") {
+    return (
+      <span
+        className="hb-animate-step-pop flex h-9 w-9 items-center justify-center rounded-full bg-ui-bg-error text-ui-fg-error"
+        aria-label="échouée"
+      >
+        <XMark className="h-4 w-4" aria-hidden />
+      </span>
+    )
+  }
+  if (step.status === "running") {
+    return (
+      <span className="relative flex h-9 w-9 items-center justify-center" aria-label="en cours">
+        <span className="hb-animate-node-pulse absolute inset-0 rounded-full bg-blue-500" aria-hidden />
+        <span className="relative flex h-9 w-9 items-center justify-center rounded-full border-2 border-blue-500 bg-blue-50 text-blue-600">
+          <Icon className="h-4 w-4" aria-hidden />
+        </span>
+      </span>
+    )
+  }
+  return (
+    <span
+      className="flex h-9 w-9 items-center justify-center rounded-full bg-ui-bg-base-pressed text-ui-fg-muted"
+      aria-label="en attente"
+    >
+      <Icon className="h-4 w-4" aria-hidden />
+    </span>
+  )
+}
+
+/** Lien entre deux étapes : se remplit en scaleX quand l'étape précède passe. */
+function StepLink({ status }: { status: string }) {
+  const done = status === "success"
+  const active = status === "running"
+  return (
+    <span
+      aria-hidden
+      className={clx(
+        "mb-5 h-0.5 w-6 origin-left sm:w-10",
+        done
+          ? "scale-x-100 bg-blue-500"
+          : active
+            ? "scale-x-100 animate-pulse bg-blue-500/50"
+            : "scale-x-0 bg-ui-border-base",
+        "transition-transform duration-500",
+      )}
+      style={{ transitionTimingFunction: "cubic-bezier(0.23, 1, 0.32, 1)" }}
+    />
+  )
+}
+
+/** Petit loader circulaire (icône Medusa animée) pendant la préparation. */
+function CircleDottedLoader() {
+  return (
+    <span className="relative flex h-5 w-5 items-center justify-center" aria-hidden>
+      <span className="hb-animate-node-pulse absolute inset-0 rounded-full bg-blue-500" />
+      <CircleStack className="relative h-4 w-4 text-blue-600" />
+    </span>
+  )
+}
+
+/** Formate une durée ms en « 45s » / « 1m 05s ». */
+function formatDuration(ms: number): string {
+  const total = Math.max(0, Math.round(ms / 1000))
+  const m = Math.floor(total / 60)
+  const s = total % 60
+  return m === 0 ? `${s}s` : `${m}m ${s.toString().padStart(2, "0")}s`
+}
+
+/**
+ * Contenu du pipeline (affiché dans la carte) : stepper visuel à icônes,
+ * échecs d'étapes, progression + durée. Aucun log : un seul retour visuel.
+ */
+function PipelineContent({ update, live }: { update: SystemUpdateRecord; live: boolean }) {
+  const steps = update.steps ?? []
+  const done = steps.filter((s) => s.status === "success").length
+  const progress = steps.length ? Math.round((done / steps.length) * 100) : 0
+
+  // Durée : tick 1s pendant running, fixe (startedAt → finishedAt) sinon.
+  const startedAt = update.startedAt ? new Date(update.startedAt).getTime() : null
+  const endedAt = update.finishedAt ? new Date(update.finishedAt).getTime() : null
+  const [now, setNow] = useState(Date.now())
+  useEffect(() => {
+    if (!live) return
+    const t = setInterval(() => setNow(Date.now()), 1000)
+    return () => clearInterval(t)
+  }, [live])
+  const durationMs = startedAt ? (endedAt ?? now) - startedAt : null
+
+  const failedSteps = steps.filter((s) => s.status === "failed" && s.error)
+
+  return (
+    <>
+      {/* Stepper horizontal */}
+      {steps.length > 0 ? (
+        <ol className="flex flex-wrap items-start gap-2">
+          {steps.map((s, i) => {
+            const last = i === steps.length - 1
+            return (
+              <li
+                key={s.name}
+                className="hb-animate-fade-up flex min-w-0 items-center gap-2"
+                style={{ animationDelay: `${i * 60}ms` }}
+              >
+                <div className="flex flex-col items-center gap-1.5">
+                  <StepBadge key={`${s.name}-${s.status}`} step={s} />
+                  <span
+                    className={clx(
+                      "text-xs",
+                      s.status === "running"
+                        ? "font-medium text-ui-fg-base"
+                        : "text-ui-fg-muted",
+                    )}
+                  >
+                    {STEP_META[s.name]?.label ?? s.name}
+                  </span>
+                </div>
+                {!last && <StepLink status={s.status} />}
+              </li>
+            )
+          })}
+        </ol>
+      ) : (
+        <div className="flex items-center gap-2">
+          <CircleDottedLoader />
+          <Text size="small" className="text-ui-fg-muted">Pipeline en préparation…</Text>
+        </div>
+      )}
+
+      {failedSteps.length > 0 && (
+        <div className="mt-4 rounded-md bg-ui-bg-base-pressed p-3">
+          <Text size="xsmall" weight="plus" className="text-ui-fg-error">
+            Une étape a échoué
+          </Text>
+          {failedSteps.map((s) => (
+            <Text key={s.name} size="xsmall" className="mt-1 text-ui-fg-subtle">
+              {STEP_META[s.name]?.label ?? s.name} : {s.error}
+            </Text>
+          ))}
+        </div>
+      )}
+
+      {/* Progression + durée */}
+      <div className="mt-5 flex items-center gap-3 border-t border-ui-border-base pt-4">
+        <div className="relative h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-ui-bg-base-pressed">
+          <div
+            className="hb-progress-fill absolute inset-y-0 left-0 w-full rounded-full bg-blue-500"
+            style={{ transform: `scaleX(${progress / 100})` }}
+          />
+          {live && <div className="hb-animate-shimmer absolute inset-0 rounded-full" aria-hidden />}
+        </div>
+        <span className="w-9 shrink-0 text-right font-mono text-xs text-ui-fg-muted">
+          {progress}%
+        </span>
+        {durationMs !== null && (
+          <span className="shrink-0 font-mono text-xs text-ui-fg-muted">
+            · {formatDuration(durationMs)}
+          </span>
+        )}
+      </div>
+    </>
+  )
+}
+
+/** Bannière de verdict (succès / échec / rollback) avec check dessiné. */
+function VerdictBanner({
+  update,
+  onReload,
+  onClose,
+}: {
+  update: SystemUpdateRecord
+  onReload: () => void
+  onClose: () => void
+}) {
+  const ok = update.status === "success"
+  const rolledBack = update.status === "rolled_back"
+  // Version réellement restaurée : l'enregistrement rollback a son propre
+  // toVersion (= cible du restore), une apply auto-rollbackée garde le sien
+  // (fromVersion). Les deux pointent vers la version redeployée.
+  const restored = update.rollbackOfId ? update.toVersion : update.fromVersion
+  return (
+    <div
+      className={clx(
+        "mt-5 flex flex-wrap items-center justify-between gap-3 rounded-lg border p-4",
+        ok
+          ? "border-ui-border-base bg-ui-bg-subtle"
+          : "border-ui-border-error bg-ui-bg-error/30",
+      )}
+    >
+      <div className="flex items-center gap-3">
+        <span
+          className={clx(
+            "flex h-10 w-10 shrink-0 items-center justify-center rounded-full",
+            ok ? "bg-ui-bg-success text-uf-green" : "bg-ui-bg-error text-ui-fg-error",
+          )}
+        >
+          {ok ? (
+            <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" aria-hidden>
+              <path
+                pathLength={1}
+                d="M4.5 12.5l4.8 4.8L19.5 7"
+                className="hb-draw-check"
+                stroke="currentColor"
+                strokeWidth="2.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          ) : (
+            <CircleXmarkSolid className="h-5 w-5" />
+          )}
+        </span>
+        <div>
+          <Text weight="plus">
+            {ok
+              ? "Mise à jour terminée"
+              : rolledBack
+                ? "Mise à jour annulée (rollback)"
+                : "La mise à jour a échoué"}
+          </Text>
+          <Text size="small" className="mt-0.5 text-ui-fg-muted">
+            {ok
+              ? `${update.fromVersion ?? "?"} → ${update.toVersion ?? "?"} — hullbay est à jour.`
+              : rolledBack
+                ? `hullbay est repassé à ${restored ?? "?"}.`
+                : update.error?.slice(0, 160) ?? "Vérifie l'historique pour le détail."}
+          </Text>
+        </div>
+      </div>
+      <div className="flex shrink-0 gap-2">
+        <Button variant="secondary" size="small" onClick={onReload}>
+          <ArrowPath />
+          Recharger la page
+        </Button>
+        <Button variant="primary" size="small" onClick={onClose}>
+          Fermer
+        </Button>
+      </div>
+    </div>
+  )
+}
+
+/**
+ * Carte d'installation : état courant (version + dispo) OU pipeline live de
+ * l'update en cours. Idle : « Mettre à jour » si version plus récente sur le
+ * canal. Live : verdict + stepper temps réel.
+ */
+export function UpdatesHero({
+  data,
+  isError,
+  live,
+  running,
+  connected,
+  onUpdate,
+  onCloseLive,
+}: {
+  data: UpdatesCheck | undefined
+  isError: boolean
+  live: SystemUpdateRecord | null
+  running: boolean
+  connected: boolean
+  onUpdate: () => void
+  onCloseLive: () => void
+}) {
+  const liveView = !!live
+  const updateTerminal =
+    liveView && ["success", "failed", "rolled_back"].includes(live!.status)
+  const currentVersion = data?.currentVersion ?? "…"
+  const activeChannel = data?.updateChannel ?? "stable"
+  const lastCheckLabel = data
+    ? `Dernière vérification : ${new Date(data.lastCheckAt).toLocaleString()}`
+    : null
+  const isUpToDate = !!data && !data.updateAvailable
+
+  return (
+    <Container className="mb-4 overflow-hidden p-6 sm:p-8">
+      <div key={liveView ? live!.id : "idle"} className="hb-animate-card-in">
+        {liveView && live ? (
+          <>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <Text size="xsmall" className="text-ui-fg-muted uppercase tracking-wide">
+                  {running ? "Mise à jour en cours" : "Résultat"}
+                </Text>
+                <Heading level="h3" className="mt-0.5 font-mono">
+                  {live.fromVersion ?? "?"} → {live.toVersion ?? "?"}
+                </Heading>
+              </div>
+              <div className="flex items-center gap-2">
+                {running ? (
+                  <Badge color="blue" className="animate-pulse motion-reduce:animate-none">
+                    {connected ? "En direct" : "Reconnexion…"}
+                  </Badge>
+                ) : (
+                  <Badge
+                    color={
+                      live.status === "success" ? "green"
+                        : live.status === "failed" ? "red"
+                          : "orange"
+                    }
+                  >
+                    {STATUS_LABELS[live.status]?.label ?? live.status}
+                  </Badge>
+                )}
+              </div>
+            </div>
+
+            {updateTerminal && (
+              <VerdictBanner
+                update={live}
+                onReload={() => window.location.reload()}
+                onClose={onCloseLive}
+              />
+            )}
+
+            <div className="mt-5">
+              <PipelineContent update={live} live={running} />
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="flex flex-col gap-6 sm:flex-row sm:items-end sm:justify-between">
+              <div>
+                <div className="flex flex-wrap items-center gap-3">
+                  <span className="font-mono text-4xl font-semibold leading-none text-ui-fg-base sm:text-5xl">
+                    {currentVersion}
+                  </span>
+                  {data?.updateAvailable && (
+                    <Badge color="orange">Mise à jour disponible</Badge>
+                  )}
+                </div>
+                {data?.updateAvailable && data.latest ? (
+                  <Text className="mt-2 text-ui-fg-subtle">
+                    {data.latest.version} publiée le{" "}
+                    {data.latest.publishedAt
+                      ? new Date(data.latest.publishedAt).toLocaleDateString()
+                      : "récemment"}{" "}
+                    sur le canal {CHANNEL_LABELS[activeChannel].label.toLowerCase()}.
+                  </Text>
+                ) : isUpToDate ? (
+                  <Text className="mt-2 flex items-center gap-1.5 text-ui-fg-subtle">
+                    <CircleCheckSolid className="h-4 w-4 shrink-0 text-ui-fg-success" aria-hidden />
+                    Vous êtes à jour — {currentVersion} est la dernière version du canal{" "}
+                    {CHANNEL_LABELS[activeChannel].label.toLowerCase()}.
+                  </Text>
+                ) : null}
+              </div>
+
+              <div className="flex flex-wrap items-center gap-3">
+                {data?.updateAvailable && (
+                  <Button variant="primary" disabled={running} onClick={onUpdate}>
+                    <CloudArrowDown />
+                    Mettre à jour
+                  </Button>
+                )}
+              </div>
+            </div>
+
+            <div className="mt-5 flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-ui-border-base pt-3 text-xs text-ui-fg-muted">
+              {lastCheckLabel && <span>{lastCheckLabel}</span>}
+              {data?.degraded && (
+                <span className="text-amber-600">
+                  GitHub {data.degraded.slice(0, 80)} — dernier résultat connu.
+                </span>
+              )}
+              {isError && (
+                <span className="text-red-600">
+                  Vérification impossible (GitHub ou réseau) — réessaie plus tard.
+                </span>
+              )}
+            </div>
+          </>
+        )}
+      </div>
+    </Container>
+  )
+}
