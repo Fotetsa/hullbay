@@ -118,21 +118,6 @@ export function SetupDomainPage() {
           valide et accessible.
         </Text>
 
-        {mfaNotEnabled ? (
-          <div className="mb-4 rounded-2xl bg-ui-bg-warning p-3">
-            <Text className="text-ui-fg-error">MFA non activée — veillez l'activer</Text>
-            <div className="mt-2">
-              <Button variant="secondary" size="small" onClick={() => navigate("/activate-mfa")}>
-                Activer la MFA
-              </Button>
-            </div>
-          </div>
-        ) : (
-          <div className="mb-4 rounded-2xl bg-ui-bg-success p-3">
-            <Text>MFA activée</Text>
-          </div>
-        )}
-
         <div className="flex flex-col gap-4">
           <div>
             <Label size="small">Domaine public</Label>
