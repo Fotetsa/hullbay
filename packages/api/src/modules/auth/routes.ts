@@ -36,6 +36,22 @@ const MFA_SETUP_PATHS = new Set([
   "/api/auth/me",
 ])
 
+function serializeError(err: unknown, fallbackStatus = 400) {
+  const message = err instanceof Error ? err.message : String(err)
+  const code =
+    err && typeof err === "object" && "code" in err && typeof (err as { code?: unknown }).code === "string"
+      ? (err as { code: string }).code
+      : undefined
+
+  const payload: { error: string; code?: string } = { error: message }
+  if (code) payload.code = code
+
+  return {
+    status: fallbackStatus,
+    payload,
+  }
+}
+
 export function registerAuthGuard(app: FastifyInstance) {
   app.addHook("onRequest", async (req, reply) => {
     if (!req.url.startsWith("/api/")) return;
@@ -50,7 +66,10 @@ export function registerAuthGuard(app: FastifyInstance) {
 
       //Verifions si la MFA est activer ou pas 
       if (!decoded.mfaEnabled && !MFA_SETUP_PATHS.has(path)) {
-        return reply.code(403).send({error: "MFA non activée veillez l'activer"})
+        return reply.code(403).send({
+          error: "MFA non activée — active la MFA avant de continuer.",
+          code: "mfa_not_enabled",
+        })
       }
     } catch {
       return reply.code(401).send({ error: "token invalide" });
@@ -79,9 +98,8 @@ export async function registerAuthRoutes(app: FastifyInstance) {
         const user = await authService.createOwner(body.email, body.password);
         return { ok: true, id: user.id };
       } catch (err) {
-        return reply
-          .code(409)
-          .send({ error: err instanceof Error ? err.message : String(err) });
+        const { status, payload } = serializeError(err, 409)
+        return reply.code(status).send(payload)
       }
     },
   );
@@ -114,9 +132,8 @@ export async function registerAuthRoutes(app: FastifyInstance) {
         const body = req.body as { email: string; password: string };
         return await authService.login(body.email, body.password);
       } catch (err) {
-        return reply
-          .code(401)
-          .send({ error: err instanceof Error ? err.message : String(err) });
+        const { status, payload } = serializeError(err, 401)
+        return reply.code(status).send(payload)
       }
     },
   );
@@ -140,9 +157,8 @@ export async function registerAuthRoutes(app: FastifyInstance) {
         const body = req.body as { pendingToken: string; code: string };
         return await authService.verifyMfa(body.pendingToken, body.code);
       } catch (err) {
-        return reply
-          .code(401)
-          .send({ error: err instanceof Error ? err.message : String(err) });
+        const { status, payload } = serializeError(err, 401)
+        return reply.code(status).send(payload)
       }
     },
   );
@@ -177,9 +193,8 @@ export async function registerAuthRoutes(app: FastifyInstance) {
         const body = req.body as { code: string };
         return await authService.confirmMfaEnrollment(user.sub, body.code);
       } catch (err) {
-        return reply
-          .code(400)
-          .send({ error: err instanceof Error ? err.message : String(err) });
+        const { status, payload } = serializeError(err, 400)
+        return reply.code(status).send(payload)
       }
     },
   );
@@ -227,9 +242,8 @@ export async function registerAuthRoutes(app: FastifyInstance) {
         );
       } catch (err) {
         // Mot de passe actuel incorrect = erreur attendue → 400 message clair.
-        return reply
-          .code(400)
-          .send({ error: err instanceof Error ? err.message : String(err) });
+        const { status, payload } = serializeError(err, 400)
+        return reply.code(status).send(payload)
       }
     },
   );

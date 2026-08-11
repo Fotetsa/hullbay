@@ -19,6 +19,20 @@ export const auth = {
   },
 }
 
+export type ApiError = Error & {
+  status?: number
+  code?: string
+  details?: unknown
+}
+
+function createApiError(message: string, status: number, code?: string, details?: unknown): ApiError {
+  const error = new Error(message) as ApiError
+  error.status = status
+  if (code) error.code = code
+  if (details !== undefined) error.details = details
+  return error
+}
+
 /**
  * Construit un message d'erreur lisible depuis le corps d'une réponse non-OK.
  * Le backend renvoie `error` soit comme string, soit comme objet Zod `flatten()`
@@ -53,6 +67,14 @@ async function req<T>(path: string, init: RequestInit = {}): Promise<T> {
   if (auth.token) headers.authorization = `Bearer ${auth.token}`
   const res = await fetch(path, { ...init, headers })
   if (!res.ok) {
+    const body = await res.json().catch(() => ({}))
+    const message = extractError(body, res.status)
+    const code =
+      body && typeof body === "object" && body !== null && typeof (body as any).code === "string"
+        ? (body as any).code
+        : undefined
+    const error = createApiError(message, res.status, code, body)
+
     // 401 avec un token présent = session expirée/invalide. On purge le token et on
     // renvoie au login (sinon React Query boucle indéfiniment sur des 401). On exclut
     // les routes d'auth pour ne pas casser le flux de connexion lui-même.
@@ -61,10 +83,9 @@ async function req<T>(path: string, init: RequestInit = {}): Promise<T> {
       if (typeof window !== "undefined" && window.location.pathname !== "/login") {
         window.location.assign("/login")
       }
-      throw new Error("Session expirée. Reconnecte-toi.")
+      throw createApiError("Session expirée. Reconnecte-toi.", res.status, code, body)
     }
-    const body = await res.json().catch(() => ({}))
-    throw new Error(extractError(body, res.status))
+    throw error
   }
   // 204 / corps vide : pas de JSON à parser.
   const text = await res.text()
@@ -210,6 +231,14 @@ export const api = {
     }),
   deleteSecret: (name: string) =>
     req<{ ok: true }>(`/api/secrets/${encodeURIComponent(name)}`, { method: "DELETE" }),
+
+    // Domaine
+  getDomain: () => req<{ domain: string }>("/api/domain"),
+  setDomain: (domain: string) =>
+    req<{ ok: boolean; url?: string }>("/api/domain", {
+      method: "POST",
+      body: JSON.stringify({ domain }),
+    }),
 
   // Mises à jour de l'instance (owner uniquement)
   updatesCheck: (params: { channel?: UpdateChannel | "all" } = {}) => {
