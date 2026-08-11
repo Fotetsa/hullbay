@@ -1,3 +1,4 @@
+import { Label } from '@medusajs/ui';
 import { LabelKeys } from "@hullbay/shared"
 import { prisma } from "../lib/prisma"
 import { DockerEngineService } from "../modules/docker-engine/service"
@@ -19,6 +20,7 @@ export type PruneCandidate = {
   kind: "service" | "network" | "volume"
   id: string
   name: string
+  clusterId: string
   projectId?: string
   reason: string
 }
@@ -41,68 +43,100 @@ async function knownProjectIds(): Promise<Set<string>> {
 }
 
 export async function pruneOrphans(apply = false): Promise<PruneResult> {
-  const engine = new DockerEngineService()
-  const known = await knownProjectIds()
+  const known = await knownProjectIds();
+  const clusters = await prisma.cluster.findMany({ select: { id: true } });
 
-  const [services, networks, volumes] = await Promise.all([
-    engine.listManagedServices(),
-    engine.listManagedNetworks(),
-    engine.listManagedVolumes(),
-  ])
+  const candidates: PruneCandidate[] = [];
+  const removed: PruneCandidate[] = [];
+  const errors: { id: string; error: string }[] = [];
 
-  const candidates: PruneCandidate[] = []
+  for (const c of clusters) {
+    try {
+      const engine = await DockerEngineService.forCluster(c.id);
+      const [services, networks, volumes] = await Promise.all([
+        engine.listManagedServices(),
+        engine.listManagedNetworks(),
+        engine.listManagedVolumes(),
+      ]);
 
-  const consider = (
-    kind: PruneCandidate["kind"],
-    id: string,
-    name: string,
-    labels: Record<string, string>
-  ) => {
-    // GARDE-FOU ABSOLU : on ne touche jamais le système.
-    if (labels[LabelKeys.system] === "true") return
-    if (labels[LabelKeys.managed] !== "true") return
-    const projectId = labels[LabelKeys.projectId]
-    // Orphelin = pas de projectId, ou projectId inconnu en base.
-    if (!projectId) {
-      candidates.push({ kind, id, name, reason: "sans projectId" })
-    } else if (!known.has(projectId)) {
-      candidates.push({ kind, id, name, projectId, reason: "projet inexistant" })
+      const consider = (
+        kind: PruneCandidate["kind"],
+        id: string,
+        name: string,
+        labels: Record<string, string>,
+      ) => {
+        if (labels[LabelKeys.system] === "true") return;
+        if (labels[LabelKeys.managed] !== "true") return;
+        const projectId = labels[LabelKeys.projectId];
+        if (!projectId)
+          candidates.push({
+            kind,
+            id,
+            name,
+            clusterId: c.id,
+            reason: "sans projectId",
+          });
+        else if (!known.has(projectId))
+          candidates.push({
+            kind,
+            id,
+            name,
+            clusterId: c.id,
+            projectId,
+            reason: "projet inexistant",
+          });
+      };
+
+      for (const s of services as RawNamed[])
+        consider(
+          "service",
+          s.ID ?? "",
+          s.Spec?.Name ?? s.ID ?? "?",
+          labelsOf(s),
+        );
+      for (const n of networks as RawNamed[])
+        consider("network", n.Id ?? "", n.Name ?? n.Id ?? "?", labelsOf(n));
+      for (const v of volumes as RawNamed[])
+        consider("volume", v.Name ?? "", v.Name ?? "?", labelsOf(v));
+
+      if (apply) {
+        const order = { service: 0, network: 1, volume: 2 } as const;
+        const clusterCandidates = candidates.filter(
+          (cand) => cand.clusterId === c.id,
+        );
+        for (const cand of [...clusterCandidates].sort(
+          (a, b) => order[a.kind] - order[b.kind],
+        )) {
+          try {
+            if (cand.kind === "service") await engine.removeService(cand.id);
+            else if (cand.kind === "network")
+              await engine.removeNetwork(cand.id);
+            else await engine.removeVolume(cand.name);
+            removed.push(cand);
+          } catch (err) {
+            errors.push({
+              id: cand.id,
+              error: err instanceof Error ? err.message : String(err),
+            });
+          }
+        }
+      }
+    } catch (err) {
+      errors.push({
+        id: c.id,
+        error: `cluster injoignable : ${err instanceof Error ? err.message : String(err)}`,
+      });
     }
   }
-
-  for (const s of services as RawNamed[]) {
-    consider("service", s.ID ?? "", s.Spec?.Name ?? s.ID ?? "?", labelsOf(s))
-  }
-  for (const n of networks as RawNamed[]) {
-    consider("network", n.Id ?? "", n.Name ?? n.Id ?? "?", labelsOf(n))
-  }
-  for (const v of volumes as RawNamed[]) {
-    consider("volume", v.Name ?? "", v.Name ?? "?", labelsOf(v))
-  }
-
-  const removed: PruneCandidate[] = []
-  const errors: { id: string; error: string }[] = []
 
   if (apply) {
-    // Ordre : services d'abord (libère réseaux/volumes), puis réseaux, puis volumes.
-    const order = { service: 0, network: 1, volume: 2 } as const
-    for (const c of [...candidates].sort((a, b) => order[a.kind] - order[b.kind])) {
-      try {
-        if (c.kind === "service") await engine.removeService(c.id)
-        else if (c.kind === "network") await engine.removeNetwork(c.id)
-        else await engine.removeVolume(c.name)
-        removed.push(c)
-      } catch (err) {
-        errors.push({ id: c.id, error: err instanceof Error ? err.message : String(err) })
-      }
-    }
     await eventBus.emit("prune.finished", {
       removed: removed.length,
       errors: errors.length,
-    })
+    });
   }
 
-  return { applied: apply, candidates, removed, errors }
+  return { applied: apply, candidates, removed, errors };
 }
 
 type RawNamed = {

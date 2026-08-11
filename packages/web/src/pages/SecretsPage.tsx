@@ -1,6 +1,6 @@
 import { useState } from "react"
 import { useQuery } from "@tanstack/react-query"
-import { Button, Container, Heading, Input, Label, Text, Badge } from "@medusajs/ui"
+import { Button, Container, Heading, Input, Label, Text, Badge, Select } from "@medusajs/ui"
 import { Plus, Trash, Key } from "@medusajs/icons"
 import { api } from "../lib/api"
 import { useMutationToast } from "../lib/useMutationToast"
@@ -16,15 +16,30 @@ import { EmptyState } from "../components/EmptyState"
  * d'un conteneur (montée en /run/secrets/<nom>). Swarm la chiffre au repos.
  */
 export function SecretsPage() {
-  const { data: secrets } = useQuery({ queryKey: ["secrets"], queryFn: api.listSecrets })
+   const { data: clusters } = useQuery({
+     queryKey: ["clusters"],
+     queryFn: api.listClusters,
+   });
+  const [clusterId, setClusterId] = useState<string>("")
+
+  const effectiveClusterId =
+    clusterId ||
+    clusters?.find((c) => c.isDefault)?.id ||
+    clusters?.[0]?.id || "";
+
+  const { data: secrets } = useQuery({
+    queryKey: ["secrets", effectiveClusterId],
+    queryFn: () => api.listSecrets(effectiveClusterId),
+    enabled: !!effectiveClusterId,
+  })
 
   const [name, setName] = useState("")
   const [value, setValue] = useState("")
 
   const save = useMutationToast({
-    mutationFn: () => api.setSecret({ name, value }),
+    mutationFn: () => api.setSecret(effectiveClusterId, { name, value }),
     success: "Secret enregistré",
-    invalidate: [["secrets"]],
+    invalidate: [["secrets", effectiveClusterId]],
     onSuccess: () => {
       setName("")
       setValue("")
@@ -32,9 +47,9 @@ export function SecretsPage() {
   })
 
   const removeSecret = useConfirmDelete<string>({
-    mutationFn: (n) => api.deleteSecret(n),
+    mutationFn: (n) => api.deleteSecret(effectiveClusterId, n),
     success: "Secret retiré",
-    invalidate: [["secrets"]],
+    invalidate: [["secrets", effectiveClusterId]],
     confirm: (n) => ({
       title: "Supprimer ce secret ?",
       description: `« ${n} » sera supprimé. Un service qui le référence encore échouera au prochain déploiement.`,
@@ -44,6 +59,26 @@ export function SecretsPage() {
   return (
     <PageContainer size="2xl">
       <PageHeader title="Secrets" />
+
+      {/** Selection des  clusters visible (si plusieurs existent) */}
+      {clusters && clusters.length > 1 && (
+        <div className="mb-4 max-w-xs">
+          <Label size="small">Cluster</Label>
+          <Select value={effectiveClusterId} onValueChange={setClusterId}>
+            <Select.Trigger>
+              <Select.Value />
+            </Select.Trigger>
+            <Select.Content>
+              {clusters.map((c) => (
+                <Select.Item key={c.id} value={c.id}>
+                  {c.name}
+                  {c.isDefault ? " (défaut)" : ""}
+                </Select.Item>
+              ))}
+            </Select.Content>
+          </Select>
+        </div>
+      )}
 
       <div className="mb-6">
         <ListContainer
@@ -114,12 +149,12 @@ export function SecretsPage() {
           <Button
             onClick={() => save.mutate()}
             isLoading={save.isPending}
-            disabled={!name.trim() || !value}
+            disabled={!name.trim() || !value || !effectiveClusterId}
           >
             <Plus /> Enregistrer
           </Button>
         </div>
       </Container>
     </PageContainer>
-  )
+  );
 }

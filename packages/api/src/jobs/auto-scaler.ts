@@ -40,45 +40,59 @@ type RawService = {
 }
 
 /** Un tick d'auto-scaling sur tous les services gérés éligibles. */
-export async function runAutoScale(engine = new DockerEngineService()): Promise<void> {
-  if (!(await engine.isSwarmActive())) return
-  const services = (await engine.listManagedServices()) as RawService[]
-  const now = Date.now()
+export async function runAutoScale(): Promise<void> {
+  const clusters = await prisma.cluster.findMany({ select: { id: true } })
+  for (const c of clusters) {
+    await runAutoScaleForCluster(c.id).catch(() => {
+      // un cluster injoignable ne doit pas bloquer les autres.
+    })
+  }
+}
+
+async function runAutoScaleForCluster(clusterId: string): Promise<void> {
+  const engine = await DockerEngineService.forCluster(clusterId)
+  if (!(await engine.isSwarmActive())) return;
+  const services = (await engine.listManagedServices()) as RawService[];
+  const now = Date.now();
 
   for (const svc of services) {
-    const id = svc.ID
-    const labels = svc.Spec?.Labels ?? {}
-    if (!id || labels[LabelKeys.system] === "true") continue
+    const id = svc.ID;
+    const labels = svc.Spec?.Labels ?? {};
+    if (!id || labels[LabelKeys.system] === "true") continue;
 
-    const cfg = decodeContainerSpec(labels[LabelKeys.spec])
-    const auto = cfg?.autoscale
-    if (!cfg || !auto?.enabled) continue
+    const cfg = decodeContainerSpec(labels[LabelKeys.spec]);
+    const auto = cfg?.autoscale;
+    if (!cfg || !auto?.enabled) continue;
 
-    // Cooldown : on laisse le cluster se stabiliser entre deux décisions.
-    if (now - (lastScaledAt.get(id) ?? 0) < COOLDOWN_MS) continue
+    // Cooldown cle par service : un id de service est deja globalement unique 
+    // dans le cluster, donc pas besoin de clusterId.
+    if (now - (lastScaledAt.get(id) ?? 0) < COOLDOWN_MS) continue;
 
-    let metrics
+    let metrics;
     try {
-      metrics = await engine.getServiceMetrics(id)
+      metrics = await engine.getServiceMetrics(id);
     } catch {
-      continue // service disparu entre listing et mesure
+      continue; // service disparu entre listing et mesure
     }
     // Pas d'échantillon CPU exploitable (aucune task locale) → on ne décide pas.
-    if (metrics.sampledTasks === 0) continue
+    if (metrics.sampledTasks === 0) continue;
 
-    const current = metrics.desiredReplicas
-    let target = current
+    const current = metrics.desiredReplicas;
+    let target = current;
     if (metrics.avgCpuPct >= auto.scaleUpCpuPct && current < auto.maxReplicas) {
-      target = current + 1
-    } else if (metrics.avgCpuPct <= auto.scaleDownCpuPct && current > auto.minReplicas) {
-      target = current - 1
+      target = current + 1;
+    } else if (
+      metrics.avgCpuPct <= auto.scaleDownCpuPct &&
+      current > auto.minReplicas
+    ) {
+      target = current - 1;
     }
-    if (target === current) continue
+    if (target === current) continue;
 
     try {
-      await engine.scaleService(id, target)
-      lastScaledAt.set(id, now)
-      await persistReplicas(labels[LabelKeys.nodeId], target)
+      await engine.scaleService(id, target);
+      lastScaledAt.set(id, now);
+      await persistReplicas(labels[LabelKeys.nodeId], target);
       await eventBus.emit("autoscale.applied", {
         serviceId: id,
         nodeId: labels[LabelKeys.nodeId],
@@ -86,7 +100,7 @@ export async function runAutoScale(engine = new DockerEngineService()): Promise<
         from: current,
         to: target,
         avgCpuPct: metrics.avgCpuPct,
-      })
+      });
     } catch {
       // échec de scaling : on réessaiera au prochain tick (pas de cooldown posé).
     }

@@ -1,5 +1,6 @@
 import type { GatewayConfig } from "@hullbay/shared"
 import { caddyAdmin, resolveServerName } from "../../lib/caddy-admin"
+import { prisma } from "../../lib/prisma"
 
 /**
  * Module exposure : pilote le reverse proxy Caddy via son API d'admin pour
@@ -15,6 +16,10 @@ function routeId(projectSlug: string, nodeName: string): string {
   return `boz-${projectSlug}-${nodeName}`
 }
 
+async function adminUrlForCluster(clusterId: string): Promise<string> {
+  const cluster = await prisma.cluster.findUniqueOrThrow({ where: { id: clusterId } })
+  return cluster.caddyAdminUrl;
+}
 
 export class ExposureService {
   /**
@@ -30,11 +35,12 @@ export class ExposureService {
    * (domaine interne / test) de la gestion HTTPS, qui restent donc servis en clair.
    */
   private async setHttpsSkip(
+    adminUrl: string,
     server: string,
     domain: string,
     skip: boolean
   ): Promise<void> {
-    const res = await caddyAdmin(`/config/apps/http/servers/${server}`)
+    const res = await caddyAdmin(adminUrl, `/config/apps/http/servers/${server}`)
     if (!res.ok) return
     let cfg: { automatic_https?: { skip?: string[] } } = {}
     try {
@@ -46,11 +52,7 @@ export class ExposureService {
     if (skip) current.add(domain)
     else current.delete(domain)
     // Écrit la liste `skip` (idempotent). PUT sur le sous-chemin remplace la valeur.
-    await caddyAdmin(
-      `/config/apps/http/servers/${server}/automatic_https/skip`,
-      "PUT",
-      [...current]
-    )
+    await caddyAdmin(adminUrl, `/config/apps/http/servers/${server}/automatic_https/skip`, "PUT", [...current])
   }
 
   /**
@@ -59,11 +61,13 @@ export class ExposureService {
    * Caddy doit partager) suivi du port cible.
    */
   async upsertRoute(
+    clusterId: string,
     projectSlug: string,
     nodeName: string,
     config: GatewayConfig,
     upstreamHost: string
   ): Promise<void> {
+    const adminUrl = await adminUrlForCluster(clusterId)
     const id = routeId(projectSlug, nodeName)
     const route = {
       "@id": id,
@@ -78,29 +82,26 @@ export class ExposureService {
 
     // Supprime l'éventuelle route existante (idempotence) puis ré-ajoute, dans le
     // serveur réellement présent (résolu dynamiquement, pas un `srv0` codé en dur).
-    await this.deleteRoute(projectSlug, nodeName).catch(() => {})
-    const server = await resolveServerName()
+    await this.deleteRoute(clusterId, projectSlug, nodeName).catch(() => {})
+    const server = await resolveServerName(adminUrl)
     // tls:false (domaine interne/test) -> exclure du HTTPS auto ; tls:true -> HTTPS auto.
-    await this.setHttpsSkip(server, config.domain, config.tls === false)
+    await this.setHttpsSkip(adminUrl, server, config.domain, config.tls === false)
     // INSÈRE EN TÊTE (index 0), PAS en fin de liste. Le serveur de l'ops-panel se
     // termine par une route catch-all (le SPA web, `reverse_proxy web:80`, sans
     // matcher) qui intercepte TOUTES les requêtes. Une route passerelle ajoutée
     // APRÈS ne serait jamais atteinte (le catch-all matche d'abord) -> 502 « lookup
     // web ». On l'insère donc avant le catch-all via le sous-chemin .../routes/0.
-    const res = await caddyAdmin(
-      `/config/apps/http/servers/${server}/routes/0`,
-      "PUT",
-      route
-    )
+    const res = await caddyAdmin(adminUrl, `/config/apps/http/servers/${server}/routes/0`, "PUT", route)
     if (!res.ok) {
       throw new Error(`Caddy upsert route ${id} a échoué (${res.status})`)
     }
   }
 
   /** Supprime une route Caddy par son @id. Tolérant si absente. */
-  async deleteRoute(projectSlug: string, nodeName: string): Promise<void> {
+  async deleteRoute(clusterId: string, projectSlug: string, nodeName: string): Promise<void> {
+    const adminUrl = await adminUrlForCluster(clusterId)
     const id = routeId(projectSlug, nodeName)
-    await caddyAdmin(`/id/${id}`, "DELETE")
+    await caddyAdmin(adminUrl, `/id/${id}`, "DELETE")
   }
 }
 

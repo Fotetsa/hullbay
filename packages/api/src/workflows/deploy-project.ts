@@ -61,17 +61,19 @@ type DeployShared = {
    * le relais en temps réel (running/exited/...).
    */
   deployed: Map<string, { dockerId?: string; actualState: "running" }>
+  engine: DockerEngineService
+  reconciler: ReconcilerService
 }
 
 // Resolver d'auth registre : déduit le registre du nom d'image (1er segment si
 // host avec point ou port), récupère l'authconfig chiffré du registre correspondant.
-const docker = new DockerEngineService(undefined, async (image) => {
-  const host = image.includes("/") ? image.split("/")[0] : ""
-  const registry = host && (host.includes(".") || host.includes(":")) ? host : "docker.io"
-  const auth = await registryService.getAuthConfig(registry)
-  return auth ?? null
-})
-const reconciler = new ReconcilerService(docker)
+// const docker = new DockerEngineService(undefined, async (image) => {
+//   const host = image.includes("/") ? image.split("/")[0] : ""
+//   const registry = host && (host.includes(".") || host.includes(":")) ? host : "docker.io"
+//   const auth = await registryService.getAuthConfig(registry)
+//   return auth ?? null
+// })
+// const reconciler = new ReconcilerService(docker)
 
 function resourceName(slug: string, nodeName: string) {
   return `boz_${slug}_${nodeName}`
@@ -85,7 +87,7 @@ function outgoing(graph: ProjectGraph, nodeId: string): EdgeSummary[] {
       return {
         targetNodeName: target?.name ?? "",
         kind: e.kind ?? "network",
-        config: (e.config as Record<string, unknown> | null) ?? null,
+        config: (e.config as Record<string, unknown> | null) ?? null
       }
     })
 }
@@ -109,10 +111,10 @@ const networksStep: Step<DeployInput> = {
     const slug = input.graph.slug
     // Réseau système partagé (Caddy <-> services exposés) si le projet a des passerelles.
     if (input.graph.nodes.some((n) => n.type === "gateway")) {
-      await docker.ensureSystemNetwork()
+      await s.engine.ensureSystemNetwork()
       s.log.push("réseau système boz_system garanti (exposition)")
     }
-    const existing = await docker.listManagedNetworks()
+    const existing = await s.engine.listManagedNetworks()
     for (const node of input.graph.nodes.filter((n) => n.type === "network")) {
       const name = resourceName(slug, node.name)
       const already = existing.find((n) => n.Name === name)
@@ -122,7 +124,7 @@ const networksStep: Step<DeployInput> = {
         s.log.push(`réseau ${name} déjà présent`)
         continue
       }
-      const net = await docker.createNetwork(
+      const net = await s.engine.createNetwork(
         name,
         parseNodeConfig("network", node.config) as NetworkConfig,
         labelsFor(input, node)
@@ -137,7 +139,7 @@ const networksStep: Step<DeployInput> = {
   compensate: async (_input, ctx) => {
     const s = ctx.shared as DeployShared
     for (const id of s.createdNetworkIds.reverse()) {
-      await docker.removeNetwork(id).catch(() => {})
+      await s.engine.removeNetwork(id).catch(() => {})
     }
   },
 }
@@ -147,7 +149,7 @@ const volumesStep: Step<DeployInput> = {
   run: async (input, ctx) => {
     const s = ctx.shared as DeployShared
     const slug = input.graph.slug
-    const existing = await docker.listManagedVolumes()
+    const existing = await s.engine.listManagedVolumes();
 
     // ── Suppression des volumes ORPHELINS (présents dans Docker mais plus dans le
     // graphe) — symétrique du `remove` des services "hors graphe". Sans ça, un
@@ -165,7 +167,7 @@ const volumesStep: Step<DeployInput> = {
       if (labels[LabelKeys.system] === "true") continue
       if (wantedNames.has(v.Name)) continue
       try {
-        await docker.removeVolume(v.Name)
+        await s.engine.removeVolume(v.Name);
         s.log.push(`volume ${v.Name} supprimé (hors graphe)`)
       } catch {
         // Volume encore monté par un service pas encore reconcilié, ou déjà parti :
@@ -187,7 +189,7 @@ const volumesStep: Step<DeployInput> = {
         s.log.push(`volume ${name} déjà présent`)
         continue
       }
-      await docker.createVolume(name, cfg, labelsFor(input, node))
+      await s.engine.createVolume(name, cfg, labelsFor(input, node));
       s.deployed.set(node.id, { actualState: "running" })
       s.log.push(`volume ${name} créé`)
     }
@@ -199,15 +201,15 @@ const servicesStep: Step<DeployInput> = {
   run: async (input, ctx) => {
     const s = ctx.shared as DeployShared
     const slug = input.graph.slug
-    const plan = await reconciler.plan(input.graph)
+    const plan = await s.reconciler.plan(input.graph)
 
     // Nombre de nœuds du cluster : sert au garde-fou "image locale non déployable
     // sur multi-nœuds". Compté une fois pour ce déploiement.
-    const nodeCount = (await docker.listNodes()).length
+    const nodeCount = (await s.engine.listNodes()).length;
 
     for (const action of plan.actions) {
       if (action.kind === "remove") {
-        await docker.removeService(action.dockerId)
+        await s.engine.removeService(action.dockerId);
         s.log.push(`service ${action.name} supprimé (hors graphe)`)
         continue
       }
@@ -228,7 +230,7 @@ const servicesStep: Step<DeployInput> = {
       const policy = effectivePullPolicy(cfg)
       let pulled: boolean
       try {
-        ;({ pulled } = await docker.ensureImage(image, policy))
+        ;({ pulled } = await s.engine.ensureImage(image, policy));
       } catch (err) {
         if (err instanceof ImageUnavailableError) throw new DeployError(err.message)
         throw err
@@ -247,11 +249,24 @@ const servicesStep: Step<DeployInput> = {
       try {
         if (action.kind === "update") {
           // ROLLING UPDATE zero-downtime (start-first) — pas de remove+create.
-          await docker.updateService(action.existingId, name, cfg, labels, networks, mounts)
+          await s.engine.updateService(
+            action.existingId,
+            name,
+            cfg,
+            labels,
+            networks,
+            mounts,
+          );
           s.deployed.set(node.id, { dockerId: action.existingId, actualState: "running" })
           s.log.push(`service ${node.name} mis à jour (rolling, ${cfg.replicas} replicas)`)
         } else {
-          const svc = await docker.createService(name, cfg, labels, networks, mounts)
+          const svc = await s.engine.createService(
+            name,
+            cfg,
+            labels,
+            networks,
+            mounts,
+          );
           const id = (svc as { id: string }).id
           s.createdServiceIds.push(id)
           s.deployed.set(node.id, { dockerId: id, actualState: "running" })
@@ -270,7 +285,7 @@ const servicesStep: Step<DeployInput> = {
     const s = ctx.shared as DeployShared
     // On ne défait que les services CRÉÉS dans ce déploiement (pas les updates).
     for (const id of s.createdServiceIds.reverse()) {
-      await docker.removeService(id).catch(() => {})
+      await s.engine.removeService(id).catch(() => {});
     }
   },
 }
@@ -281,32 +296,42 @@ const gatewaysStep: Step<DeployInput> = {
     const s = ctx.shared as DeployShared
     const slug = input.graph.slug
     for (const node of input.graph.nodes.filter((n) => n.type === "gateway")) {
-      const cfg = parseNodeConfig("gateway", node.config) as GatewayConfig
+      const cfg = parseNodeConfig("gateway", node.config) as GatewayConfig;
       // La cible = le conteneur lié par un edge "gateway" (ou le 1er conteneur lié).
       const target = input.graph.edges
         .filter((e) => e.sourceNodeId === node.id || e.targetNodeId === node.id)
         .map((e) => {
-          const otherId = e.sourceNodeId === node.id ? e.targetNodeId : e.sourceNodeId
-          return input.graph.nodes.find((n) => n.id === otherId && n.type === "container")
+          const otherId =
+            e.sourceNodeId === node.id ? e.targetNodeId : e.sourceNodeId;
+          return input.graph.nodes.find(
+            (n) => n.id === otherId && n.type === "container",
+          );
         })
-        .find(Boolean)
+        .find(Boolean);
       if (!target) {
-        s.log.push(`passerelle ${node.name} ignorée (aucun conteneur lié)`)
-        continue
+        s.log.push(`passerelle ${node.name} ignorée (aucun conteneur lié)`);
+        continue;
       }
-      const upstreamHost = resourceName(slug, target.name)
-      await exposureService.upsertRoute(slug, node.name, cfg, upstreamHost)
-      s.createdGateways.push({ nodeName: node.name })
+      const upstreamHost = resourceName(slug, target.name);
+      // ⚠️ NOTE : exposureService parle au Caddy du serveur SYSTÈME (hullbay lui-même),
+      // pas au cluster du projet. Si le projet est sur un cluster DISTANT, cette route
+      // ne pourra pas fonctionner tel quel (Caddy système ne peut pas résoudre un
+      // conteneur d'un autre Swarm par son nom). Point à creuser à part, pas bloquant
+      // pour ce refactor précis.
+      await exposureService.upsertRoute(input.graph.clusterId, slug, node.name, cfg, upstreamHost);
+      s.createdGateways.push({ nodeName: node.name });
       // Une passerelle = une route Caddy : "up" dès qu'elle existe (pas de cycle de
       // vie observable par events Docker comme un conteneur). On la marque running.
-      s.deployed.set(node.id, { actualState: "running" })
-      s.log.push(`passerelle ${cfg.domain} -> ${target.name}:${cfg.targetPort}`)
+      s.deployed.set(node.id, { actualState: "running" });
+      s.log.push(
+        `passerelle ${cfg.domain} -> ${target.name}:${cfg.targetPort}`,
+      );
     }
   },
   compensate: async (input, ctx) => {
     const s = ctx.shared as DeployShared
     for (const g of s.createdGateways.reverse()) {
-      await exposureService.deleteRoute(input.graph.slug, g.nodeName).catch(() => {})
+      await exposureService.deleteRoute(input.graph.clusterId, input.graph.slug, g.nodeName).catch(() => {})
     }
   },
 }
@@ -365,6 +390,18 @@ function networkNamesFor(graph: ProjectGraph, node: Node, slug: string): string[
 // ── Exécution ────────────────────────────────────────────────────────────────
 
 export async function deployProjectWorkflow(input: DeployInput) {
+  const engine = await DockerEngineService.forCluster(
+    input.graph.clusterId,
+    async (image) => {
+      const host = image.includes("/") ? image.split("/")[0] : "";
+      const registry =
+        host && (host.includes(".") || host.includes(":")) ? host : "docker.io";
+      const auth = await registryService.getAuthConfig(registry);
+      return auth ?? null;
+    },
+  );
+  const reconciler = new ReconcilerService(engine);
+
   const shared: DeployShared = {
     log: [],
     networkIdByNodeId: new Map(),
@@ -372,14 +409,16 @@ export async function deployProjectWorkflow(input: DeployInput) {
     createdNetworkIds: [],
     createdGateways: [],
     deployed: new Map(),
-  }
+    engine,
+    reconciler,
+  };
   const result = await runWorkflow<DeployInput>(
     "deploy-project",
     [networksStep, volumesStep, servicesStep, gatewaysStep],
     input,
     {},
-    shared as unknown as Record<string, unknown>
-  )
+    shared as unknown as Record<string, unknown>,
+  );
   if (!result.ok) {
     // Préserve le type d'erreur d'origine (DeployError → 422 côté route) ;
     // pour les autres, message brut prefixé (vrai bug → 500).

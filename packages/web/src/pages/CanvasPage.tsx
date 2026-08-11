@@ -699,6 +699,7 @@ function CanvasInner({ projectId }: { projectId: string }) {
             <Inspector
               key={selectedNode.id}
               node={selectedNode}
+              clusterId={graph?.clusterId ?? null}
               onClose={() => setSelectedId(null)}
               onSaved={() => qc.invalidateQueries({ queryKey: ["project", projectId] })}
               onDeleted={() => {

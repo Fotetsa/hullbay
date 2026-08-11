@@ -50,13 +50,13 @@ export function attachWebSocket(httpServer: HttpServer): SocketIOServer {
 
     // Stream de logs d'un conteneur à la demande.
     let logStream: NodeJS.ReadableStream | null = null
-    socket.on("subscribe:logs", async (containerId: string) => {
-      if (typeof containerId !== "string") return
+    socket.on("subscribe:logs", async (payload: { clusterId: string; containerId: string }) => {
+      if (typeof payload?.containerId !== "string" || typeof payload?.clusterId !== "string") return
       try {
-        const docker = new DockerEngineService()
-        logStream = await docker.streamLogs(containerId)
+        const docker = await DockerEngineService.forCluster(payload.clusterId)
+        logStream = await docker.streamLogs(payload.containerId)
         logStream.on("data", (chunk: Buffer) => {
-          socket.emit("log", { containerId, line: chunk.toString("utf8") })
+          socket.emit("log", { containerId: payload.containerId, line: chunk.toString("utf8") })
         })
       } catch (err) {
         socket.emit("error", {

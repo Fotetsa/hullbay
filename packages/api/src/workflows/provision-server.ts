@@ -5,6 +5,7 @@ import { DockerEngineService } from "../modules/docker-engine/service"
 import { registryService } from "../modules/registry/service"
 import { serversService } from "../modules/servers/service"
 import { eventBus } from "../lib/event-bus"
+import { prisma } from "../lib/prisma"
 
 /**
  * Provisionne un serveur en ONE-SHOT SSH puis le fait rejoindre le Swarm.
@@ -25,6 +26,7 @@ export interface ProvisionInput {
   user: string
   role: "manager" | "worker"
   credential: SshCredential // PERSO — mémoire seule
+  clusterId: string
 }
 
 type ProvShared = {
@@ -33,9 +35,11 @@ type ProvShared = {
   toolPublicKey?: string
   toolPrivateKeyEnc?: string
   swarmNodeId?: string
+  engine?: DockerEngineService
+  hadExistingSwarm?: boolean
 }
 
-const localDocker = new DockerEngineService()
+
 
 function log(serverId: string, message: string) {
   // Feedback live vers le front (room server:<id>). Jamais de secret ici.
@@ -46,6 +50,7 @@ const connectStep: Step<ProvisionInput> = {
   name: "connect",
   run: async (input, ctx) => {
     const s = ctx.shared as ProvShared
+    s.engine = await DockerEngineService.forCluster(input.clusterId)
     log(input.serverId, "Connexion SSH…")
     s.session = await SshSession.connect({
       host: input.host,
@@ -81,7 +86,8 @@ const swarmJoinStep: Step<ProvisionInput> = {
   run: async (input, ctx) => {
     const s = ctx.shared as ProvShared
     // Un Swarm local existe-t-il déjà ? Détermine init (1er manager) vs join.
-    const swarmExists = await localDocker.isSwarmActive().catch(() => false)
+    const swarmExists = await s.engine!.isSwarmActive().catch(() => false)
+    s.hadExistingSwarm = swarmExists
 
     if (input.role === "manager" && !swarmExists) {
       // 1er manager : initialise le cluster.
@@ -92,12 +98,14 @@ const swarmJoinStep: Step<ProvisionInput> = {
       if (res.code !== 0 && !res.stderr.includes("already part of a swarm")) {
         throw new Error(`swarm init: ${res.stderr}`)
       }
+
+      
     } else {
       // Worker, OU manager additionnel (HA quorum) : on JOINT le cluster existant
       // avec le token correspondant au rôle demandé.
       const joinRole = input.role === "manager" ? "manager" : "worker"
       log(input.serverId, `Récupération du token de cluster (${joinRole})…`)
-      const { token, managerAddr } = await localDocker.getSwarmJoinInfo(joinRole)
+      const { token, managerAddr } = await s.engine!.getSwarmJoinInfo(joinRole)
       log(input.serverId, `Jonction au Swarm (${joinRole})…`)
       const res = await s.session!.exec(
         `docker swarm join --token ${shellQuote(token)} ${shellQuote(managerAddr)}`
@@ -112,6 +120,19 @@ const swarmJoinStep: Step<ProvisionInput> = {
     // Rollback : faire quitter le nœud pour ne pas laisser de nœud fantôme.
     const s = ctx.shared as ProvShared
     await s.session?.exec("docker swarm leave --force").catch(() => {})
+  },
+}
+
+const finalizeClusterStep: Step<ProvisionInput> = {
+  name: "finalize-cluster",
+  run: async (input, ctx) => {
+    const s = ctx.shared as ProvShared
+    if (input.role === "manager" && !s.hadExistingSwarm) {
+      await prisma.cluster.update({
+        where: { id: input.clusterId },
+        data: { dockerHost: `tcp://${input.host}:2375`, caddyAdminUrl: `htpps://${input.host}:2019`},
+      })
+    }
   },
 }
 
@@ -158,7 +179,7 @@ const persistStep: Step<ProvisionInput> = {
     // Récupère l'ID du nœud Swarm correspondant (par hostname/adresse).
     let swarmNodeId: string | undefined
     try {
-      const nodes = await localDocker.listNodes()
+      const nodes = await s.engine!.listNodes();
       const match = nodes.find(
         (n) =>
           (n as { Status?: { Addr?: string } }).Status?.Addr === input.host ||
@@ -190,13 +211,14 @@ export async function provisionServerWorkflow(input: ProvisionInput): Promise<vo
         connectStep,
         installDockerStep,
         swarmJoinStep,
+        deploySocketProxyStep,
+        deployCaddyStep,
+        finalizeClusterStep,
         registryLoginStep,
         installToolKeyStep,
         persistStep,
       ],
-      input,
-      {},
-      shared as unknown as Record<string, unknown>
+      input, {}, shared as unknown as Record<string, unknown>
     )
     if (!result.ok) {
       await serversService.update(input.serverId, {
@@ -218,4 +240,101 @@ export async function provisionServerWorkflow(input: ProvisionInput): Promise<vo
     // subsiste (elle n'a jamais quitté `input.credential` en mémoire locale).
     ;(shared as ProvShared).session?.dispose()
   }
+}
+
+const deploySocketProxyStep: Step<ProvisionInput> = {
+  name: "deploy-socket-proxy",
+  run: async (input, ctx) => {
+    const s = ctx.shared as ProvShared;
+    // Seulement pour le 1er manager d'un NOUVEAU cluster — un worker ou un
+    // manager additionnel (HA) rejoint un cluster qui a déjà son proxy.
+    const swarmWasFreshlyInitialized =
+      input.role === "manager" && !s.hadExistingSwarm;
+    if (!swarmWasFreshlyInitialized) return;
+
+    log(input.serverId, "Déploiement du docker-socket-proxy…");
+
+
+    const check = await s.session!.exec(
+      "docker ps -a --filter name=hullbay-socket-proxy --format '{{.Names}}'",
+    );
+    if (check.stdout.includes("hullbay-socket-proxy")) {
+      log(input.serverId, "socket-proxy déjà présent.");
+      return;
+    }
+
+    // Mêmes restrictions exactes que le socket-proxy système (docker-compose.prod.yml)
+    const cmd = [
+      "docker run -d",
+      "--name hullbay-socket-proxy",
+      "--restart unless-stopped",
+      "-e EVENTS=1 -e PING=1 -e VERSION=1 -e INFO=1 -e SERVICES=1 -e TASKS=1",
+      "-e NODES=1 -e NETWORKS=1 -e SWARM=1 -e IMAGES=1 -e VOLUMES=1 -e SECRETS=1 -e POST=1",
+      "-e EXEC=0 -e CONTAINERS=0 -e ALLOW_RESTARTS=0",
+      "-v /var/run/docker.sock:/var/run/docker.sock:ro",
+      `-p ${shellQuote(input.host)}:2375:2375`,
+      "tecnativa/docker-socket-proxy:latest",
+    ].join(" ");
+
+    const res = await s.session!.exec(cmd);
+    if (res.code !== 0)
+      throw new Error(`socket-proxy: ${res.stderr || res.stdout}`);
+
+    log(input.serverId, "socket-proxy démarré.");
+    log(
+      input.serverId,
+      "Pensez à restreindre le port 2375 par pare-feu à l'IP de ce serveur hullbay uniquement.",
+    );
+  },
+  compensate: async (_input, ctx) => {
+    const s = ctx.shared as ProvShared;
+    await s.session?.exec("docker rm -f hullbay-socket-proxy").catch(() => {});
+  },
+};
+
+
+const deployCaddyStep: Step<ProvisionInput> = {
+  name: "deploy-caddy",
+  run: async (input, ctx) => {
+    const s = ctx.shared as ProvShared
+    const swarmWasFreshlyInitialized = input.role === "manager" && !s.hadExistingSwarm
+    if (!swarmWasFreshlyInitialized) return
+
+    log(input.serverId, "Déploiement de Caddy (cluster)…")
+
+    const check = await s.session!.exec("docker ps -a --filter name=hullbay-caddy --format '{{.Names}}'")
+    if (check.stdout.includes("hullbay-caddy")) {
+      log(input.serverId, "Caddy déjà présent.")
+      return
+    }
+
+    // Config minimale : admin seul, aucun site pré-défini — tout sera ajouté
+    // dynamiquement via l'API admin (exposure/settings), comme pour le système.
+    await s.session!.exec(
+      `mkdir -p /opt/hullbay-caddy && printf '{\\n\\tadmin 0.0.0.0:2019\\n}\\n' > /opt/hullbay-caddy/Caddyfile`
+    )
+
+    const cmd = [
+      "docker run -d",
+      "--name hullbay-caddy",
+      "--restart unless-stopped",
+      "-p 80:80 -p 443:443",
+      // Admin bindé sur l'IP du serveur, pas 0.0.0.0 — même logique que le
+      // socket-proxy (à compléter par pare-feu, IP hullbay uniquement).
+      `-p ${shellQuote(input.host)}:2019:2019`,
+      "-v /opt/hullbay-caddy/Caddyfile:/etc/caddy/Caddyfile:ro",
+      "-v hullbay_caddy_data:/data",
+      "caddy:2-alpine",
+    ].join(" ")
+
+    const res = await s.session!.exec(cmd)
+    if (res.code !== 0) throw new Error(`caddy: ${res.stderr || res.stdout}`)
+
+    log(input.serverId, "Caddy démarré.")
+    log(input.serverId, "Pense à restreindre le port 2019 par pare-feu à l'IP de ce serveur hullbay uniquement.")
+  },
+  compensate: async (_input, ctx) => {
+    const s = ctx.shared as ProvShared
+    await s.session?.exec("docker rm -f hullbay-caddy").catch(() => {})
+  },
 }

@@ -6,7 +6,7 @@ import type {
   PullPolicy,
 } from "@hullbay/shared"
 import { managedFilter, projectFilter, LabelKeys } from "@hullbay/shared"
-import { getDocker } from "./client"
+import { getDockerForCluster } from "./client"
 
 /**
  * Erreur "image indisponible" : levée quand l'image ne peut être obtenue selon la
@@ -89,9 +89,14 @@ type DockerStats = {
 export class DockerEngineService {
   private docker: Docker
   private authResolver?: AuthResolver
-  constructor(docker: Docker = getDocker(), authResolver?: AuthResolver) {
+  constructor(docker: Docker, authResolver?: AuthResolver) {
     this.docker = docker
     this.authResolver = authResolver
+  }
+
+  static async forCluster(clusterId: string, authResolver?: AuthResolver): Promise<DockerEngineService> {
+    const docker = await getDockerForCluster(clusterId)
+    return new DockerEngineService(docker, authResolver)
   }
 
   // ── État Swarm ────────────────────────────────────────────────────────────

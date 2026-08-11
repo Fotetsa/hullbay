@@ -1,6 +1,8 @@
 import type { FastifyInstance, FastifyRequest } from "fastify"
-import { observabilityService } from "./service"
+import { ObservabilityService, systemHealth } from "./service"
+import { driftTracker } from "./drift"
 import { requireRole } from "../auth/rbac"
+import { prisma } from "../../lib/prisma"
 
 const viewer = { preHandler: requireRole("viewer") }
 
@@ -28,9 +30,7 @@ export async function registerObservabilityRoutes(app: FastifyInstance) {
         security: [{ bearerAuth: [] }],
       },
     },
-    async () => {
-      return observabilityService.clusterHealth();
-    },
+    async () => ({ clusters: await systemHealth() }),
   );
 
   app.get(
@@ -45,8 +45,11 @@ export async function registerObservabilityRoutes(app: FastifyInstance) {
     },
     async (req, reply) => {
       const { id } = req.params as { id: string };
+      const node = await prisma.node.findFirst({ where: { dockerId: id }, include: { project: true } })
+      if (!node) return reply.code(404).send({ error: "service introuvable "})
       try {
-        return await observabilityService.serviceHealth(id);
+        const svc = await ObservabilityService.forCluster(node.project.clusterId)
+        return await svc.serviceHealth(id);
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         return reply.code(404).send({ error: message });
@@ -61,9 +64,7 @@ export async function registerObservabilityRoutes(app: FastifyInstance) {
       summary: "Snapshot de drift courant (pour badges canvas)",
       security: [{ bearerAuth: []}],
     }
-  }, async () => {
-    return { drift: observabilityService.driftSnapshot() }
-  })
+  }, async () => {drift: driftTracker.snapshot() }),
 
   // Sur quel(s) serveur(s) un projet tourne réellement (placement des tasks Swarm).
   app.get("/api/projects/:id/placement", {
@@ -73,9 +74,12 @@ export async function registerObservabilityRoutes(app: FastifyInstance) {
       summary: "Placement d'un projet (serveurs où il tourne)",
       security: [{ bearerAuth: []}],
     }
-  }, async (req) => {
+  }, async (req, reply) => {
     const { id } = req.params as { id: string }
-    const list = await observabilityService.projectPlacements(id)
+    const project = await prisma.project.findUnique({ where: { id } })
+    if (!project) return reply.code(404).send({ error: "projet intouvable" })
+    const svc = await ObservabilityService.forCluster(project.clusterId)
+    const list = await svc.projectPlacements(id)
     return { servers: list[0]?.servers ?? [] }
   })
 }

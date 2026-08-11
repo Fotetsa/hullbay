@@ -2,6 +2,8 @@ import { LabelKeys } from "@hullbay/shared"
 import { DockerEngineService } from "../docker-engine/service"
 import type { ServiceMetrics } from "../docker-engine/service"
 import { eventBus } from "../../lib/event-bus"
+import { prisma } from "../../lib/prisma"
+import { driftTracker } from "./drift"
 
 /**
  * Observability — agrège l'état NATIF de Swarm pour le rendre visible (HealthPage)
@@ -12,6 +14,7 @@ import { eventBus } from "../../lib/event-bus"
  */
 
 export type NodeHealth = {
+  clusterId: string
   swarmNodeId: string
   hostname: string
   role: string
@@ -30,6 +33,7 @@ export type ServicePlacement = {
 }
 
 export type ServiceHealth = ServiceMetrics & {
+  clusterId: string
   projectId?: string
   nodeId?: string
   /** Sur quels nœuds tournent les tasks de ce service (+ leur état). */
@@ -43,6 +47,8 @@ export type ProjectPlacement = {
 }
 
 export type ClusterHealth = {
+  clusterId: string
+  clusterName: string
   swarmActive: boolean
   nodes: NodeHealth[]
   services: ServiceHealth[]
@@ -53,14 +59,22 @@ const driftByProject = new Map<string, { count: number; actions: string[]; at: n
 
 export class ObservabilityService {
   private engine: DockerEngineService
-  constructor(engine = new DockerEngineService()) {
+  private clusterId: string
+  private constructor(engine: DockerEngineService, clusterId: string) {
     this.engine = engine
+    this.clusterId = clusterId
+  }
+
+  static async forCluster(clusterId: string): Promise<ObservabilityService> {
+    const engine = await DockerEngineService.forCluster(clusterId)
+    return new ObservabilityService(engine, clusterId)
   }
 
   /** Vue agrégée du cluster : nœuds Swarm + métriques par service géré. */
   async clusterHealth(): Promise<ClusterHealth> {
+    const cluster = await prisma.cluster.findUniqueOrThrow({ where: { id: this.clusterId } })
     const swarmActive = await this.engine.isSwarmActive()
-    if (!swarmActive) return { swarmActive: false, nodes: [], services: [] }
+    if (!swarmActive) return { clusterId: this.clusterId, clusterName: cluster.name, swarmActive: false, nodes: [], services: [] }
 
     const [rawNodes, services] = await Promise.all([
       this.engine.listNodes(),
@@ -68,6 +82,7 @@ export class ObservabilityService {
     ])
 
     const nodes: NodeHealth[] = (rawNodes as RawNode[]).map((n) => ({
+      clusterId: this.clusterId,
       swarmNodeId: n.ID ?? "",
       hostname: n.Description?.Hostname ?? n.ID ?? "?",
       role: n.Spec?.Role ?? "worker",
@@ -96,6 +111,7 @@ export class ObservabilityService {
         }))
         return {
           ...m,
+          clusterId: this.clusterId,
           projectId: labels[LabelKeys.projectId],
           nodeId: labels[LabelKeys.nodeId],
           placements,
@@ -103,7 +119,7 @@ export class ObservabilityService {
       })
     )
 
-    return { swarmActive: true, nodes, services: metrics }
+    return { clusterId: this.clusterId, clusterName: cluster.name, swarmActive: true, nodes, services: metrics }
   }
 
   /**
@@ -128,7 +144,7 @@ export class ObservabilityService {
       desiredState: p.desiredState,
       error: p.error,
     }))
-    return { ...m, placements }
+    return { ...m, clusterId: this.clusterId, placements }
   }
 
   /**
@@ -154,28 +170,21 @@ export class ObservabilityService {
       servers: Array.from(servers).sort(),
     }))
   }
-
-  // ── Drift (mémoire vive, alimentée par le job reconcile-drift) ───────────────
-
-  recordDrift(projectId: string, count: number, actions: string[]): void {
-    if (count <= 0) driftByProject.delete(projectId)
-    else driftByProject.set(projectId, { count, actions, at: Date.now() })
-  }
-
-  clearDrift(projectId: string): void {
-    driftByProject.delete(projectId)
-  }
-
-  /** État de drift courant (pour le badge canvas + page santé). */
-  driftSnapshot(): { projectId: string; count: number; actions: string[]; at: number }[] {
-    return Array.from(driftByProject.entries()).map(([projectId, v]) => ({
-      projectId,
-      ...v,
-    }))
-  }
 }
 
-export const observabilityService = new ObservabilityService()
+export async function systemHealth(): Promise<ClusterHealth[]> {
+  const clusters = await prisma.cluster.findMany({ select: { id: true, name: true } });
+  const results: ClusterHealth[] = [];
+  for (const c of clusters) {
+    try {
+      const svc = await ObservabilityService.forCluster(c.id);
+      results.push(await svc.clusterHealth());
+    } catch {
+      results.push({  clusterId: c.id, clusterName: c.name, swarmActive: false, nodes: [], services: [] });
+    }
+  }
+  return results;
+}
 
 /**
  * Branche l'écoute du drift : à chaque "drift.detected" émis par le job, on
@@ -184,15 +193,15 @@ export const observabilityService = new ObservabilityService()
 export function registerObservabilitySubscribers(): void {
   eventBus.on("drift.detected", (evt) => {
     const d = evt.data as { projectId: string; count: number; actions: string[] }
-    observabilityService.recordDrift(d.projectId, d.count, d.actions ?? [])
+    driftTracker.record(d.projectId, d.count, d.actions ?? [])
   })
   eventBus.on("deploy.finished", (evt) => {
     const d = evt.data as { projectId: string; ok?: boolean }
-    if (d.ok) observabilityService.clearDrift(d.projectId)
+    if (d.ok) driftTracker.clear(d.projectId)
   })
   eventBus.on("destroy.finished", (evt) => {
     const d = evt.data as { projectId: string }
-    observabilityService.clearDrift(d.projectId)
+    driftTracker.clear(d.projectId);
   })
 }
 

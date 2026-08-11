@@ -1,4 +1,6 @@
 import { caddyAdmin, resolveServerName } from '../../lib/caddy-admin';
+import { getDefaultCluster } from '../docker-engine/client';
+import { prisma } from '../../lib/prisma';
 
 
 /**
@@ -15,14 +17,20 @@ const API_ROUTE_ID  = "hullbay-system-api"
 const WS_ROUTE_ID   = "hullbay-system-ws"
 const WEB_ROUTE_ID = "hullbay-system-web"
 
+async function systemAdminUrl(): Promise<string> {
+    const { id } = await getDefaultCluster()
+    const cluster = await prisma.cluster.findFirstOrThrow({ where: { id } })
+    return cluster.caddyAdminUrl
+}
+
 /**
  * S'assurer que le serveur ecoute bien sur le port 443 en plus de sont port existant
  * indispensable pour que Let's Encrypt puisse valider/déliver un certificat sur un
  * domaine ajouté.
  */
 
-async function ensureListensOn443(server: string): Promise<void> {
-    const res = await caddyAdmin(`/config/apps/http/servers/${server}`)
+async function ensureListensOn443(adminUrl: string, server: string): Promise<void> {
+    const res = await caddyAdmin(adminUrl, `/config/apps/http/servers/${server}`)
     let cfg: { listen?: string[] } = {}
     if (res.ok) {
         try {
@@ -34,13 +42,14 @@ async function ensureListensOn443(server: string): Promise<void> {
     const listen = new Set(cfg.listen ?? [])
     if (listen.has(":443")) return
     listen.add(":443")
-    await caddyAdmin(`/config/apps/http/servers/${server}/listen`, "PATCH", [...listen])
+    await caddyAdmin(adminUrl, `/config/apps/http/servers/${server}/listen`, "PATCH", [...listen])
 }
 
 export async function applyDomainToCaddy(domain: string): Promise<void> {
-    const server = await resolveServerName()
+    const adminUrl = await systemAdminUrl()
+    const server = await resolveServerName(adminUrl)
 
-    await ensureListensOn443(server)
+    await ensureListensOn443(adminUrl, server)
 
     /**
      * Nettoie les routes existantes (rejouable sans erreur, et gere aussi le cas ou
@@ -48,9 +57,9 @@ export async function applyDomainToCaddy(domain: string): Promise<void> {
      * bien remplacer et non duplique).
      */
 
-    await caddyAdmin(`/id/${API_ROUTE_ID}`, "DELETE").catch(() => { })
-    await caddyAdmin(`/id/${WS_ROUTE_ID}`, "DELETE").catch(() => { })
-    await caddyAdmin(`/id/${WEB_ROUTE_ID}`, "DELETE").catch(() => { })
+    await caddyAdmin(adminUrl, `/id/${API_ROUTE_ID}`, "DELETE").catch(() => { })
+    await caddyAdmin(adminUrl, `/id/${WS_ROUTE_ID}`, "DELETE").catch(() => { })
+    await caddyAdmin(adminUrl, `/id/${WEB_ROUTE_ID}`, "DELETE").catch(() => { })
 
     /**
      * Chaque insertion se fait a l'index 0, ce qui repousse les precedente d'un cran
@@ -59,21 +68,21 @@ export async function applyDomainToCaddy(domain: string): Promise<void> {
      * sinon il intercepterait aussi /api/* et /ws* avant qu'elles ne soient evaluees.
      */
 
-    const webRes = await caddyAdmin(`/config/apps/http/servers/${server}/routes/0`, "PUT", {
+    const webRes = await caddyAdmin(adminUrl, `/config/apps/http/servers/${server}/routes/0`, "PUT", {
         "@id": WEB_ROUTE_ID,
         match: [{ host: [domain] }],
         Handle: [{ handler: "reverse_proxy", upstreams: [{ dial: "web:80" }]}],
     })
     if (!webRes.ok) throw new Error(`Caddy: route web échouée (${webRes.status})`)
     
-    const wsRes = await caddyAdmin(`/config/apps/http/servers/${server}/routes/0`, "PUT", {
+    const wsRes = await caddyAdmin(adminUrl, `/config/apps/http/servers/${server}/routes/0`, "PUT", {
         "@id": WS_ROUTE_ID,
         match: [{ host: [domain], path: ["/ws*"] }],
         handle: [{ handler: "reverse_proxy", upstreams: [{ dial: "api:4000" }] }],
     })
     if (!wsRes.ok) throw new Error(`Caddy: route ws échouée (${wsRes.status})`)
     
-    const apiRes = await caddyAdmin(`/config/apps/http/servers/${server}/routes/0`, "PUT",{
+    const apiRes = await caddyAdmin(adminUrl, `/config/apps/http/servers/${server}/routes/0`, "PUT",{
         "@id": API_ROUTE_ID,
         match: [{ host: [domain], path: ["/api/*"] }],
         handle: [

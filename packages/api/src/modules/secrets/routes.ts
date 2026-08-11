@@ -27,32 +27,36 @@ const CreateSecretSchema = z.object({
   value: z.string().min(1),
 })
 
-export async function registerSecretsRoutes(app: FastifyInstance) {
-  const engine = new DockerEngineService()
+const clusterParams = z.object({ clusterId: z.string() })
 
+export async function registerSecretsRoutes(app: FastifyInstance) {
   // Liste (noms seulement — jamais les valeurs).
   app.get(
-    "/api/secrets",
+    "/api/clusters/:clusterId/secrets",
     {
       ...operator,
       schema: {
+        params: clusterParams,
         tags: ["secrets"],
         summary: "Lister les secrets gérés (owner, operator)",
         security: [{ bearerAuth: [] }],
       },
     },
-    async () => {
-      const list = await engine.listManagedSecrets();
-      return list.map((s) => ({ id: s.id, name: s.name }));
+    async (req) => {
+      const { clusterId } = req.params as { clusterId: string }
+      const engine = await DockerEngineService.forCluster(clusterId)
+      const list = await engine.listManagedSecrets()
+      return list.map((s) => ({ id: s.id, name: s.name }))
     },
   );
 
   // Crée / remplace un secret (write-only). Le body n'est PAS journalisé.
   app.post(
-    "/api/secrets",
+    "/api/clusters/:clusterId/secrets",
     {
       ...operator,
       schema: {
+        params: clusterParams,
         body: CreateSecretSchema,
         tags: ["secrets"],
         summary: "Créer ou mettre à jour un secret (owner, operator)",
@@ -60,7 +64,9 @@ export async function registerSecretsRoutes(app: FastifyInstance) {
       },
     },
     async (req, reply) => {
+      const { clusterId } = req.params as { clusterId: string }
       const { name, value } = req.body as { name: string; value: string };
+      const engine = await DockerEngineService.forCluster(clusterId)
       try {
         await engine.upsertSecret(name, value);
       } catch (err) {
@@ -71,6 +77,7 @@ export async function registerSecretsRoutes(app: FastifyInstance) {
       // Audit SANS la valeur.
       await eventBus.emit("secret.set", {
         userId: currentUser(req)?.sub,
+        clusterId,
         name,
       });
       return { ok: true, name };
@@ -78,7 +85,7 @@ export async function registerSecretsRoutes(app: FastifyInstance) {
   );
 
   app.delete(
-    "/api/secrets/:name",
+    "/api/clusters/:clusterId/secrets/:name",
     {
       ...operator,
       schema: {
@@ -88,7 +95,8 @@ export async function registerSecretsRoutes(app: FastifyInstance) {
       },
     },
     async (req, reply) => {
-      const { name } = req.params as { name: string };
+      const { clusterId, name } = req.params as { clusterId: string; name: string };
+      const engine = await DockerEngineService.forCluster(clusterId)
       try {
         await engine.removeSecret(name);
       } catch (err) {
@@ -97,6 +105,7 @@ export async function registerSecretsRoutes(app: FastifyInstance) {
       }
       await eventBus.emit("secret.removed", {
         userId: currentUser(req)?.sub,
+        clusterId,
         name,
       });
       return { ok: true };

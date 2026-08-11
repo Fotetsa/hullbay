@@ -1,4 +1,12 @@
-import { describe, it, expect, beforeAll, afterAll, beforeEach, vi, } from "vitest";
+import {
+  describe,
+  it,
+  expect,
+  beforeAll,
+  afterAll,
+  beforeEach,
+  vi,
+} from "vitest";
 import { buildTestApp } from "../../../__tests__/helpers/build-test-app";
 import { registerSecretsRoutes } from "../routes";
 import { registerAuthGuard } from "../../auth/routes";
@@ -14,6 +22,8 @@ const { mockEngine } = vi.hoisted(() => ({
 
 vi.mock("../../docker-engine/service", () => ({
   DockerEngineService: class {
+    // On mocke aussi la méthode statique pour éviter les erreurs si elle est appelée
+    static forCluster = vi.fn(() => mockEngine);
     constructor() {
       return mockEngine;
     }
@@ -24,13 +34,14 @@ vi.mock("../../auth/service", () => ({
   authService: { verifyToken: vi.fn() },
 }));
 
+const MOCK_CLUSTER_ID = "test-cluster-id";
 const mockOwnerToken = "mock_owner_token";
 const mockOperatorToken = "mock_operator_token";
 const mockViewerToken = "mock_viewer_token";
 const mockInvalidToken = "mock_invalid_token";
 const mockNoMfaToken = "mock_no_mfa_token";
 
-describe("GET /api/secrets", () => {
+describe("GET /api/clusters/:clusterId/secrets", () => {
   let app: Awaited<ReturnType<typeof buildTestApp>>;
 
   beforeAll(async () => {
@@ -49,7 +60,8 @@ describe("GET /api/secrets", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(authService.verifyToken).mockImplementation((token: string) => {
-      if (token === mockOwnerToken) return { sub: "owner-id", role: "owner", mfaEnabled: true };
+      if (token === mockOwnerToken)
+        return { sub: "owner-id", role: "owner", mfaEnabled: true };
       if (token === mockOperatorToken)
         return { sub: "operator-id", role: "operator", mfaEnabled: true };
       if (token === mockViewerToken)
@@ -60,6 +72,7 @@ describe("GET /api/secrets", () => {
       throw new Error("Token invalide");
     });
   });
+
   it("devrait retourner la liste des secrets avec un token operator", async () => {
     const mockSecrets = [
       { id: "secret-1", name: "db_password" },
@@ -69,7 +82,7 @@ describe("GET /api/secrets", () => {
 
     const response = await app.inject({
       method: "GET",
-      url: "/api/secrets",
+      url: `/api/clusters/${MOCK_CLUSTER_ID}/secrets`, // ✅ CORRIGÉ
       headers: { authorization: `Bearer ${mockOperatorToken}` },
     });
 
@@ -86,7 +99,7 @@ describe("GET /api/secrets", () => {
 
     const response = await app.inject({
       method: "GET",
-      url: "/api/secrets",
+      url: `/api/clusters/${MOCK_CLUSTER_ID}/secrets`, // ✅ CORRIGÉ
       headers: { authorization: `Bearer ${mockOwnerToken}` },
     });
 
@@ -99,7 +112,7 @@ describe("GET /api/secrets", () => {
 
     const response = await app.inject({
       method: "GET",
-      url: "/api/secrets",
+      url: `/api/clusters/${MOCK_CLUSTER_ID}/secrets`, // ✅ CORRIGÉ
       headers: { authorization: `Bearer ${mockOperatorToken}` },
     });
 
@@ -110,7 +123,7 @@ describe("GET /api/secrets", () => {
   it("devrait retourner 401 sans token", async () => {
     const response = await app.inject({
       method: "GET",
-      url: "/api/secrets",
+      url: `/api/clusters/${MOCK_CLUSTER_ID}/secrets`, // ✅ CORRIGÉ
     });
 
     expect(response.statusCode).toBe(401);
@@ -119,7 +132,7 @@ describe("GET /api/secrets", () => {
   it("devrait retourner 401 avec un token invalide", async () => {
     const response = await app.inject({
       method: "GET",
-      url: "/api/secrets",
+      url: `/api/clusters/${MOCK_CLUSTER_ID}/secrets`, // ✅ CORRIGÉ
       headers: { authorization: `Bearer ${mockInvalidToken}` },
     });
 
@@ -129,7 +142,7 @@ describe("GET /api/secrets", () => {
   it("devrait retourner 403 pour un viewer", async () => {
     const response = await app.inject({
       method: "GET",
-      url: "/api/secrets",
+      url: `/api/clusters/${MOCK_CLUSTER_ID}/secrets`, // ✅ CORRIGÉ
       headers: { authorization: `Bearer ${mockViewerToken}` },
     });
 
