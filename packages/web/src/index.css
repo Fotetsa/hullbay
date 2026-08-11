@@ -18,3 +18,129 @@ body,
   outline: 2px solid var(--border-interactive, #3b82f6);
   outline-offset: 2px;
 }
+
+/* ---------------------------------------------------------------------------
+ * Animations de la page Mises à jour (pipeline live).
+ * Règles : transform + opacity uniquement (GPU), courbes custom, < 600 ms,
+ * motion-reduce respecté. Préfixe hb- (hullbay) pour éviter les collisions.
+ * ------------------------------------------------------------------------- */
+
+/* Bascule du contenu de la carte (état normal ↔ pipeline). */
+.hb-animate-card-in {
+  animation: hb-card-in 380ms cubic-bezier(0.23, 1, 0.32, 1) both;
+}
+
+/* Apparition en cascade d'une liste (stepper). */
+.hb-animate-fade-up {
+  animation: hb-fade-up 300ms cubic-bezier(0.23, 1, 0.32, 1) both;
+}
+
+/* Pop d'un nœud d'étape quand il passe à succès/échec (petit rebond). */
+.hb-animate-step-pop {
+  animation: hb-step-pop 420ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+/* Anneau pulsé de l'étape en cours. */
+.hb-animate-node-pulse {
+  animation: hb-node-pulse 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* Balayage indéterminé (barre de progression pendant l'update). */
+.hb-animate-shimmer {
+  position: relative;
+  overflow: hidden;
+}
+.hb-animate-shimmer::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, rgb(255 255 255 / 0.5), transparent);
+  animation: hb-shimmer 1.3s linear infinite;
+}
+
+/* Trait du check final : dessin du trait via dashoffset. */
+.hb-draw-check {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  animation: hb-draw-check 380ms cubic-bezier(0.65, 0, 0.35, 1) forwards;
+}
+
+/* Remplissage de la barre de progression : scaleX, pas de width (pas de layout). */
+.hb-progress-fill {
+  transform-origin: left;
+  transition: transform 600ms cubic-bezier(0.23, 1, 0.32, 1);
+  will-change: transform;
+}
+
+@keyframes hb-card-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.99);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes hb-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes hb-step-pop {
+  0% {
+    transform: scale(0.55);
+  }
+  60% {
+    transform: scale(1.08);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@keyframes hb-node-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 0.4;
+  }
+  50% {
+    transform: scale(1.22);
+    opacity: 0.15;
+  }
+}
+
+@keyframes hb-shimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+@keyframes hb-draw-check {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hb-animate-card-in,
+  .hb-animate-fade-up,
+  .hb-animate-step-pop,
+  .hb-animate-node-pulse,
+  .hb-animate-shimmer,
+  .hb-draw-check {
+    animation: none !important;
+  }
+  .hb-progress-fill {
+    transition: none;
+  }
+}

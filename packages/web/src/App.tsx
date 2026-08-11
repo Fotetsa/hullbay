@@ -16,6 +16,7 @@ import { ServersPage } from "./pages/ServersPage"
 import { IntegrationsPage } from "./pages/IntegrationsPage"
 import { HealthPage } from "./pages/HealthPage"
 import { SecretsPage } from "./pages/SecretsPage"
+import { UpdatesPage } from "./pages/UpdatesPage"
 
 /**
  * Routing par URL (react-router) :
@@ -52,6 +53,7 @@ export function App() {
           <Route path="/users" element={<UsersPage />} />
           <Route path="/audit" element={<AuditPage />} />
           <Route path="/settings" element={<SettingsPage />} />
+          <Route path="/updates" element={<UpdatesPage />} />
         </Route>
 
         <Route path="*" element={<Navigate to="/" replace />} />

@@ -210,6 +210,35 @@ export const api = {
     }),
   deleteSecret: (name: string) =>
     req<{ ok: true }>(`/api/secrets/${encodeURIComponent(name)}`, { method: "DELETE" }),
+
+  // Mises à jour de l'instance (owner uniquement)
+  updatesCheck: (params: { channel?: UpdateChannel | "all" } = {}) => {
+    const qs = params.channel ? `?channel=${params.channel}` : ""
+    return req<UpdatesCheck>(`/api/updates/check${qs}`)
+  },
+  updatesHistory: (params: UpdateHistoryParams = {}) => {
+    const q = new URLSearchParams()
+    if (params.limit) q.set("limit", String(params.limit))
+    if (params.offset) q.set("offset", String(params.offset))
+    if (params.status) q.set("status", params.status)
+    const qs = q.toString()
+    return req<UpdateHistoryResult>(`/api/updates/history${qs ? `?${qs}` : ""}`)
+  },
+  updatesStatus: (id: string) => req<SystemUpdateRecord>(`/api/updates/status/${id}`),
+  setUpdateChannel: (channel: UpdateChannel) =>
+    req<{ ok: true; channel: UpdateChannel }>("/api/updates/channel", {
+      method: "PUT",
+      body: JSON.stringify({ channel }),
+    }),
+  applyUpdate: (opts: { channel?: UpdateChannel; version?: string }) =>
+    req<{ id: string; status: "running" }>("/api/updates/apply", {
+      method: "POST",
+      body: JSON.stringify(opts),
+    }),
+  rollbackUpdate: (id: string) =>
+    req<{ id: string; status: "running" }>(`/api/updates/${id}/rollback`, {
+      method: "POST",
+    }),
 }
 
 export type UserAccount = {
@@ -318,4 +347,68 @@ export type Server = {
   status: string
   swarmNodeId: string | null
   lastError: string | null
+}
+
+export type UpdateChannel = "stable" | "beta"
+
+export type UpdateRelease = {
+  version: string
+  tag: string
+  prerelease: boolean
+  publishedAt: string | null
+  url: string
+  notes: string
+}
+
+export type ChannelEntry = {
+  at: string
+  from: UpdateChannel
+  to: UpdateChannel
+}
+
+export type UpdatesCheck = {
+  currentVersion: string
+  updateChannel: UpdateChannel
+  updateAvailable: boolean
+  latestVersion: string | null
+  latest: UpdateRelease | null
+  releases: UpdateRelease[]
+  lastCheckAt: string
+  // Mode dégradé : GitHub rate-limité/injoignable → resert du dernier état connu.
+  degraded?: string | null
+  channelHistory: ChannelEntry[]
+}
+
+export type UpdateStepRec = {
+  name: string
+  status: "pending" | "running" | "success" | "failed"
+  error?: string
+}
+
+export type UpdateHistoryResult = {
+  items: SystemUpdateRecord[]
+  total: number
+  hasMore: boolean
+}
+
+export type UpdateHistoryParams = {
+  limit?: number
+  offset?: number
+  status?: SystemUpdateRecord["status"]
+}
+
+export type SystemUpdateRecord = {
+  id: string
+  status: string
+  fromVersion: string | null
+  toVersion: string | null
+  channel: UpdateChannel
+  steps: UpdateStepRec[]
+  logs: string[]
+  error: string | null
+  rolledBack: boolean
+  rollbackOfId: string | null
+  createdAt: string
+  startedAt?: string | null
+  finishedAt?: string | null
 }

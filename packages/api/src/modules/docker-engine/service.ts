@@ -36,6 +36,11 @@ export type RegistryAuth = { username: string; password: string; serveraddress: 
 /** Résout l'auth registre pour une image (injecté pour éviter le couplage engine→registry). */
 export type AuthResolver = (image: string) => Promise<RegistryAuth | null>
 
+/** Échappe les caractères spéciaux regex d'une chaîne (ex. registre `host:port`). */
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+}
+
 /** Métriques agrégées d'un service géré (HealthPage + auto-scaler). */
 export type ServiceMetrics = {
   serviceId: string
@@ -611,6 +616,116 @@ export class DockerEngineService {
     const secretRefs = await this.resolveSecretRefs(config)
     const spec = this.buildServiceSpec(name, config, labels, networkNames, mounts, secretRefs)
     return service.update({ ...spec, version: info.Version?.Index })
+  }
+
+  // ── Services système de l'ops-panel (mises à jour self-hosted) ────────────
+
+  /**
+   * Image des services système de la stack : `{registry}/{owner}/hullbay/{api,web}:*`.
+   * Registre par défaut ghcr.io, surchargeable via IMAGE_REGISTRY (miroir /
+   * registre local de test). Source de vérité pour reconnaître les services
+   * qu'on a le droit de mettre à jour (et pour connaître le tag actuellement
+   * déployé, nécessaire au rollback).
+   */
+  private hullbayImagePattern(): RegExp {
+    const owner = process.env.GHCR_OWNER || "fotetsa"
+    const registry = process.env.IMAGE_REGISTRY || "ghcr.io"
+    return new RegExp(`^${escapeRegExp(registry)}/${owner}/hullbay/(api|web):.+$`)
+  }
+  /** Retourne les services Swarm de la stack hullbay (api + web), par composant. */
+  async findHullbayServices(): Promise<Record<string, string>> {
+    const services = (await this.docker.listServices()) as {
+      ID?: string
+      Spec?: { Name?: string; TaskTemplate?: { ContainerSpec?: { Image?: string } } }
+    }[]
+    const found: Record<string, string> = {}
+    for (const s of services) {
+      const image = s.Spec?.TaskTemplate?.ContainerSpec?.Image ?? ""
+      const match = image.match(this.hullbayImagePattern())
+      if (!match) continue
+      const component = match[1]! as "api" | "web"
+      const id = s.ID ?? ""
+      const name = s.Spec?.Name ?? ""
+      if (id) found[component] = id
+      if (name && !found[`${component}:name`]) found[`${component}:name`] = name
+    }
+    return found
+  }
+
+  /** Tag d'image actuellement déployé pour un composant (`api` | `web`). */
+  async currentSystemTag(component: "api" | "web"): Promise<string | null> {
+    const found = await this.findHullbayServices()
+    const id = found[component]
+    if (!id) return null
+    const info = (await this.docker.getService(id).inspect()) as {
+      Spec?: { TaskTemplate?: { ContainerSpec?: { Image?: string } } }
+    }
+    const image = info.Spec?.TaskTemplate?.ContainerSpec?.Image ?? ""
+    // Tag = dernier segment après le dernier '/' puis le dernier ':' — robuste aux
+    // registres avec port (`host:port/owner/app:tag`).
+    const lastPath = image.split("/").pop() ?? ""
+    const idx = lastPath.lastIndexOf(":")
+    return idx >= 0 ? lastPath.slice(idx + 1) || null : null
+  }
+
+  /**
+   * Met à jour UNIQUEMENT l'image d'un service de la stack hullbay (rolling
+   * update Swarm : start-first, l'ancien ne s'arrête qu'une fois le neuf sain).
+   *
+   * Contourne délibérément `assertNotSystem` (l'ops-panel SE met à jour) mais de
+   * façon contrôlée : refuse tout service dont l'image n'est pas
+   * `ghcr.io/{owner}/hullbay/{api|web}:*` — jamais un autre service système.
+   */
+  async updateSystemServiceImage(
+    component: "api" | "web",
+    image: string,
+  ): Promise<void> {
+    const found = await this.findHullbayServices()
+    const serviceId = found[component]
+    if (!serviceId) {
+      throw new Error(
+        `Service hullbay '${component}' introuvable dans Swarm (stack non déployée ?)`,
+      )
+    }
+    const service = this.docker.getService(serviceId)
+    const info = (await service.inspect()) as {
+      Version?: { Index?: number }
+      Spec?: Docker.CreateServiceOptions & {
+        TaskTemplate?: { ContainerSpec?: { Image?: string } }
+      }
+    }
+    if (!info.Spec) throw new Error(`Service '${component}' : spec illisible`)
+    const currentImage = info.Spec.TaskTemplate?.ContainerSpec?.Image ?? ""
+    if (!currentImage.match(this.hullbayImagePattern())) {
+      throw new Error(
+        `Refus : le service '${component}' n'est pas une image hullbay (${currentImage})`,
+      )
+    }
+    // Défense en profondeur : l'image CIBLE doit aussi être une image hullbay du
+    // bon composant (on ne redéploie jamais une image arbitraire sur la stack).
+    const targetMatch = image.match(this.hullbayImagePattern())
+    if (!targetMatch || targetMatch[1] !== component) {
+      throw new Error(
+        `Refus : l'image cible doit être ghcr.io/{owner}/hullbay/${component}:<tag> (${image})`,
+      )
+    }
+    const spec: Docker.CreateServiceOptions = {
+      ...info.Spec,
+      TaskTemplate: {
+        ...info.Spec.TaskTemplate,
+        ContainerSpec: {
+          ...info.Spec.TaskTemplate?.ContainerSpec,
+          Image: image,
+        },
+        // ForceUpdate : force Swarm à recréer la tâche MÊME si l'image est
+        // identique à l'actuelle. Sans ça, un redeploy du même tag est un no-op
+        // (pas de nouveau conteneur) → l'API ne redémarre jamais → la
+        // finalisation au boot (finalizeOrphanUpdates) ne s'exécute pas et
+        // l'update reste bloquée en « running ».
+        ForceUpdate: 1,
+      },
+    }
+    await service.update({ ...spec, version: info.Version?.Index })
   }
 
   /**

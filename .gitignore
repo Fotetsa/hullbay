@@ -7,6 +7,7 @@ node_modules/
 dist/
 build/
 *.tsbuildinfo
+coverage/
 
 # Env / secrets
 .env
@@ -16,6 +17,11 @@ build/
 # Prisma
 packages/api/prisma/*.db
 packages/api/prisma/migrations/dev.db*
+
+# Playwright
+packages/web/test-results/
+packages/web/playwright-report/
+packages/web/blob-report/
 
 # Logs
 *.log
