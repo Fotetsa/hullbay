@@ -55,7 +55,7 @@ export function SettingsPage() {
 
   const updateDomainMutation = useMutation({
     mutationFn: (domain: string) => api.setDomain(domain),
-    onSuccess: (data) => {
+    onSuccess: (data: { ok: boolean; url?: string }) => {
       toast.success("Domaine mis à jour", {
         description: "Le domaine a été modifié avec succès",
       })
@@ -69,7 +69,7 @@ export function SettingsPage() {
             label: "Accéder",
             altText: "Rediriger vers le nouveau domaine",
             onClick: () => {
-              window.location.href = data.url
+              if (data.url) window.location.href = data.url
             },
           },
         })
@@ -201,7 +201,6 @@ export function SettingsPage() {
                 >
                   Activer la MFA
                 </Button>
-      
               )}
             </div>
           </div>
@@ -301,7 +300,6 @@ export function SettingsPage() {
           </div>
         </Container>
       )}
-
     </PageContainer>
   )
 }
