@@ -20,20 +20,17 @@ export type Me = { id: string; email: string; role: Role; mfaEnabled: boolean }
 type MeContextValue = {
   me: Me | undefined
   isLoading: boolean
-<<<<<<< Updated upstream
-=======
   isError: boolean
   error?: unknown
->>>>>>> Stashed changes
   can: (min: Role) => boolean
 }
 
 const MeContext = createContext<MeContextValue | null>(null)
 
 export function MeProvider({ children }: { children: ReactNode }) {
-<<<<<<< Updated upstream
+
   const { data, isLoading } = useQuery({ queryKey: ["me"], queryFn: api.me })
-=======
+
   const { data, isLoading, isError, error } = useQuery({
     queryKey: ["me"],
     queryFn: api.me,
@@ -42,17 +39,14 @@ export function MeProvider({ children }: { children: ReactNode }) {
     refetchOnMount: false,
     refetchOnWindowFocus: false,
   })
->>>>>>> Stashed changes
+
   const me = data as Me | undefined
   const can = (min: Role) => {
     if (!me) return false
     return (RANK[me.role] ?? -1) >= RANK[min]
   }
-<<<<<<< Updated upstream
-  return <MeContext.Provider value={{ me, isLoading, can }}>{children}</MeContext.Provider>
-=======
+
   return <MeContext.Provider value={{ me, isLoading, isError, error, can }}>{children}</MeContext.Provider>
->>>>>>> Stashed changes
 }
 
 export function useMe(): MeContextValue {
