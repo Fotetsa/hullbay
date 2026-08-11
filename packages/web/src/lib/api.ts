@@ -232,6 +232,14 @@ export const api = {
   deleteSecret: (name: string) =>
     req<{ ok: true }>(`/api/secrets/${encodeURIComponent(name)}`, { method: "DELETE" }),
 
+    // Domaine
+  getDomain: () => req<{ domain: string }>("/api/domain"),
+  setDomain: (domain: string) =>
+    req<{ ok: boolean; url?: string }>("/api/domain", {
+      method: "POST",
+      body: JSON.stringify({ domain }),
+    }),
+
   // Mises à jour de l'instance (owner uniquement)
   updatesCheck: (params: { channel?: UpdateChannel | "all" } = {}) => {
     const qs = params.channel ? `?channel=${params.channel}` : ""
