@@ -191,7 +191,7 @@ export function SettingsPage() {
           <div>
             <Label size="small">Double authentification</Label>
             <div className="flex items-center gap-3">
-              <Text>{me.mfaEnabled ? "✅ Activée" : "❌ Désactivée"}</Text>
+              <Text>{me.mfaEnabled ? " Activée" : " Désactivée"}</Text>
               {!me.mfaEnabled && (
                 <Button
                   variant="secondary"
@@ -290,7 +290,7 @@ export function SettingsPage() {
               </Text>
             </div>
             <Button
-              onClick={() => updateDomainMutation.mutate(newDomain)}
+              onClick={() => updateDomainMutation.mutate(newDomain || "")}
               disabled={!canSubmitDomain}
               isLoading={updateDomainMutation.isPending}
               className="self-start"
@@ -301,68 +301,6 @@ export function SettingsPage() {
         </Container>
       )}
 
-      {showMfaModal && mfaSecret && mfaOtpauth && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <Container className="w-full max-w-md p-6">
-            <Heading level="h3" className="mb-3">
-              Activer la double authentification
-            </Heading>
-            <Text className="text-ui-fg-subtle mb-4">
-              Scanne ce QR code avec ton application d'authentification (Google Authenticator, Authy, etc.) puis
-              saisis le code.
-            </Text>
-
-            <div className="mb-4 flex justify-center">
-              <div className="rounded-lg bg-white p-4">
-                <QRCodeSVG value={mfaOtpauth} size={200} />
-              </div>
-            </div>
-
-            <div className="mb-4">
-              <Label size="small">Clé secrète</Label>
-              <div className="flex items-center gap-2">
-                <Input value={mfaSecret} readOnly className="font-mono" />
-                <Button variant="secondary" size="small" onClick={() => copyToClipboard(mfaSecret)}>
-                  {copied ? "Copié ✓" : "Copier"}
-                </Button>
-              </div>
-            </div>
-
-            <div className="mb-4">
-              <Label size="small">Code de vérification</Label>
-              <Input
-                type="text"
-                value={mfaCode}
-                onChange={(e) => setMfaCode(e.target.value)}
-                placeholder="123456"
-                inputMode="numeric"
-                maxLength={6}
-              />
-            </div>
-
-            <div className="flex gap-2">
-              <Button
-                onClick={() => confirmMfaMutation.mutate(mfaCode)}
-                isLoading={confirmMfaMutation.isPending}
-                disabled={mfaCode.length !== 6}
-              >
-                Activer
-              </Button>
-              <Button
-                variant="secondary"
-                onClick={() => {
-                  setShowMfaModal(false)
-                  setMfaSecret(null)
-                  setMfaOtpauth(null)
-                  setMfaCode("")
-                }}
-              >
-                Annuler
-              </Button>
-            </div>
-          </Container>
-        </div>
-      )}
     </PageContainer>
   )
 }
