@@ -2,15 +2,6 @@ import { createContext, useContext, type ReactNode } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { api } from "./api"
 
-/**
- * Contexte du compte courant + helper d'autorisation `can(minRole)`.
- *
- * Les rangs DOIVENT rester alignés sur le backend (modules/auth/rbac.ts :
- * viewer<operator<owner). C'est ce qui permet à l'UI de masquer/désactiver les
- * actions qu'un rôle ne peut pas faire AU LIEU de laisser tomber un 403 opaque.
- * NB : c'est un confort UX, pas la sécurité — le backend reste l'autorité (chaque
- * route mutante a son requireRole).
- */
 export type Role = "owner" | "operator" | "viewer"
 
 const RANK: Record<Role, number> = { viewer: 0, operator: 1, owner: 2 }
@@ -28,9 +19,6 @@ type MeContextValue = {
 const MeContext = createContext<MeContextValue | null>(null)
 
 export function MeProvider({ children }: { children: ReactNode }) {
-
-  const { data, isLoading } = useQuery({ queryKey: ["me"], queryFn: api.me })
-
   const { data, isLoading, isError, error } = useQuery({
     queryKey: ["me"],
     queryFn: api.me,
