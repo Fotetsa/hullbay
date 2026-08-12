@@ -16,19 +16,26 @@ type Cfg = Partial<ContainerConfig>
 export function ContainerForm({
   config,
   onChange,
+  clusterId,
 }: {
   config: Cfg
   onChange: (next: Cfg) => void
+  clusterId: string
 }) {
   const ports = config.ports ?? []
   const envEntries = Object.entries(config.env ?? {})
   const secrets = config.secrets ?? []
-  const { data: availableSecrets, isLoading: secretsLoading, error: secretsError } = useQuery({
-    queryKey: ["secrets"],
-    queryFn: api.listSecrets,
+  const {
+    data: availableSecrets,
+    isLoading: secretsLoading,
+    error: secretsError,
+  } = useQuery({
+    queryKey: ["secrets", clusterId],
+    queryFn: () => api.listSecrets(clusterId),
+    enabled: Boolean(clusterId),
     refetchOnMount: "always",
     retry: 1,
-  })
+  });
   const secretNames = availableSecrets?.map((secret) => secret.name) ?? []
   const { data: availableRegistries, isLoading: registriesLoading, error: registriesError } = useQuery({
     queryKey: ["registry"],

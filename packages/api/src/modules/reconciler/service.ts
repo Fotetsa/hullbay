@@ -27,7 +27,7 @@ export interface ReconcilePlan {
 }
 
 export class ReconcilerService {
-  constructor(private docker = new DockerEngineService()) {}
+  constructor(private docker : DockerEngineService) {}
 
   /**
    * Calcule le plan de réconciliation en comparant le graphe désiré aux SERVICES
@@ -87,7 +87,7 @@ export class ReconcilerService {
 
     // 0. Routes Caddy des passerelles.
     for (const node of graph.nodes.filter((n) => n.type === "gateway")) {
-      await exposureService.deleteRoute(graph.slug, node.name).catch(() => {})
+      await exposureService.deleteRoute(graph.clusterId, graph.slug, node.name).catch(() => {})
       log.push(`route passerelle ${node.name} supprimée`)
     }
 
@@ -147,5 +147,3 @@ export class ReconcilerService {
     }
   }
 }
-
-export const reconcilerService = new ReconcilerService()

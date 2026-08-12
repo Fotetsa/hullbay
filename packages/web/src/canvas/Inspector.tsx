@@ -19,11 +19,13 @@ import { useContainerLogs } from "../lib/useContainerLogs"
  */
 export function Inspector({
   node,
+  clusterId,
   onClose,
   onSaved,
   onDeleted,
 }: {
-  node: Node
+    node: Node
+  clusterId: string | null
   onClose: () => void
   onSaved: () => void
   onDeleted: () => void
@@ -34,7 +36,7 @@ export function Inspector({
   const [saving, setSaving] = useState(false)
   const [showLogs, setShowLogs] = useState(false)
   // Logs streamés seulement quand le panneau logs est ouvert et le conteneur déployé.
-  const logs = useContainerLogs(showLogs ? node.dockerId ?? null : null)
+  const logs = useContainerLogs(clusterId, showLogs ? node.dockerId ?? null : null)
 
   // Recharge l'état local quand on change de nœud sélectionné.
   useEffect(() => {
@@ -92,14 +94,19 @@ export function Inspector({
       role="dialog"
       aria-label={`Configuration du nœud ${node.name}`}
       onKeyDown={(e) => {
-        if (e.key === "Escape") onClose()
+        if (e.key === "Escape") onClose();
       }}
     >
       <div className="flex items-center justify-between border-b border-ui-border-base px-4 py-3">
         <Heading level="h3" className="capitalize">
           {node.type}
         </Heading>
-        <Button variant="transparent" size="small" onClick={onClose} aria-label="Fermer l'inspecteur">
+        <Button
+          variant="transparent"
+          size="small"
+          onClick={onClose}
+          aria-label="Fermer l'inspecteur"
+        >
           <XMark />
         </Button>
       </div>
@@ -109,21 +116,40 @@ export function Inspector({
           <Label size="small">Nom du nœud</Label>
           <Input value={name} onChange={(e) => setName(e.target.value)} />
           <Text size="xsmall" className="mt-1 text-ui-fg-muted">
-            {node.type === "volume" && (config as Partial<VolumeConfig>).external
-              ? `Volume Docker existant : ${(config as Partial<VolumeConfig>).externalName || "…"}`
-              : <>Ressource Docker : boz_&lt;projet&gt;_{name || "…"}</>}
+            {node.type === "volume" &&
+            (config as Partial<VolumeConfig>).external ? (
+              `Volume Docker existant : ${(config as Partial<VolumeConfig>).externalName || "…"}`
+            ) : (
+              <>Ressource Docker : boz_&lt;projet&gt;_{name || "…"}</>
+            )}
           </Text>
         </div>
 
-        {node.type === "container" && <ContainerForm config={config} onChange={setConfig} />}
-        {node.type === "network" && <NetworkForm config={config} onChange={setConfig} />}
-        {node.type === "volume" && <VolumeForm config={config} onChange={setConfig} />}
-        {node.type === "gateway" && <GatewayForm config={config} onChange={setConfig} />}
+        {node.type === "container" && (
+          <ContainerForm
+            config={config}
+            onChange={setConfig}
+            clusterId={clusterId ?? ""}
+          />
+        )}
+        {node.type === "network" && (
+          <NetworkForm config={config} onChange={setConfig} />
+        )}
+        {node.type === "volume" && (
+          <VolumeForm config={config} onChange={setConfig} />
+        )}
+        {node.type === "gateway" && (
+          <GatewayForm config={config} onChange={setConfig} />
+        )}
 
         {/* Logs (conteneurs déployés uniquement). */}
         {node.type === "container" && node.dockerId && (
           <div className="mt-4">
-            <Button variant="secondary" size="small" onClick={() => setShowLogs((v) => !v)}>
+            <Button
+              variant="secondary"
+              size="small"
+              onClick={() => setShowLogs((v) => !v)}
+            >
               <CommandLine /> {showLogs ? "Masquer les logs" : "Voir les logs"}
             </Button>
             {showLogs && (
@@ -148,5 +174,5 @@ export function Inspector({
         </Button>
       </div>
     </div>
-  )
+  );
 }

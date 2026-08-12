@@ -1,5 +1,3 @@
-// packages/api/src/modules/servers/__tests__/servers.test.ts
-
 import { describe, it, expect, beforeAll, afterAll, beforeEach, vi, } from "vitest";
 import { buildTestApp } from "../../../__tests__/helpers/build-test-app";
 import { registerServersRoutes } from "../routes";
@@ -25,19 +23,16 @@ const { mockServersService, mockDockerMethods } = vi.hoisted(() => ({
   },
 }));
 
-
-vi.mock("../service", () => ({
-  serversService: mockServersService,
-}));
+vi.mock("../service", () => ({ serversService: mockServersService }));
 
 vi.mock("../../docker-engine/service", () => {
-  return {
-    DockerEngineService: class {
-      constructor() {
-        return mockDockerMethods;
-      }
-    },
-  };
+  class MockDockerEngineService {
+    static forCluster = vi.fn(async () => mockDockerMethods);
+    constructor() {
+      return mockDockerMethods;
+    }
+  }
+  return { DockerEngineService: MockDockerEngineService };
 });
 
 vi.mock("../../../workflows/provision-server", () => ({
@@ -93,8 +88,18 @@ describe("GET /api/servers", () => {
 
   it("devrait retourner la liste des serveurs avec les infos Swarm", async () => {
     const mockServers = [
-      { id: "server-1", name: "prod-1", ip: "192.168.1.10" },
-      { id: "server-2", name: "prod-2", ip: "192.168.1.11" },
+      {
+        id: "server-1",
+        name: "prod-1",
+        ip: "192.168.1.10",
+        clusterId: "cluster-1",
+      },
+      {
+        id: "server-2",
+        name: "prod-2",
+        ip: "192.168.1.11",
+        clusterId: "cluster-1",
+      },
     ];
     const mockNodes = [{ id: "node-1" }, { id: "node-2" }];
     const mockManagers = { total: 1, reachable: 1, quorumOk: true };

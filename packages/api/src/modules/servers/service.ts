@@ -19,6 +19,7 @@ export class ServersService {
     swarmNodeId: true,
     lastError: true,
     createdAt: true,
+    clusterId: true,
   } as const
 
   /** Liste exposable au client (secrets exclus). */
@@ -40,8 +41,8 @@ export class ServersService {
   }
 
   /** Y a-t-il déjà un manager ? (le 1er serveur devient manager). */
-  async hasManager(): Promise<boolean> {
-    const m = await prisma.server.findFirst({ where: { role: "manager", status: "ready" } })
+  async hasManager(clusterId: string): Promise<boolean> {
+    const m = await prisma.server.findFirst({ where: { role: "manager", status: "ready", clusterId } })
     return !!m
   }
 
@@ -51,6 +52,7 @@ export class ServersService {
     port: number
     user: string
     role: string
+    clusterId: string
   }) {
     return prisma.server.create({ data: { ...data, status: "provisioning" } })
   }

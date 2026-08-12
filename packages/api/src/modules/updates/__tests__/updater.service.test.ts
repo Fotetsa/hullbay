@@ -1,45 +1,63 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from "vitest"
-import { spawn } from "node:child_process"
 import { EventEmitter } from "node:events"
 
-const { mockPrisma, mockEventBus, mockDocker, mockGithub, mockSpawn } = vi.hoisted(() => ({
-  mockPrisma: {
-    systemInfo: { findUnique: vi.fn(), upsert: vi.fn(), update: vi.fn(), create: vi.fn() },
-    systemUpdate: {
-      findFirst: vi.fn(),
-      create: vi.fn(),
-      findUnique: vi.fn(),
-      findMany: vi.fn(),
-      count: vi.fn(),
-      update: vi.fn(),
+const { mockPrisma, mockEventBus, mockDocker, mockGithub, mockSpawn } =
+  vi.hoisted(() => ({
+    mockPrisma: {
+      systemInfo: {
+        findUnique: vi.fn(),
+        upsert: vi.fn(),
+        update: vi.fn(),
+        create: vi.fn(),
+      },
+      systemUpdate: {
+        findFirst: vi.fn(),
+        create: vi.fn(),
+        findUnique: vi.fn(),
+        findMany: vi.fn(),
+        count: vi.fn(),
+        update: vi.fn(),
+      },
+      cluster: { findFirstOrThrow: vi.fn() },
     },
-  },
-  mockEventBus: { emit: vi.fn() },
-  mockDocker: {
-    ensureImage: vi.fn(),
-    updateSystemServiceImage: vi.fn(),
-    currentSystemTag: vi.fn(),
-    findHullbayServices: vi.fn(),
-  },
-  mockGithub: {
-    listReleases: vi.fn(),
-    latest: vi.fn(),
-    isUpdateAvailable: vi.fn(),
-  },
-  mockSpawn: vi.fn(),
-}))
+    mockEventBus: { emit: vi.fn() },
+    mockDocker: {
+      ensureImage: vi.fn(),
+      updateSystemServiceImage: vi.fn(),
+      currentSystemTag: vi.fn(),
+      findHullbayServices: vi.fn(),
+    },
+    mockGithub: {
+      listReleases: vi.fn(),
+      latest: vi.fn(),
+      isUpdateAvailable: vi.fn(),
+    },
+    mockSpawn: vi.fn(),
+  }));
 
 vi.mock("node:child_process", () => ({ spawn: mockSpawn }))
 vi.mock("../../../lib/prisma", () => ({ prisma: mockPrisma }))
 vi.mock("../../../lib/event-bus", () => ({ eventBus: mockEventBus }))
 vi.mock("../../docker-engine/service", () => ({
-  DockerEngineService: class {
-    ensureImage = mockDocker.ensureImage
-    updateSystemServiceImage = mockDocker.updateSystemServiceImage
-    currentSystemTag = mockDocker.currentSystemTag
-    findHullbayServices = mockDocker.findHullbayServices
+  DockerEngineService: {
+    forCluster: vi.fn(async () => ({
+      ensureImage: mockDocker.ensureImage,
+      updateSystemServiceImage: mockDocker.updateSystemServiceImage,
+      currentSystemTag: mockDocker.currentSystemTag,
+      findHullbayServices: mockDocker.findHullbayServices,
+    })),
   },
-}))
+}));
+
+vi.mock("../../docker-engine/client", () => ({
+  getDefaultCluster: vi.fn(async () => ({
+    id: "default-cluster-id",
+    name: "Default",
+    dockerHost: "tcp://socket-proxy:2375",
+    caddyAdminUrl: "http://caddy:2019",
+    isDefault: true,
+  })),
+}));
 vi.mock("../github", () => ({
   githubReleasesService: mockGithub,
 }))
@@ -91,6 +109,7 @@ describe("UpdaterService", () => {
       updatedAt: now,
     })
     mockPrisma.systemUpdate.findFirst.mockResolvedValue(null)
+    mockPrisma.cluster.findFirstOrThrow.mockResolvedValue({ id: "default-cluster-id" }) 
     mockPrisma.systemUpdate.create.mockImplementation(async (args: { data: Record<string, unknown> }) => ({
       id: "update-1",
       status: "running",

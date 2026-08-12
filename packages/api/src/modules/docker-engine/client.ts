@@ -1,4 +1,5 @@
 import Docker from "dockerode"
+import { prisma } from "../../lib/prisma"
 
 /**
  * Connexion à l'API Docker Engine.
@@ -16,9 +17,8 @@ import Docker from "dockerode"
 
 const DOCKER_SOCKET_PATH =
   process.env.DOCKER_SOCKET_PATH || "/var/run/docker.sock"
-const DOCKER_HOST = process.env.DOCKER_HOST
 
-let singleton: Docker | null = null
+const registry = new Map<string, Docker>()
 
 /** Parse DOCKER_HOST (tcp://host:port) en options dockerode {host, port}. */
 function parseDockerHost(value: string): { host: string; port: number } | null {
@@ -31,47 +31,66 @@ function parseDockerHost(value: string): { host: string; port: number } | null {
   }
 }
 
-export function getDocker(): Docker {
-  if (!singleton) {
-    const tcp = DOCKER_HOST ? parseDockerHost(DOCKER_HOST) : null
-    singleton = tcp ? new Docker(tcp) : new Docker({ socketPath: DOCKER_SOCKET_PATH })
-  }
-  return singleton
-}
-
-export interface DockerPingResult {
-  ok: boolean
-  version?: string
-  apiVersion?: string
-  containers?: number
-  /** Mode Swarm actif sur le démon (prérequis aux services). */
-  swarmActive?: boolean
-  error?: string
+function buildClient(dockerHost: string | undefined): Docker {
+  const tcp = dockerHost ? parseDockerHost(dockerHost) : null
+  return tcp ? new Docker(tcp) : new Docker({ socketPath: DOCKER_SOCKET_PATH}) 
 }
 
 /**
- * Vérifie l'accès au daemon Docker. Utilisé au démarrage de l'api et exposé via
- * une route de santé. Ne lève jamais : renvoie un résultat structuré.
+ * Connexion Docker pour un Cluster donné, 
  */
+
+export async function getDockerForCluster(clusterId: string): Promise<Docker> {
+  const cached = registry.get(clusterId)
+  if (cached) return cached
+  const cluster = await prisma.cluster.findUniqueOrThrow({ where: { id: clusterId } })
+  const client = buildClient(cluster.dockerHost)
+  registry.set(clusterId, client)
+  return client
+}
+
+export async function getDefaultCluster() {
+  const existing = await prisma.cluster.findFirst({ where: { isDefault: true } })
+  if (existing) return existing
+  return prisma.cluster.create({
+    data: {
+      name: "Default",
+      dockerHost: process.env.DOCKER_HOST || "tcp://socket-proxy:2375",
+      caddyAdminUrl: process.env.CADDY_ADMIN_URL || "http://caddy:2019",
+      isDefault: true,
+    },
+  })
+}
+
+export interface DockerPingResult {
+  ok: boolean;
+  version?: string;
+  apiVersion?: string;
+  containers?: number;
+  swarmActive?: boolean;
+  error?: string;
+}
+
 export async function pingDocker(): Promise<DockerPingResult> {
-  const docker = getDocker()
   try {
-    const info = await docker.version()
+    const cluster = await getDefaultCluster();
+    const docker = await getDockerForCluster(cluster.id);
+    const info = await docker.version();
     const system = (await docker.info()) as {
-      Containers?: number
-      Swarm?: { LocalNodeState?: string }
-    }
+      Containers?: number;
+      Swarm?: { LocalNodeState?: string };
+    };
     return {
       ok: true,
       version: info.Version,
       apiVersion: info.ApiVersion,
       containers: system.Containers,
       swarmActive: system.Swarm?.LocalNodeState === "active",
-    }
+    };
   } catch (err) {
     return {
       ok: false,
       error: err instanceof Error ? err.message : String(err),
-    }
+    };
   }
 }

@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useMemo, useState } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import {
   Badge,
@@ -12,7 +12,7 @@ import {
   toast,
 } from "@medusajs/ui"
 import { ArrowPath, Bolt, ChartBar, Spinner, Trash } from "@medusajs/icons"
-import { api, type ServiceHealth, type ServicePlacement, type PruneCandidate } from "../lib/api"
+import { api, type ServiceHealth, type ServicePlacement, type PruneCandidate, ClusterHealth } from "../lib/api"
 import { useMutationToast } from "../lib/useMutationToast"
 import { PageHeader, PageContainer } from "../components/PageHeader"
 
@@ -23,7 +23,7 @@ import { PageHeader, PageContainer } from "../components/PageHeader"
  */
 export function HealthPage() {
   const qc = useQueryClient()
-  const { data: health, isLoading, refetch: refetchHealth } = useQuery({
+  const { data, isLoading, refetch: refetchHealth } = useQuery({
     queryKey: ["health"],
     queryFn: api.clusterHealth,
     refetchInterval: 10_000,
@@ -33,6 +33,16 @@ export function HealthPage() {
     queryFn: api.drift,
     refetchInterval: 15_000,
   })
+
+  const clusters = data?.clusters ?? []
+  const [selectedClusterId, setSelectedClusterId] = useState<string | null>(null)
+
+  const health: ClusterHealth | undefined = useMemo(() => {
+    if (clusters.length === 0) return undefined;
+    return (
+      clusters.find((c) => c.clusterId === selectedClusterId) ?? clusters[0]
+    );
+  }, [clusters, selectedClusterId]);
 
   const [detailService, setDetailService] = useState<ServiceHealth | null>(null)
   const [candidates, setCandidates] = useState<PruneCandidate[]>([])
@@ -50,173 +60,221 @@ export function HealthPage() {
     onSuccess: () => setCandidates([]),
   })
 
-  return (
-    <PageContainer size="5xl">
-      <PageHeader
-        title="Santé du cluster"
-        actions={
-          <Button
-            variant="secondary"
-            size="small"
-            onClick={() => {
-              refetchHealth()
-              refetchDrift()
-            }}
-          >
-            <ArrowPath /> Rafraîchir
-          </Button>
-        }
-      />
+   return (
+     <PageContainer size="5xl">
+       <PageHeader
+         title="Santé du cluster"
+         actions={
+           <Button
+             variant="secondary"
+             size="small"
+             onClick={() => {
+               refetchHealth();
+               refetchDrift();
+             }}
+           >
+             <ArrowPath /> Rafraîchir
+           </Button>
+         }
+       />
 
-      {isLoading ? (
-        <div className="flex items-center justify-center py-16">
-          <Spinner className="animate-spin text-ui-fg-muted" />
-        </div>
-      ) : !health?.swarmActive ? (
-        <Container className="p-6">
-          <Text className="text-ui-fg-subtle">
-            Swarm inactif. Lance `docker swarm init` sur le manager pour activer
-            services, replicas et observabilité.
-          </Text>
-        </Container>
-      ) : (
-        <div className="flex flex-col gap-6">
-          {/* Drift */}
-          {drift && drift.drift.length > 0 && (
-            <Container className="border-ui-border-error p-4">
-              <Heading level="h3" className="mb-2 text-ui-fg-error">
-                Drift détecté
-              </Heading>
-              <Text size="small" className="text-ui-fg-subtle">
-                {drift.drift.length} projet(s) divergent du désiré. Redéploie le
-                projet concerné pour réconcilier.
-              </Text>
-              <div className="mt-2 flex flex-wrap gap-2">
-                {drift.drift.map((d) => (
-                  <Badge key={d.projectId} color="red" size="2xsmall">
-                    {d.projectId.slice(0, 8)} · {d.count} action(s)
-                  </Badge>
-                ))}
-              </div>
-            </Container>
-          )}
+       {isLoading ? (
+         <div className="flex items-center justify-center py-16">
+           <Spinner className="animate-spin text-ui-fg-muted" />
+         </div>
+       ) : clusters.length === 0 ? (
+         <Container className="p-6">
+           <Text className="text-ui-fg-subtle">
+             Aucun cluster enregistré. Ajoute un serveur pour créer ton premier
+             cluster.
+           </Text>
+         </Container>
+       ) : (
+         <div className="flex flex-col gap-6">
+           {/* Sélecteur de cluster -- masqué s'il n'y en a qu'un seul, pour ne
+              pas ajouter de bruit visuel dans le cas (encore majoritaire) où
+              une seule installation n'a qu'un cluster. */}
+           {clusters.length > 1 && (
+             <div className="flex flex-wrap gap-2">
+               {clusters.map((c) => (
+                 <Button
+                   key={c.clusterId}
+                   variant={
+                     health?.clusterId === c.clusterId ? "primary" : "secondary"
+                   }
+                   size="small"
+                   onClick={() => setSelectedClusterId(c.clusterId)}
+                 >
+                   {c.clusterName}
+                   {!c.swarmActive && (
+                     <Badge size="2xsmall" color="red" className="ml-2">
+                       inactif
+                     </Badge>
+                   )}
+                 </Button>
+               ))}
+             </div>
+           )}
 
-          {/* Nœuds Swarm */}
-          <Container className="p-4">
-            <Heading level="h3" className="mb-3 flex items-center gap-2">
-              Nœuds ({health.nodes.length})
-            </Heading>
-            <div className="overflow-x-auto">
-              <Table>
-                <Table.Header>
-                  <Table.Row>
-                    <Table.HeaderCell>Hôte</Table.HeaderCell>
-                    <Table.HeaderCell>Rôle</Table.HeaderCell>
-                    <Table.HeaderCell>État</Table.HeaderCell>
-                    <Table.HeaderCell>Dispo.</Table.HeaderCell>
-                  </Table.Row>
-                </Table.Header>
-                <Table.Body>
-                  {health.nodes.map((n) => (
-                    <Table.Row key={n.swarmNodeId}>
-                      <Table.Cell>
-                        {n.hostname}
-                        {n.leader && (
-                          <Badge size="2xsmall" className="ml-2" color="blue">
-                            leader
-                          </Badge>
-                        )}
-                      </Table.Cell>
-                      <Table.Cell>{n.role}</Table.Cell>
-                      <Table.Cell>
-                        <StatusBadge color={n.state === "ready" ? "green" : "red"}>
-                          {n.state}
-                        </StatusBadge>
-                      </Table.Cell>
-                      <Table.Cell>{n.availability}</Table.Cell>
-                    </Table.Row>
-                  ))}
-                </Table.Body>
-              </Table>
-            </div>
-          </Container>
+           {!health?.swarmActive ? (
+             <Container className="p-6">
+               <Text className="text-ui-fg-subtle">
+                 Swarm inactif sur ce cluster. Lance `docker swarm init` sur son
+                 manager pour activer services, replicas et observabilité.
+               </Text>
+             </Container>
+           ) : (
+             <>
+               {/* Drift */}
+               {drift && drift.drift.length > 0 && (
+                 <Container className="border-ui-border-error p-4">
+                   <Heading level="h3" className="mb-2 text-ui-fg-error">
+                     Drift détecté
+                   </Heading>
+                   <Text size="small" className="text-ui-fg-subtle">
+                     {drift.drift.length} projet(s) divergent du désiré.
+                     Redéploie le projet concerné pour réconcilier.
+                   </Text>
+                   <div className="mt-2 flex flex-wrap gap-2">
+                     {drift.drift.map((d) => (
+                       <Badge key={d.projectId} color="red" size="2xsmall">
+                         {d.projectId.slice(0, 8)} · {d.count} action(s)
+                       </Badge>
+                     ))}
+                   </div>
+                 </Container>
+               )}
 
-          {/* Services */}
-          <Container className="p-4">
-            <Heading level="h3" className="mb-3 flex items-center gap-2">
-              <ChartBar /> Services ({health.services.length})
-            </Heading>
-            <div className="overflow-x-auto">
-              <Table>
-                <Table.Header>
-                  <Table.Row>
-                    <Table.HeaderCell>Service</Table.HeaderCell>
-                    <Table.HeaderCell>Replicas</Table.HeaderCell>
-                    <Table.HeaderCell>Nœuds</Table.HeaderCell>
-                    <Table.HeaderCell>CPU moy.</Table.HeaderCell>
-                    <Table.HeaderCell>Mémoire</Table.HeaderCell>
-                  </Table.Row>
-                </Table.Header>
-                <Table.Body>
-                  {health.services.map((s) => (
-                    <ServiceRow key={s.serviceId} s={s} onSelect={() => setDetailService(s)} />
-                  ))}
-                </Table.Body>
-              </Table>
-            </div>
-            {health.services.length === 0 && (
-              <Text className="mt-2 text-ui-fg-subtle">Aucun service géré.</Text>
-            )}
-          </Container>
+               {/* Nœuds Swarm */}
+               <Container className="p-4">
+                 <Heading level="h3" className="mb-3 flex items-center gap-2">
+                   Nœuds ({health.nodes.length})
+                 </Heading>
+                 <div className="overflow-x-auto">
+                   <Table>
+                     <Table.Header>
+                       <Table.Row>
+                         <Table.HeaderCell>Hôte</Table.HeaderCell>
+                         <Table.HeaderCell>Rôle</Table.HeaderCell>
+                         <Table.HeaderCell>État</Table.HeaderCell>
+                         <Table.HeaderCell>Dispo.</Table.HeaderCell>
+                       </Table.Row>
+                     </Table.Header>
+                     <Table.Body>
+                       {health.nodes.map((n) => (
+                         <Table.Row key={n.swarmNodeId}>
+                           <Table.Cell>
+                             {n.hostname}
+                             {n.leader && (
+                               <Badge
+                                 size="2xsmall"
+                                 className="ml-2"
+                                 color="blue"
+                               >
+                                 leader
+                               </Badge>
+                             )}
+                           </Table.Cell>
+                           <Table.Cell>{n.role}</Table.Cell>
+                           <Table.Cell>
+                             <StatusBadge
+                               color={n.state === "ready" ? "green" : "red"}
+                             >
+                               {n.state}
+                             </StatusBadge>
+                           </Table.Cell>
+                           <Table.Cell>{n.availability}</Table.Cell>
+                         </Table.Row>
+                       ))}
+                     </Table.Body>
+                   </Table>
+                 </div>
+               </Container>
 
-          {/* Prune orphelins */}
-          <Container className="p-4">
-            <Heading level="h3" className="mb-2">
-              Ressources orphelines
-            </Heading>
-            <Text size="small" className="text-ui-fg-subtle">
-              Ressources gérées (bozando.managed) dont le projet n'existe plus.
-              Le système (bozando.system) n'est jamais touché.
-            </Text>
-            <div className="mt-3 flex gap-2">
-              <Button
-                variant="secondary"
-                size="small"
-                onClick={() => preview.mutate()}
-                isLoading={preview.isPending}
-              >
-                Analyser
-              </Button>
-              {candidates.length > 0 && (
-                <Button
-                  variant="danger"
-                  size="small"
-                  onClick={() => apply.mutate()}
-                  isLoading={apply.isPending}
-                >
-                  <Trash /> Supprimer {candidates.length} orpheline(s)
-                </Button>
-              )}
-            </div>
-            {candidates.length > 0 && (
-              <div className="mt-3 flex flex-col gap-1">
-                {candidates.map((c, i) => (
-                  <Text key={i} size="small" className="text-ui-fg-muted">
-                    {c.kind} · {c.name} — {c.reason}
-                  </Text>
-                ))}
-              </div>
-            )}
-          </Container>
-        </div>
-      )}
+               {/* Services */}
+               <Container className="p-4">
+                 <Heading level="h3" className="mb-3 flex items-center gap-2">
+                   <ChartBar /> Services ({health.services.length})
+                 </Heading>
+                 <div className="overflow-x-auto">
+                   <Table>
+                     <Table.Header>
+                       <Table.Row>
+                         <Table.HeaderCell>Service</Table.HeaderCell>
+                         <Table.HeaderCell>Replicas</Table.HeaderCell>
+                         <Table.HeaderCell>Nœuds</Table.HeaderCell>
+                         <Table.HeaderCell>CPU moy.</Table.HeaderCell>
+                         <Table.HeaderCell>Mémoire</Table.HeaderCell>
+                       </Table.Row>
+                     </Table.Header>
+                     <Table.Body>
+                       {health.services.map((s) => (
+                         <ServiceRow
+                           key={s.serviceId}
+                           s={s}
+                           onSelect={() => setDetailService(s)}
+                         />
+                       ))}
+                     </Table.Body>
+                   </Table>
+                 </div>
+                 {health.services.length === 0 && (
+                   <Text className="mt-2 text-ui-fg-subtle">
+                     Aucun service géré.
+                   </Text>
+                 )}
+               </Container>
 
-      <ServiceDetailDrawer
-        service={detailService}
-        onClose={() => setDetailService(null)}
-      />
-    </PageContainer>
-  )
+               {/* Prune orphelins */}
+               <Container className="p-4">
+                 <Heading level="h3" className="mb-2">
+                   Ressources orphelines
+                 </Heading>
+                 <Text size="small" className="text-ui-fg-subtle">
+                   Ressources gérées (bozando.managed) dont le projet n'existe
+                   plus. Le système (bozando.system) n'est jamais touché.
+                 </Text>
+                 <div className="mt-3 flex gap-2">
+                   <Button
+                     variant="secondary"
+                     size="small"
+                     onClick={() => preview.mutate()}
+                     isLoading={preview.isPending}
+                   >
+                     Analyser
+                   </Button>
+                   {candidates.length > 0 && (
+                     <Button
+                       variant="danger"
+                       size="small"
+                       onClick={() => apply.mutate()}
+                       isLoading={apply.isPending}
+                     >
+                       <Trash /> Supprimer {candidates.length} orpheline(s)
+                     </Button>
+                   )}
+                 </div>
+                 {candidates.length > 0 && (
+                   <div className="mt-3 flex flex-col gap-1">
+                     {candidates.map((c, i) => (
+                       <Text key={i} size="small" className="text-ui-fg-muted">
+                         {c.kind} · {c.name} — {c.reason}
+                       </Text>
+                     ))}
+                   </div>
+                 )}
+               </Container>
+             </>
+           )}
+         </div>
+       )}
+
+       <ServiceDetailDrawer
+         service={detailService}
+         onClose={() => setDetailService(null)}
+       />
+     </PageContainer>
+   );
 }
 
 /**
