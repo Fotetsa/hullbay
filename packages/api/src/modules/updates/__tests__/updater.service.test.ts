@@ -48,6 +48,16 @@ vi.mock("../../docker-engine/service", () => ({
     })),
   },
 }));
+
+vi.mock("../../docker-engine/client", () => ({
+  getDefaultCluster: vi.fn(async () => ({
+    id: "default-cluster-id",
+    name: "Default",
+    dockerHost: "tcp://socket-proxy:2375",
+    caddyAdminUrl: "http://caddy:2019",
+    isDefault: true,
+  })),
+}));
 vi.mock("../github", () => ({
   githubReleasesService: mockGithub,
 }))

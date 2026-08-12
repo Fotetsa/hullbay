@@ -49,8 +49,17 @@ export async function getDockerForCluster(clusterId: string): Promise<Docker> {
   return client
 }
 
-export async function getDefaultCluster(): Promise<{ id: string }> {
-  return prisma.cluster.findFirstOrThrow({ where: { isDefault: true } })
+export async function getDefaultCluster() {
+  const existing = await prisma.cluster.findFirst({ where: { isDefault: true } })
+  if (existing) return existing
+  return prisma.cluster.create({
+    data: {
+      name: "Default",
+      dockerHost: process.env.DOCKER_HOST || "tcp://socket-proxy:2375",
+      caddyAdminUrl: process.env.CADDY_ADMIN_URL || "http://caddy:2019",
+      isDefault: true,
+    },
+  })
 }
 
 export interface DockerPingResult {

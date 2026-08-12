@@ -1,6 +1,11 @@
-import { caddyAdmin, resolveServerName } from '../../lib/caddy-admin';
+import {
+  caddyAdmin,
+  resolveServerName,
+  getSystemAdminUrl,
+} from "../../lib/caddy-admin";
 import { getDefaultCluster } from '../docker-engine/client';
 import { prisma } from '../../lib/prisma';
+
 
 
 /**
@@ -18,9 +23,7 @@ const WS_ROUTE_ID   = "hullbay-system-ws"
 const WEB_ROUTE_ID = "hullbay-system-web"
 
 async function systemAdminUrl(): Promise<string> {
-    const { id } = await getDefaultCluster()
-    const cluster = await prisma.cluster.findFirstOrThrow({ where: { id } })
-    return cluster.caddyAdminUrl
+  return getSystemAdminUrl();
 }
 
 /**

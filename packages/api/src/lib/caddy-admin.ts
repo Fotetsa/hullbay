@@ -1,5 +1,6 @@
 import { request as httpRequest } from "node:http";
 import { request as httpsRequest } from "node:https";
+import { getDefaultCluster } from "../modules/docker-engine/client";
 
 /**
  * Client HTTP partagé vers l'API admin Caddy (http://caddy:2019), utilise par
@@ -8,6 +9,14 @@ import { request as httpsRequest } from "node:https";
  */
 
 //const CADDY_ADMIN = process.env.CADDY_ADMIN_URL || "http://localhost:2019";
+
+/** URL admin Caddy du cluster SYSTÈME (celui d'hullbay lui-même). Centralisé
+ * pour que tout appelant système (settings/caddy-domain.ts, futurs modules)
+ * passe par le même chemin, sans risque d'oubli. */
+export async function getSystemAdminUrl(): Promise<string> {
+  return (await getDefaultCluster()).caddyAdminUrl
+}
+
 
 /** Forme partielle de la config http renvoyée par l'admin Caddy. */
 export type CaddyServers = Record<
