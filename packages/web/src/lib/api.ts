@@ -322,9 +322,9 @@ export const api = {
     ),
 
     // Domaine
-  getDomain: () => req<{ domain: string }>("/api/domain"),
+  getDomain: () => req<{ domain: string }>("/api/settings/domain"),
   setDomain: (domain: string) =>
-    req<{ ok: boolean; url?: string }>("/api/domain", {
+    req<{ ok: boolean; url?: string }>("/api/settings/domain", {
       method: "POST",
       body: JSON.stringify({ domain }),
     }),

@@ -54,6 +54,7 @@ export function App() {
             <Route path="/users" element={<UsersPage />} />
             <Route path="/audit" element={<AuditPage />} />
             <Route path="/settings" element={<SettingsPage />} />
+            <Route path="/updates" element={<UpdatesPage />} />
           </Route>
 
           <Route path="*" element={<Navigate to="/" replace />} />
