@@ -109,7 +109,8 @@ describe("UpdaterService", () => {
       updatedAt: now,
     })
     mockPrisma.systemUpdate.findFirst.mockResolvedValue(null)
-    mockPrisma.cluster.findFirstOrThrow.mockResolvedValue({ id: "default-cluster-id" }) 
+    mockPrisma.cluster.findFirstOrThrow.mockResolvedValue({ id: "default-cluster-id" })
+    mockDocker.currentSystemTag.mockResolvedValue("1.2.2") // Mock par défaut pour current()
     mockPrisma.systemUpdate.create.mockImplementation(async (args: { data: Record<string, unknown> }) => ({
       id: "update-1",
       status: "running",
@@ -174,6 +175,9 @@ describe("UpdaterService", () => {
     })
 
     it("résout la version cible via le canal stable si non précisée", async () => {
+      // Mock pour que current() retourne une version stable (sans suffix beta/alpha)
+      mockDocker.currentSystemTag.mockResolvedValue("1.2.2")
+      
       mockGithub.latest.mockResolvedValue({ version: "1.2.3", tag: "v1.2.3", prerelease: false, draft: false, publishedAt: null, url: "", notes: "" })
       mockGithub.isUpdateAvailable.mockReturnValue(true)
       mockDocker.ensureImage.mockResolvedValue({ pulled: true })
@@ -194,6 +198,9 @@ describe("UpdaterService", () => {
     })
 
     it("refuse une cible non plus récente (anti-downgrade)", async () => {
+      // Mock pour que current() retourne une version stable
+      mockDocker.currentSystemTag.mockResolvedValue("1.2.2")
+      
       // Canal beta : latest retourne une pre-release plus ancienne que l'installée.
       mockGithub.latest.mockResolvedValue({ version: "1.2.2", tag: "v1.2.2", prerelease: false, draft: false, publishedAt: null, url: "", notes: "" })
       mockGithub.isUpdateAvailable.mockReturnValue(false)
@@ -302,7 +309,10 @@ describe("UpdaterService", () => {
       // Le placeholder est persisté corrigé (auto-réparation).
       expect(mockPrisma.systemInfo.update).toHaveBeenCalledWith({
         where: { id: "singleton" },
-        data: { currentVersion: "1.2.2" },
+        data: { 
+          currentVersion: "1.2.2",
+          updateChannel: "stable"
+        },
       })
     })
   })
