@@ -68,15 +68,27 @@ export class UpdaterService {
     });
     if (existing && !placeholder.has(existing.currentVersion)) return existing;
     const tag = await this.effectiveCurrentVersion();
+    
+    // Détecter automatiquement le canal depuis le tag de version
+    // Si le tag contient "beta" ou "alpha", c'est le canal beta, sinon stable
+    const inferredChannel = /-(beta|alpha)/i.test(tag) ? "beta" : "stable";
+    
     if (existing) {
-      if (existing.currentVersion === tag) return existing;
+      if (existing.currentVersion === tag && existing.updateChannel === inferredChannel) return existing;
       return prisma.systemInfo.update({
         where: { id: "singleton" },
-        data: { currentVersion: tag },
+        data: { 
+          currentVersion: tag,
+          updateChannel: inferredChannel
+        },
       });
     }
     return prisma.systemInfo.create({
-      data: { id: "singleton", currentVersion: tag },
+      data: { 
+        id: "singleton", 
+        currentVersion: tag,
+        updateChannel: inferredChannel
+      },
     });
   }
 
