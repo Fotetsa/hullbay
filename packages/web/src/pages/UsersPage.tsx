@@ -20,6 +20,7 @@ import { ListContainer, ListRow } from "../components/ListContainer"
 import { ActionMenu } from "../components/ActionMenu"
 import { EmptyState } from "../components/EmptyState"
 import { ModalForm } from "../components/ModalForm"
+import { useTranslation } from "react-i18next"
 
 const ROLE_COLOR: Record<string, "purple" | "blue" | "grey"> = {
   owner: "purple",
@@ -33,6 +34,7 @@ const ROLE_COLOR: Record<string, "purple" | "blue" | "grey"> = {
  * retirer. Le backend garde les invariants (dernier owner, auto-suppression).
  */
 export function UsersPage() {
+  const { t } = useTranslation()
   const { me } = useMe()
   const { data: users, isLoading } = useQuery({ queryKey: ["users"], queryFn: api.listUsers })
 
@@ -43,7 +45,7 @@ export function UsersPage() {
 
   const createMut = useMutationToast({
     mutationFn: () => api.createUser({ email, password, role }),
-    success: "Compte créé",
+    success: t('users.toast.createSuccess'),
     invalidate: [["users"]],
     onSuccess: () => {
       setOpen(false)
@@ -56,17 +58,17 @@ export function UsersPage() {
   const roleMut = useMutationToast({
     mutationFn: ({ id, role }: { id: string; role: "owner" | "operator" | "viewer" }) =>
       api.setUserRole(id, role),
-    success: (r) => `Rôle changé : ${r.role}`,
+    success: (r) => t('users.toast.roleChanged', { role: r.role }),
     invalidate: [["users"]],
   })
 
   const removeUser = useConfirmDelete<UserAccount>({
     mutationFn: (u) => api.deleteUser(u.id),
-    success: "Compte supprimé",
+    success: t('users.toast.deleteSuccess'),
     invalidate: [["users"]],
     confirm: (u) => ({
-      title: "Supprimer ce compte ?",
-      description: `« ${u.email} » perdra immédiatement l'accès à la console.`,
+      title: t('users.deleteConfirm.title'),
+      description: t('users.deleteConfirm.description', { email: u.email }),
     }),
   })
 
@@ -75,30 +77,30 @@ export function UsersPage() {
   return (
     <PageContainer>
       <PageHeader
-        title="Utilisateurs"
-        subtitle="Délègue un accès limité (operator/viewer) à un employé."
+        title={t('users.pageTitle')}
+        subtitle={t('users.pageSubtitle')}
         actions={
           <Button size="small" onClick={() => setOpen(true)}>
-            <Plus /> Nouvel utilisateur
+            <Plus /> {t('users.actions.new')}
           </Button>
         }
       />
 
       <ListContainer
-        title="Comptes"
-        subtitle={users ? `${users.length} compte(s)` : undefined}
+        title={t('users.list.title')}
+        subtitle={users ? t('users.list.subtitle', { count: users.length }) : undefined}
         isEmpty={!isLoading && users?.length === 0}
         empty={
           <EmptyState
             icon={Users}
-            title="Aucun autre compte"
-            description="Crée un operator (peut déployer) ou un viewer (lecture seule) pour déléguer."
+            title={t('users.empty.title')}
+            description={t('users.empty.description')}
           />
         }
       >
         {isLoading ? (
           <div className="px-6 py-8">
-            <Text className="text-ui-fg-subtle">Chargement…</Text>
+            <Text className="text-ui-fg-subtle">{t('users.loading')}</Text>
           </div>
         ) : (
           users?.map((u) => {
@@ -114,11 +116,11 @@ export function UsersPage() {
                       </Text>
                       {isSelf && (
                         <Badge size="2xsmall" color="green">
-                          vous
+                          {t('users.badge.you')}
                         </Badge>
                       )}
                       {u.mfaEnabled && (
-                        <span title="MFA activée">
+                        <span title={t('users.badge.mfaEnabled')}>
                           <ShieldCheck className="text-ui-tag-green-icon" />
                         </span>
                       )}
@@ -134,7 +136,7 @@ export function UsersPage() {
                       actions: (["owner", "operator", "viewer"] as const)
                         .filter((r) => r !== u.role)
                         .map((r) => ({
-                          label: `Définir ${r}`,
+                          label: t('users.actions.setRole', { role: r }),
                           icon: <ShieldCheck />,
                           onClick: () => roleMut.mutate({ id: u.id, role: r }),
                         })),
@@ -142,7 +144,7 @@ export function UsersPage() {
                     {
                       actions: [
                         {
-                          label: "Supprimer",
+                          label: t('users.actions.delete'),
                           icon: <Trash />,
                           variant: "danger" as const,
                           disabled: isSelf,
@@ -161,55 +163,55 @@ export function UsersPage() {
       <FocusModal open={open} onOpenChange={setOpen}>
         <FocusModal.Content>
           <FocusModal.Header>
-            <Heading>Nouvel utilisateur</Heading>
+            <Heading>{t('users.createModal.title')}</Heading>
           </FocusModal.Header>
           <FocusModal.Body className="overflow-y-auto">
             <ModalForm onSubmit={() => canSubmit && createMut.mutate()}>
               <div>
-                <Label size="small">Email</Label>
+                <Label size="small">{t('users.createModal.emailLabel')}</Label>
                 <Input
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="employe@bozando.com"
+                  placeholder={t('users.createModal.emailPlaceholder')}
                   autoComplete="off"
                   autoFocus
                 />
               </div>
               <div>
-                <Label size="small">Mot de passe initial</Label>
+                <Label size="small">{t('users.createModal.passwordLabel')}</Label>
                 <Input
                   type="password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  placeholder="8 caractères minimum"
+                  placeholder={t('users.createModal.passwordPlaceholder')}
                   autoComplete="new-password"
                 />
                 <Text size="xsmall" className="mt-1 text-ui-fg-muted">
-                  L'utilisateur pourra le changer dans Paramètres et activer la MFA.
+                  {t('users.createModal.passwordHint')}
                 </Text>
               </div>
               <div>
-                <Label size="small">Rôle</Label>
+                <Label size="small">{t('users.createModal.roleLabel')}</Label>
                 <Select value={role} onValueChange={(v) => setRole(v as "operator" | "viewer")}>
                   <Select.Trigger>
                     <Select.Value />
                   </Select.Trigger>
                   <Select.Content>
-                    <Select.Item value="viewer">viewer — lecture seule</Select.Item>
-                    <Select.Item value="operator">operator — peut déployer/détruire</Select.Item>
+                    <Select.Item value="viewer">{t('users.createModal.roleViewer')}</Select.Item>
+                    <Select.Item value="operator">{t('users.createModal.roleOperator')}</Select.Item>
                   </Select.Content>
                 </Select>
                 <Text size="xsmall" className="mt-1 text-ui-fg-muted">
-                  La promotion en owner se fait après coup, explicitement, depuis la liste.
+                  {t('users.createModal.roleHint')}
                 </Text>
               </div>
               <div className="mt-2 flex justify-end gap-2">
                 <Button variant="secondary" type="button" onClick={() => setOpen(false)}>
-                  Annuler
+                  {t('users.actions.cancel')}
                 </Button>
                 <Button type="submit" isLoading={createMut.isPending} disabled={!canSubmit}>
-                  Créer le compte
+                  {t('users.actions.create')}
                 </Button>
               </div>
             </ModalForm>

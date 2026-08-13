@@ -30,6 +30,7 @@ import { Inspector } from "../canvas/Inspector"
 import { EdgeInspector } from "../canvas/EdgeInspector"
 import { DeployPlanModal } from "../canvas/DeployPlanModal"
 import { nodeDeployState, gatewayState } from "../canvas/validate"
+import { useTranslation } from "react-i18next"
 
 /** Mappe la nature d'un lien persisté (edge.kind) sur l'id du handle correspondant. */
 const KIND_TO_HANDLE: Record<string, string> = {
@@ -58,6 +59,7 @@ const DEFAULT_CONFIG: Record<NodeType, Record<string, unknown>> = {
 }
 
 function CanvasInner({ projectId }: { projectId: string }) {
+  const { t } = useTranslation()
   const qc = useQueryClient()
   const navigate = useNavigate()
   const prompt = usePrompt()

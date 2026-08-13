@@ -1,22 +1,28 @@
 import i18n from 'i18next';
 import { initReactI18next } from 'react-i18next';
 
-import translationFR from './locales/fr.json';
-import translationEN from './locales/en.json';
+import fr from './locales/fr.json';
+import en from './locales/en.json';
 
 const resources = {
-  fr: { translation: translationFR },
-  en: { translation: translationEN }
+  fr: { translation: fr },
+  en: { translation: en }
 };
+
+const LANGUAGE_KEY = "user-language";
+
+// Récupérer la langue de l'utilisateur à partir du localStorage
+const userLanguage = localStorage.getItem(LANGUAGE_KEY) || 'en';
+
 
 i18n
   .use(initReactI18next)
   .init({
     resources,
-    lng: 'fr', // Langue par défaut
-    fallbackLng: 'en', // Langue de secours si une clé manque
+    lng: userLanguage,
+    fallbackLng: 'fr',
     interpolation: {
-      escapeValue: false, // React protège déjà contre les failles XSS
+      escapeValue: false, 
     }
   });
 

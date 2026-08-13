@@ -1,8 +1,10 @@
 import { useState } from "react"
 import { Button, Container, Heading, Input, Label, Text } from "@medusajs/ui"
 import { useMe } from "../lib/useMe"
+import { useTranslation } from "react-i18next"
 
 export function SetupDomainPage() {
+  const { t } = useTranslation()
   const { isLoading } = useMe()
   const [domain, setDomain] = useState("")
   const [saved, setSaved] = useState(false)
@@ -10,7 +12,7 @@ export function SetupDomainPage() {
   if (isLoading) {
     return (
       <div className="flex h-full items-center justify-center bg-ui-bg-subtle">
-        <Text className="text-ui-fg-subtle">Chargement…</Text>
+        <Text className="text-ui-fg-subtle">{t('setupDomain.loading')}</Text>
       </div>
     )
   }
@@ -21,23 +23,22 @@ export function SetupDomainPage() {
     <div className="flex h-full items-center justify-center bg-ui-bg-subtle px-4 py-8">
       <Container className="w-full max-w-md p-6">
         <Heading level="h1" className="mb-3">
-          Configure ton domaine
+          {t('setupDomain.title')}
         </Heading>
         <Text className="text-ui-fg-subtle mb-6">
-          Indique le domaine public que tu veux utiliser pour accéder à ton
-          instance hullbay.
+          {t('setupDomain.description')}
         </Text>
 
         <div className="flex flex-col gap-4">
           <div>
-            <Label size="small">Domaine public</Label>
+            <Label size="small">{t('setupDomain.domainLabel')}</Label>
             <Input
               value={domain}
               onChange={(e) => {
                 setDomain(e.target.value)
                 setSaved(false)
               }}
-              placeholder="ops.exemple.com"
+              placeholder={t('setupDomain.domainPlaceholder')}
             />
           </div>
           <Button
@@ -45,11 +46,11 @@ export function SetupDomainPage() {
             disabled={!canSubmit}
             className="self-start"
           >
-            Enregistrer le domaine
+            {t('setupDomain.submitButton')}
           </Button>
           {saved && (
             <Text size="small" className="text-ui-fg-success">
-              Domaine prêt à être envoyé au backend.
+              {t('setupDomain.successMessage')}
             </Text>
           )}
         </div>

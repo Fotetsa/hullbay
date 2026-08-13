@@ -3,14 +3,14 @@ import { useNavigate } from "react-router-dom"
 import { Button, Container, Heading, Input, Label, Text, toast } from "@medusajs/ui"
 import { ShieldCheck } from "@medusajs/icons"
 import { api, auth } from "../lib/api"
+import { useTranslation } from 'react-i18next'
 
 /**
  * Écran d'amorçage (installation neuve) : crée le 1er compte owner quand aucun
- * utilisateur n'existe encore. Sans cet écran, un déploiement neuf restait bloqué
- * sur le login sans aucun moyen de créer un compte depuis l'UI (il fallait curler).
- * Après création, on connecte directement l'owner.
+ * utilisateur n'existe encore.
  */
 export function BootstrapPage({ onAuthed }: { onAuthed: () => void }) {
+  const { t } = useTranslation()
   const navigate = useNavigate()
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
@@ -25,19 +25,17 @@ export function BootstrapPage({ onAuthed }: { onAuthed: () => void }) {
     setLoading(true)
     try {
       await api.bootstrap(email, password)
-      // Connexion immédiate (pas de MFA encore : on l'activera dans Paramètres).
       const res = await api.login(email, password)
       if (res.token) {
         auth.set(res.token)
         onAuthed()
         navigate("/", { replace: true })
       } else {
-        // Cas improbable juste après création, mais on retombe proprement sur le login.
-        toast.success("Compte créé", { description: "Connecte-toi." })
+        toast.success(t('bootstrap.toast.accountCreated'), { description: t('bootstrap.toast.pleaseLogin') })
         navigate("/login", { replace: true })
       }
     } catch (e) {
-      toast.error("Création impossible", { description: (e as Error).message })
+      toast.error(t('bootstrap.toast.creationFailed'), { description: (e as Error).message })
     } finally {
       setLoading(false)
     }
@@ -48,12 +46,10 @@ export function BootstrapPage({ onAuthed }: { onAuthed: () => void }) {
       <Container className="w-[440px] p-6">
         <div className="mb-1 flex items-center gap-2">
           <ShieldCheck />
-          <Heading level="h1">Bienvenue sur hullbay</Heading>
+          <Heading level="h1">{t('bootstrap.title')}</Heading>
         </div>
         <Text className="mb-6 text-ui-fg-subtle">
-          Aucun compte n'existe encore. Crée le compte administrateur (owner) qui
-          pilotera l'infrastructure. Tu pourras ensuite déléguer un accès limité à un
-          employé et activer la double authentification.
+          {t('bootstrap.description')}
         </Text>
 
         <form
@@ -64,32 +60,32 @@ export function BootstrapPage({ onAuthed }: { onAuthed: () => void }) {
           }}
         >
           <div>
-            <Label size="small">Email</Label>
+            <Label size="small">{t('bootstrap.emailLabel')}</Label>
             <Input
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              placeholder="owner@bozando.com"
+              placeholder={t('bootstrap.emailPlaceholder')}
               autoComplete="username"
             />
           </div>
           <div>
-            <Label size="small">Mot de passe</Label>
+            <Label size="small">{t('bootstrap.passwordLabel')}</Label>
             <Input
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               autoComplete="new-password"
-              placeholder="8 caractères minimum"
+              placeholder={t('bootstrap.passwordPlaceholder')}
             />
             {tooShort && (
               <Text size="xsmall" className="mt-1 text-ui-fg-error">
-                Au moins 8 caractères.
+                {t('bootstrap.minCharsError')}
               </Text>
             )}
           </div>
           <div>
-            <Label size="small">Confirmer le mot de passe</Label>
+            <Label size="small">{t('bootstrap.confirmPasswordLabel')}</Label>
             <Input
               type="password"
               value={confirm}
@@ -98,12 +94,12 @@ export function BootstrapPage({ onAuthed }: { onAuthed: () => void }) {
             />
             {mismatch && (
               <Text size="xsmall" className="mt-1 text-ui-fg-error">
-                Les mots de passe ne correspondent pas.
+                {t('bootstrap.mismatchError')}
               </Text>
             )}
           </div>
           <Button type="submit" isLoading={loading} disabled={!canSubmit} className="mt-2">
-            Créer le compte administrateur
+            {t('bootstrap.submitButton')}
           </Button>
         </form>
       </Container>

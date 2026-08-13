@@ -1,9 +1,10 @@
-import { useEffect, useState } from "react"
+import { useState } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { Button, Container, Heading, Input, Label, Text } from "@medusajs/ui"
 import { api } from "../lib/api"
 import { useMutationToast } from "../lib/useMutationToast"
 import { PageHeader, PageContainer } from "../components/PageHeader"
+import { useTranslation } from "react-i18next"
 
 /**
  * Page Paramètres utilisateur : profil + activation de la MFA (TOTP).
@@ -11,6 +12,7 @@ import { PageHeader, PageContainer } from "../components/PageHeader"
  * d'authentification (saisie du secret), puis confirme avec un 1er code.
  */
 export function SettingsPage() {
+  const { t } = useTranslation()
   const { data: me } = useQuery({ queryKey: ["me"], queryFn: api.me })
 
   const [currentPassword, setCurrentPassword] = useState("")
@@ -19,7 +21,7 @@ export function SettingsPage() {
 
   const changePw = useMutationToast({
     mutationFn: () => api.changePassword(currentPassword, newPassword),
-    success: "Mot de passe modifié",
+    success: t('settings.toast.passwordChanged'),
     onSuccess: () => {
       setCurrentPassword("")
       setNewPassword("")
@@ -36,20 +38,20 @@ export function SettingsPage() {
 
   return (
     <PageContainer size="2xl">
-      <PageHeader title="Paramètres" />
+      <PageHeader title={t('settings.pageTitle')} />
 
       {/* Profil */}
       <Container className="mb-4 p-6">
         <Heading level="h3" className="mb-3">
-          Compte
+          {t('settings.account.title')}
         </Heading>
         <div className="flex flex-col gap-2">
           <div>
-            <Label size="small">Email</Label>
+            <Label size="small">{t('settings.account.emailLabel')}</Label>
             <Text>{me?.email ?? "…"}</Text>
           </div>
           <div>
-            <Label size="small">Rôle</Label>
+            <Label size="small">{t('settings.account.roleLabel')}</Label>
             <Text className="capitalize">{me?.role ?? "…"}</Text>
           </div>
         </div>
@@ -58,11 +60,11 @@ export function SettingsPage() {
       {/* Mot de passe */}
       <Container className="mb-4 p-6">
         <Heading level="h3" className="mb-3">
-          Mot de passe
+          {t('settings.password.title')}
         </Heading>
         <div className="flex flex-col gap-3">
           <div>
-            <Label size="small">Mot de passe actuel</Label>
+            <Label size="small">{t('settings.password.currentLabel')}</Label>
             <Input
               type="password"
               value={currentPassword}
@@ -71,22 +73,22 @@ export function SettingsPage() {
             />
           </div>
           <div>
-            <Label size="small">Nouveau mot de passe</Label>
+            <Label size="small">{t('settings.password.newLabel')}</Label>
             <Input
               type="password"
               value={newPassword}
               onChange={(e) => setNewPassword(e.target.value)}
               autoComplete="new-password"
-              placeholder="8 caractères minimum"
+              placeholder={t('settings.password.newPlaceholder')}
             />
             {pwTooShort && (
               <Text size="xsmall" className="mt-1 text-ui-fg-error">
-                Au moins 8 caractères.
+                {t('settings.password.tooShortError')}
               </Text>
             )}
           </div>
           <div>
-            <Label size="small">Confirmer le nouveau mot de passe</Label>
+            <Label size="small">{t('settings.password.confirmLabel')}</Label>
             <Input
               type="password"
               value={confirmPassword}
@@ -95,7 +97,7 @@ export function SettingsPage() {
             />
             {pwMismatch && (
               <Text size="xsmall" className="mt-1 text-ui-fg-error">
-                Les mots de passe ne correspondent pas.
+                {t('settings.password.mismatchError')}
               </Text>
             )}
           </div>
@@ -105,11 +107,10 @@ export function SettingsPage() {
             disabled={!canSubmitPw}
             className="self-start"
           >
-            Changer le mot de passe
+            {t('settings.password.submitButton')}
           </Button>
         </div>
       </Container>
-
     </PageContainer>
   )
 }
