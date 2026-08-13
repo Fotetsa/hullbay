@@ -1,32 +1,16 @@
-# Mise à niveau vers le multi-cluster
+## Sécurité — ports d'administration (Docker API, Caddy admin)
 
-## Ce qui change
-Un nouveau modèle `Cluster` apparaît. Toute installation existante reçoit
-automatiquement un cluster "Default", créé pendant la migration, qui reprend
-exactement la configuration réseau déjà en place (`tcp://socket-proxy:2375`,
-`http://caddy:2019`) — aucune action requise pour continuer à fonctionner
-comme avant.
+Les ports d'administration (2375 pour Docker, 2019 pour Caddy) ne sont
+**jamais exposés publiquement**, quel que soit l'état du pare-feu du serveur.
+Ils sont bindés sur `127.0.0.1` du serveur distant dès le déploiement, et
+hullbay y accède exclusivement via un tunnel SSH, en réutilisant la clé de
+maintenance posée pendant le provisioning.
 
-## Si la migration échoue
-1. Vérifie les logs : `docker compose logs api | grep -i migrat`
-2. Le cluster "Default" est auto-créé au premier démarrage même si la
-   migration a été appliquée avant ce correctif (voir `getDefaultCluster()`)
-3. En dernier recours, restaure ta sauvegarde `.env` et la base Postgres
-   depuis un backup antérieur à la mise à jour
+Aucune action manuelle n'est requise de ta part pour sécuriser ces ports.
 
-## Sécurité — nouveaux ports exposés lors de l'ajout d'un cluster
-Ajouter un nouveau serveur qui devient le manager d'un nouveau cluster expose
-deux ports sur ce serveur : **2375** (Docker API) et **2019** (Caddy admin).
-Tu DOIS restreindre ces ports à l'IP de ton serveur hullbay :
-
-```bash
-ssh <user>@<ip-du-nouveau-manager>
-sudo ufw allow 22
-sudo ufw allow from <IP_HULLBAY> to any port 2375 proto tcp
-sudo ufw allow from <IP_HULLBAY> to any port 2019 proto tcp
-sudo ufw --force enable
-```
-
-Sur un fournisseur cloud (AWS, GCP, Azure, OVH), configure **aussi** le
-Security Group / pare-feu réseau du fournisseur — un pare-feu OS seul ne
-suffit pas sur ces plateformes.
+**Limite connue** : les tunnels SSH sont ouverts à la demande et gardés en
+mémoire du processus API. Un redémarrage de l'API ferme tous les tunnels ;
+ils se rouvrent automatiquement au prochain appel vers ce cluster (léger
+délai, invisible en usage normal). Si le manager distant devient injoignable
+en SSH, ce cluster devient temporairement inaccessible à l'administration —
+comportement voulu (voir section sécurité).

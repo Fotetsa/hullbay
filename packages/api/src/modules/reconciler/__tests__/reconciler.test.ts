@@ -111,7 +111,6 @@ describe("POST /api/rebuild-from-docker", () => {
     });
 
     expect(response.statusCode).toBe(200);
-    console.log(response.json())
     expect(response.json()).toEqual({ ok: true, ...mockResult });
     expect(rebuildModule.rebuildFromDocker).toHaveBeenCalledTimes(1);
   });
@@ -130,7 +129,6 @@ describe("POST /api/rebuild-from-docker", () => {
       headers: { authorization: `Bearer ${mockOwnerToken}` },
     });
 
-    console.log(response.json());
 
     expect(response.statusCode).toBe(200);
     const body = response.json();

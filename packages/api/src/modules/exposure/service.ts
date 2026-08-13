@@ -1,6 +1,10 @@
 import type { GatewayConfig } from "@hullbay/shared"
-import { caddyAdmin, resolveServerName } from "../../lib/caddy-admin"
-import { prisma } from "../../lib/prisma"
+import {
+  caddyAdmin,
+  resolveServerName,
+  getAdminUrlForCluster,
+} from "../../lib/caddy-admin";
+
 
 /**
  * Module exposure : pilote le reverse proxy Caddy via son API d'admin pour
@@ -16,10 +20,10 @@ function routeId(projectSlug: string, nodeName: string): string {
   return `boz-${projectSlug}-${nodeName}`
 }
 
-async function adminUrlForCluster(clusterId: string): Promise<string> {
-  const cluster = await prisma.cluster.findUniqueOrThrow({ where: { id: clusterId } })
-  return cluster.caddyAdminUrl;
-}
+// async function adminUrlForCluster(clusterId: string): Promise<string> {
+//   const cluster = await prisma.cluster.findUniqueOrThrow({ where: { id: clusterId } })
+//   return cluster.caddyAdminUrl;
+// }
 
 export class ExposureService {
   /**
@@ -67,7 +71,7 @@ export class ExposureService {
     config: GatewayConfig,
     upstreamHost: string
   ): Promise<void> {
-    const adminUrl = await adminUrlForCluster(clusterId)
+    const adminUrl = await getAdminUrlForCluster(clusterId);
     const id = routeId(projectSlug, nodeName)
     const route = {
       "@id": id,
@@ -99,7 +103,7 @@ export class ExposureService {
 
   /** Supprime une route Caddy par son @id. Tolérant si absente. */
   async deleteRoute(clusterId: string, projectSlug: string, nodeName: string): Promise<void> {
-    const adminUrl = await adminUrlForCluster(clusterId)
+    const adminUrl = await getAdminUrlForCluster(clusterId);
     const id = routeId(projectSlug, nodeName)
     await caddyAdmin(adminUrl, `/id/${id}`, "DELETE")
   }

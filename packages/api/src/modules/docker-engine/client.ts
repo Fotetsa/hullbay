@@ -1,5 +1,6 @@
 import Docker from "dockerode"
 import { prisma } from "../../lib/prisma"
+import { ensureTunnel } from "../../lib/ssh-tunnel"
 
 /**
  * Connexion à l'API Docker Engine.
@@ -31,6 +32,18 @@ function parseDockerHost(value: string): { host: string; port: number } | null {
   }
 }
 
+async function resolveConnectionParams(cluster: {
+  id: string;
+  isDefault: boolean;
+  dockerHost: string;
+}): Promise<{ host: string; port: number } | null> {
+  const parsed = parseDockerHost(cluster.dockerHost);
+  if (cluster.isDefault) return parsed;
+  const remotePort = parsed?.port ?? 2375;
+  const localPort = await ensureTunnel(cluster.id, remotePort);
+  return { host: "127.0.0.1", port: localPort };
+}
+
 function buildClient(dockerHost: string | undefined): Docker {
   const tcp = dockerHost ? parseDockerHost(dockerHost) : null
   return tcp ? new Docker(tcp) : new Docker({ socketPath: DOCKER_SOCKET_PATH}) 
@@ -44,7 +57,8 @@ export async function getDockerForCluster(clusterId: string): Promise<Docker> {
   const cached = registry.get(clusterId)
   if (cached) return cached
   const cluster = await prisma.cluster.findUniqueOrThrow({ where: { id: clusterId } })
-  const client = buildClient(cluster.dockerHost)
+  const params = await resolveConnectionParams(cluster)
+  const client = params ? new Docker (params) : new Docker ({ socketPath: DOCKER_SOCKET_PATH})
   registry.set(clusterId, client)
   return client
 }

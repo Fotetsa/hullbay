@@ -48,6 +48,20 @@ vi.mock("../../auth/service", () => ({
   authService: { verifyToken: vi.fn() },
 }));
 
+import { prisma } from "../../../lib/prisma";
+
+vi.mock("../../../lib/prisma", () => ({
+  prisma: {
+    cluster: {
+      findUnique: vi.fn(),
+      delete: vi.fn(),
+    },
+    server: {
+      count: vi.fn(),
+    },
+  },
+}));
+
 const mockOwnerToken = "mock_owner_token";
 const mockOperatorToken = "mock_operator_token";
 const mockViewerToken = "mock_viewer_token";
@@ -208,4 +222,54 @@ describe("GET /api/servers", () => {
 
     expect(response.statusCode).toBe(403);
   });
+
+  describe("DELETE /api/clusters/:id", () => {
+    it("devrait supprimer un cluster failed", async () => {
+      vi.mocked(prisma.cluster.findUnique).mockResolvedValue({
+        id: "c1",
+        status: "failed",
+      } as any);
+      vi.mocked(prisma.server.count).mockResolvedValue(1);
+      vi.mocked(prisma.cluster.delete).mockResolvedValue({} as any);
+
+      const response = await app.inject({
+        method: "DELETE",
+        url: "/api/clusters/c1",
+        headers: { authorization: `Bearer ${mockOwnerToken}` },
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toEqual({ ok: true, removedServers: 1 });
+    });
+
+    it("devrait refuser de supprimer un cluster ready (409)", async () => {
+      vi.mocked(prisma.cluster.findUnique).mockResolvedValue({
+        id: "c1",
+        status: "ready",
+      } as any);
+
+      const response = await app.inject({
+        method: "DELETE",
+        url: "/api/clusters/c1",
+        headers: { authorization: `Bearer ${mockOwnerToken}` },
+      });
+
+      expect(response.statusCode).toBe(409);
+      expect(prisma.cluster.delete).not.toHaveBeenCalled();
+    });
+
+    it("devrait retourner 404 si le cluster n'existe pas", async () => {
+      vi.mocked(prisma.cluster.findUnique).mockResolvedValue(null);
+
+      const response = await app.inject({
+        method: "DELETE",
+        url: "/api/clusters/inconnu",
+        headers: { authorization: `Bearer ${mockOwnerToken}` },
+      });
+
+      expect(response.statusCode).toBe(404);
+    });
+  });
 });
+
+

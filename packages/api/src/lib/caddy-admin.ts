@@ -1,6 +1,8 @@
 import { request as httpRequest } from "node:http";
 import { request as httpsRequest } from "node:https";
 import { getDefaultCluster } from "../modules/docker-engine/client";
+import { ensureTunnel } from "./ssh-tunnel";
+import { prisma } from "./prisma";
 
 /**
  * Client HTTP partagé vers l'API admin Caddy (http://caddy:2019), utilise par
@@ -17,6 +19,14 @@ export async function getSystemAdminUrl(): Promise<string> {
   return (await getDefaultCluster()).caddyAdminUrl
 }
 
+export async function getAdminUrlForCluster(clusterId: string): Promise<string> {
+  const cluster = await prisma.cluster.findUniqueOrThrow({ where: { id: clusterId } })
+  if (cluster.isDefault) return cluster.caddyAdminUrl
+  const remote = new URL(cluster.caddyAdminUrl)
+  const remotePort = Number(remote.port || 2019)
+  const localPort = await ensureTunnel(clusterId, remotePort)
+  return `http://127.0.0.1:${localPort}`
+}
 
 /** Forme partielle de la config http renvoyée par l'admin Caddy. */
 export type CaddyServers = Record<
@@ -29,7 +39,7 @@ export type CaddyServers = Record<
 >;
 
 export type AdminResponse = { ok: boolean; status: number; body: string };
-
+  
 /**
  * Appel à l'API d'admin Caddy via le module `http` natif de Node (PAS `fetch`).
  *
