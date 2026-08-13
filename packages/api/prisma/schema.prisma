@@ -147,6 +147,7 @@ model Cluster {
   dockerHost    String
   caddyAdminUrl String
   isDefault     Boolean @default(false)
+  status        String   @default("pending")
   servers       Server[]
   projects      Project[]
   createdAt     DateTime @default(now())

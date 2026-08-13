@@ -27,17 +27,19 @@ export interface ProvisionInput {
   role: "manager" | "worker"
   credential: SshCredential // PERSO — mémoire seule
   clusterId: string
+  isNewCluster: boolean
 }
 
 type ProvShared = {
-  session?: SshSession
-  hostKeyFp?: string
-  toolPublicKey?: string
-  toolPrivateKeyEnc?: string
-  swarmNodeId?: string
-  engine?: DockerEngineService
-  hadExistingSwarm?: boolean
-}
+  session?: SshSession;
+  hostKeyFp?: string;
+  toolPublicKey?: string;
+  toolPrivateKeyEnc?: string;
+  swarmNodeId?: string;
+  engine?: DockerEngineService;
+  hadExistingSwarm?: boolean;
+  isNewCluster?: boolean;
+};
 
 
 
@@ -50,6 +52,7 @@ const connectStep: Step<ProvisionInput> = {
   name: "connect",
   run: async (input, ctx) => {
     const s = ctx.shared as ProvShared
+    s.isNewCluster = input.isNewCluster
     s.engine = await DockerEngineService.forCluster(input.clusterId)
     log(input.serverId, "Connexion SSH…")
     s.session = await SshSession.connect({
@@ -123,14 +126,14 @@ const swarmJoinStep: Step<ProvisionInput> = {
   },
 }
 
-const finalizeClusterStep: Step<ProvisionInput> = {
+export const finalizeClusterStep: Step<ProvisionInput> = {
   name: "finalize-cluster",
   run: async (input, ctx) => {
     const s = ctx.shared as ProvShared
-    if (input.role === "manager" && !s.hadExistingSwarm) {
+    if (s.isNewCluster) {
       await prisma.cluster.update({
         where: { id: input.clusterId },
-        data: { dockerHost: `tcp://${input.host}:2375`, caddyAdminUrl: `htpp://${input.host}:2019`},
+        data: { dockerHost: `tcp://${input.host}:2375`, caddyAdminUrl: `http://${input.host}:2019`, status: "ready"},
       })
     }
   },
@@ -218,13 +221,23 @@ export async function provisionServerWorkflow(input: ProvisionInput): Promise<vo
         installToolKeyStep,
         persistStep,
       ],
-      input, {}, shared as unknown as Record<string, unknown>
-    )
+      input,
+      {},
+      shared as unknown as Record<string, unknown>,
+    );
     if (!result.ok) {
       await serversService.update(input.serverId, {
         status: "error",
         lastError: result.error ?? "échec provisioning",
       })
+      if (input.isNewCluster) {
+        await prisma.cluster
+          .update({
+            where: { id: input.clusterId },
+            data: { status: "failed" },
+          })
+          .catch(() => {});
+      }
       await eventBus.emit("provision.step", {
         serverId: input.serverId,
         message: `Échec : ${result.error}`,
@@ -272,7 +285,7 @@ const deploySocketProxyStep: Step<ProvisionInput> = {
       "-e NODES=1 -e NETWORKS=1 -e SWARM=1 -e IMAGES=1 -e VOLUMES=1 -e SECRETS=1 -e POST=1",
       "-e EXEC=0 -e CONTAINERS=0 -e ALLOW_RESTARTS=0",
       "-v /var/run/docker.sock:/var/run/docker.sock:ro",
-      `-p ${shellQuote(input.host)}:2375:2375`,
+      `-p 127.0.0.1:2375:2375`,
       "tecnativa/docker-socket-proxy:latest",
     ].join(" ");
 
@@ -280,7 +293,7 @@ const deploySocketProxyStep: Step<ProvisionInput> = {
     if (res.code !== 0)
       throw new Error(`socket-proxy: ${res.stderr || res.stdout}`);
 
-    log(input.serverId, "socket-proxy démarré.");
+    //log(input.serverId, "socket-proxy démarré.");
     log(
       input.serverId,
       `SÉCURITÉ CRITIQUE : le port 2375 (Docker API) est exposé sur ${input.host}. ` +
@@ -324,7 +337,7 @@ const deployCaddyStep: Step<ProvisionInput> = {
       "-p 80:80 -p 443:443",
       // Admin bindé sur l'IP du serveur, pas 0.0.0.0 — même logique que le
       // socket-proxy (à compléter par pare-feu, IP hullbay uniquement).
-      `-p ${shellQuote(input.host)}:2019:2019`,
+      `-p 127.0.0.1:2019:2019`,
       "-v /opt/hullbay-caddy/Caddyfile:/etc/caddy/Caddyfile:ro",
       "-v hullbay_caddy_data:/data",
       "caddy:2-alpine",

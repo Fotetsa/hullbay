@@ -1,5 +1,6 @@
 import { Client } from "ssh2"
 import { createHash } from "node:crypto"
+import type { Duplex } from "node:stream";
 
 /**
  * Wrapper SSH (ssh2) pour le provisioning one-shot des serveurs.
@@ -81,6 +82,20 @@ export class SshSession {
     })
   }
 
+  /**
+   *  Ouverture d'un canal "direct-tcpip" vers dtsHost:dstHost:dstPort depuis le serveur distant
+   * @param dstHost 
+   * @param dstPort 
+   * @returns 
+   */
+  forwardOut(dstHost: string, dstPort: number): Promise<Duplex> {
+    return new Promise((resolve, reject) => {
+      this.client.forwardOut("127.0.0.1", 0, dstHost, dstPort, (err, Stream) => {
+        if (err) return reject(new Error(`SSH forwardOut: ${err.message}`))
+        resolve(Stream)
+      })
+    })
+  }
   /**
    * Ajoute une clé publique aux authorized_keys du user distant (idempotent :
    * n'ajoute pas si déjà présente). Sécurité : la clé publique n'est pas un secret.

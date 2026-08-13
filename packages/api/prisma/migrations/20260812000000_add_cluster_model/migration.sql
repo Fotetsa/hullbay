@@ -5,6 +5,7 @@ CREATE TABLE "Cluster" (
     "dockerHost" TEXT NOT NULL,
     "caddyAdminUrl" TEXT NOT NULL,
     "isDefault" BOOLEAN NOT NULL DEFAULT false,
+    "status" TEXT NOT NULL DEFAULT 'pending',
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
     CONSTRAINT "Cluster_pkey" PRIMARY KEY ("id")
