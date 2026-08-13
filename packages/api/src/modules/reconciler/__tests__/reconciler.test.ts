@@ -1,23 +1,45 @@
-import { describe, it, expect, beforeAll, afterAll, beforeEach, vi, } from "vitest";
+import {
+  describe,
+  it,
+  expect,
+  beforeAll,
+  afterAll,
+  beforeEach,
+  vi,
+} from "vitest";
 import { buildTestApp } from "../../../__tests__/helpers/build-test-app";
 import { registerReconcilerRoutes } from "../routes";
 import { registerAuthGuard } from "../../auth/routes";
 import { authService } from "../../auth/service";
 import * as rebuildModule from "../rebuild";
+import { prisma } from "../../../lib/prisma";
 
-
+// 1. Mock du module de rebuild
 vi.mock("../rebuild", () => ({
   rebuildFromDocker: vi.fn(),
 }));
 
+// 2. Mock du service de réconciliation
 vi.mock("../service", () => ({
-    ReconcilerService: class {
-        reconcile = vi.fn();
-    }
+  ReconcilerService: class {
+    reconcile = vi.fn();
+  },
 }));
 
+// 3. Mock du service d'authentification
 vi.mock("../../auth/service", () => ({
   authService: { verifyToken: vi.fn() },
+}));
+
+vi.mock("../../../lib/prisma", () => ({
+  prisma: {
+    cluster: {
+      deleteMany: vi.fn(),
+      create: vi.fn(),
+      findFirstOrThrow: vi.fn(),
+      findMany: vi.fn(),
+    },
+  },
 }));
 
 const mockOwnerToken = "mock_owner_token";
@@ -42,20 +64,45 @@ describe("POST /api/rebuild-from-docker", () => {
     if (app) await app.close();
   });
 
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.clearAllMocks();
+
+    vi.mocked(prisma.cluster.deleteMany).mockResolvedValue({ count: 1 } as any);
+
+    const mockCluster = {
+      id: "mock-cluster-id",
+      name: "Test Cluster",
+      dockerHost: "local",
+      caddyAdminUrl: "http://localhost:2019",
+      isDefault: true,
+    };
+
+    vi.mocked(prisma.cluster.create).mockResolvedValue(mockCluster as any);
+    vi.mocked(prisma.cluster.findFirstOrThrow).mockResolvedValue(
+      mockCluster as any,
+    );
+    vi.mocked(prisma.cluster.findMany).mockResolvedValue([
+      { id: "mock-cluster-id" },
+    ] as any);
+
     vi.mocked(authService.verifyToken).mockImplementation((token: string) => {
-      if (token === mockOwnerToken) return { sub: "owner-id", role: "owner", mfaEnabled: true };
-      if (token === mockOperatorToken) return { sub: "operator-id", role: "operator", mfaEnabled: true };
-      if (token === mockViewerToken) return { sub: "viewer-id", role: "viewer", mfaEnabled: true };
-      if (token === mockNoMfaToken) return { sub: "no-mfa-id", role: "operator", mfaEnabled: false };
+      if (token === mockOwnerToken)
+        return { sub: "owner-id", role: "owner", mfaEnabled: true };
+      if (token === mockOperatorToken)
+        return { sub: "operator-id", role: "operator", mfaEnabled: true };
+      if (token === mockViewerToken)
+        return { sub: "viewer-id", role: "viewer", mfaEnabled: true };
+      if (token === mockNoMfaToken)
+        return { sub: "no-mfa-id", role: "operator", mfaEnabled: false };
       throw new Error("Token invalide");
     });
   });
-    
+
   it("devrait reconstruire depuis Docker avec un token operator", async () => {
-    const mockResult = { rebuilt: 3, errors: 0 };
-    vi.mocked(rebuildModule.rebuildFromDocker).mockResolvedValue(mockResult as any);
+    const mockResult = { projects: 3, nodes: 5, edges: 2, degraded: 0 };
+    vi.mocked(rebuildModule.rebuildFromDocker).mockResolvedValue(
+      mockResult as any,
+    );
 
     const response = await app.inject({
       method: "POST",
@@ -69,7 +116,12 @@ describe("POST /api/rebuild-from-docker", () => {
   });
 
   it("devrait accepter un owner", async () => {
-    vi.mocked(rebuildModule.rebuildFromDocker).mockResolvedValue({} as any);
+    vi.mocked(rebuildModule.rebuildFromDocker).mockResolvedValue({
+      projects: 1,
+      nodes: 1,
+      edges: 0,
+      degraded: 0,
+    } as any);
 
     const response = await app.inject({
       method: "POST",
@@ -77,16 +129,19 @@ describe("POST /api/rebuild-from-docker", () => {
       headers: { authorization: `Bearer ${mockOwnerToken}` },
     });
 
+
     expect(response.statusCode).toBe(200);
-    expect(response.json()).toEqual({ ok: true });
+    const body = response.json();
+    expect(body.ok).toBe(true);
+    expect(body).toHaveProperty("projects");
+    expect(body).toHaveProperty("nodes");
   });
-    
+
   it("devrait retourner 401 sans token", async () => {
     const response = await app.inject({
       method: "POST",
       url: "/api/rebuild-from-docker",
     });
-
     expect(response.statusCode).toBe(401);
   });
 
@@ -96,7 +151,6 @@ describe("POST /api/rebuild-from-docker", () => {
       url: "/api/rebuild-from-docker",
       headers: { authorization: `Bearer ${mockInvalidToken}` },
     });
-
     expect(response.statusCode).toBe(401);
   });
 
@@ -106,7 +160,6 @@ describe("POST /api/rebuild-from-docker", () => {
       url: "/api/rebuild-from-docker",
       headers: { authorization: `Bearer ${mockViewerToken}` },
     });
-
     expect(response.statusCode).toBe(403);
   });
 });

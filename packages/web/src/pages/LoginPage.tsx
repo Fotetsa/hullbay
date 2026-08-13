@@ -45,6 +45,12 @@ export function LoginPage({ onAuthed }: { onAuthed: () => void }) {
       }
     } catch (e) {
       toast.error(t('login.toast.loginFailed'), { description: (e as Error).message })
+      const err = e as Error & { code?: string }
+      if (err.code === "invalid_credentials") {
+        toast.error("Connexion échouée", { description: "Email ou mot de passe incorrect." })
+      } else {
+        toast.error("Connexion échouée", { description: err.message })
+      }
     } finally {
       setLoading(false)
     }
@@ -74,6 +80,12 @@ export function LoginPage({ onAuthed }: { onAuthed: () => void }) {
       navigate("/", { replace: true })
     } catch (e) {
       toast.error(t('login.toast.invalidCode'), { description: (e as Error).message })
+      const err = e as Error & { code?: string }
+      if (err.code === "mfa_code_invalid" || err.code === "mfa_token_invalid") {
+        toast.error("Code invalide", { description: "Le code MFA est incorrect ou expiré." })
+      } else {
+        toast.error("Code invalide", { description: err.message })
+      }
     } finally {
       setLoading(false)
     }
@@ -93,6 +105,12 @@ export function LoginPage({ onAuthed }: { onAuthed: () => void }) {
       navigate("/", { replace: true })
     } catch (e) {
       toast.error(t('login.toast.invalidCode'), { description: (e as Error).message })
+      const err = e as Error & { code?: string }
+      if (err.code === "mfa_code_invalid" || err.code === "mfa_enrollment_missing") {
+        toast.error("Code invalide", { description: "Le code de confirmation MFA est incorrect." })
+      } else {
+        toast.error("Code invalide", { description: err.message })
+      }
     } finally {
       setLoading(false)
     }

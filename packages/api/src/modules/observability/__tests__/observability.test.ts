@@ -1,14 +1,13 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from "vitest";
 import { buildTestApp } from "../../../__tests__/helpers/build-test-app";
-import { observabilityService } from "../service";
 import { registerObservabilityRoutes } from "../routes";
 import { registerAuthGuard } from "../../auth/routes";
 import { authService } from "../../auth/service";
+import { ObservabilityService, systemHealth } from "../service";
 
 vi.mock("../service", () => ({
-  observabilityService: {
-    clusterHealth: vi.fn()
-  },
+  ObservabilityService: { forCluster: vi.fn() },
+  systemHealth: vi.fn(),
 }));
 
 vi.mock("../../auth/service", () => ({
@@ -49,11 +48,14 @@ describe("GET /api/health/cluster", () => {
   });
 
   it("devrait retourner la santé du cluster avec un token valide", async () => {
-    const mockHealth = {
-      nodes: [{ id: "node-1" }],
-      services: [{ id: "svc-1" }],
-    };
-    vi.mocked(observabilityService.clusterHealth).mockResolvedValue(mockHealth as any);
+    const mockHealth = [
+      {
+        swarmActive: true,
+        nodes: [{ id: "node-1" } as any],
+        services: [{ id: "svc-1" } as any],
+      },
+    ];
+    vi.mocked(systemHealth).mockResolvedValue(mockHealth as any);
 
     const response = await app.inject({
       method: "GET",
@@ -62,8 +64,8 @@ describe("GET /api/health/cluster", () => {
     });
 
     expect(response.statusCode).toBe(200);
-    expect(response.json()).toEqual(mockHealth);
-    expect(observabilityService.clusterHealth).toHaveBeenCalledTimes(1);
+    expect(response.json()).toEqual({ clusters: mockHealth });
+    expect(systemHealth).toHaveBeenCalledTimes(1);
   });
 
   it("devrait retourner 401 sans token", async () => {
@@ -86,7 +88,7 @@ describe("GET /api/health/cluster", () => {
   });
 
   it("devrait retourner 500 si le service échoue", async () => {
-    vi.mocked(observabilityService.clusterHealth).mockRejectedValue(
+    vi.mocked(systemHealth).mockRejectedValue(
       new Error("Docker socket inaccessible"),
     );
 

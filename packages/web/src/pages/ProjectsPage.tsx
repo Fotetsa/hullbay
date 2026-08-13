@@ -10,6 +10,7 @@ import {
   Text,
   FocusModal,
   Textarea,
+  Select,
 } from "@medusajs/ui"
 import { Plus, ArrowPath, PencilSquare, Trash, SquaresPlus } from "@medusajs/icons"
 import type { Project } from "@hullbay/shared"
@@ -29,10 +30,12 @@ export function ProjectsPage() {
     queryKey: ["projects"],
     queryFn: api.listProjects,
   })
+  const { data: clusters } = useQuery({ queryKey: ["clusters"], queryFn: api.listClusters})
 
   const [createOpen, setCreateOpen] = useState(false)
   const [name, setName] = useState("")
   const [description, setDescription] = useState("")
+  const [clusterId, setClusterId] = useState("")
 
   // Édition (rename) : on garde le projet en cours d'édition + ses champs.
   const [editing, setEditing] = useState<Project | null>(null)
@@ -42,11 +45,14 @@ export function ProjectsPage() {
   const createMut = useMutationToast({
     mutationFn: () => api.createProject({ name, description: description || undefined }),
     success: t('projects.toast.createSuccess'),
+    mutationFn: () => api.createProject({ name, description: description || undefined, clusterId }),
+    success: "Projet créé",
     invalidate: [["projects"]],
     onSuccess: () => {
       setCreateOpen(false)
       setName("")
       setDescription("")
+      setClusterId("")
     },
   })
 
@@ -81,6 +87,13 @@ export function ProjectsPage() {
     setEditing(p)
     setEditName(p.name)
     setEditDescription(p.description ?? "")
+  }
+
+  //Si un cluster est disponible alors on le pré-selectionne par defaut au moment de l'ouverture
+  function openCreate() {
+    const def = clusters?.find((c) => c.isDefault)
+    setClusterId(def?.id ?? clusters?.[0]?.id ?? "")
+    setCreateOpen(true)
   }
 
   return (
@@ -189,12 +202,44 @@ export function ProjectsPage() {
                   placeholder={t('projects.createModal.descPlaceholder')}
                 />
               </div>
+
+              {/** Selection du cluster */}
+              <div>
+                <Label size="small">Cluster</Label>
+                <Select value={clusterId} onValueChange={setClusterId}>
+                  <Select.Trigger>
+                    <Select.Value placeholder="Choisir un cluster" />
+                  </Select.Trigger>
+                  <Select.Content>
+                    {clusters?.map((c) => (
+                      <Select.Item key={c.id} value={c.id}>
+                        {c.name}
+                        {c.isDefault ? " (défaut)" : ""}
+                      </Select.Item>
+                    ))}
+                  </Select.Content>
+                </Select>
+              </div>
               <div className="mt-2 flex justify-end gap-2">
                 <Button variant="secondary" type="button" onClick={() => setCreateOpen(false)}>
                   {t('projects.actions.cancel')}
                 </Button>
                 <Button type="submit" isLoading={createMut.isPending} disabled={!name.trim()}>
                   {t('projects.actions.create')}
+                </Button>
+                <Button
+                  variant="secondary"
+                  type="button"
+                  onClick={() => setCreateOpen(false)}
+                >
+                  Annuler
+                </Button>
+                <Button
+                  type="submit"
+                  isLoading={createMut.isPending}
+                  disabled={!name.trim() || !clusterId}
+                >
+                  Créer
                 </Button>
               </div>
             </ModalForm>
@@ -216,6 +261,16 @@ export function ProjectsPage() {
                 <Text size="xsmall" className="mt-1 text-ui-fg-muted">
                   {t('projects.editModal.slugHint')}
                 </Text>
+                <Label size="small">Nom</Label>
+                <Input
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                  autoFocus
+                />
+                <Text size="xsmall" className="mt-1 text-ui-fg-muted">
+                  Le slug technique (préfixe des ressources Docker) ne change
+                  pas.
+                </Text>
               </div>
               <div>
                 <Label size="small">{t('projects.editModal.descLabel')}</Label>
@@ -230,6 +285,20 @@ export function ProjectsPage() {
                 </Button>
                 <Button type="submit" isLoading={updateMut.isPending} disabled={!editName.trim()}>
                   {t('projects.actions.save')}
+                </Button>
+                <Button
+                  variant="secondary"
+                  type="button"
+                  onClick={() => setEditing(null)}
+                >
+                  Annuler
+                </Button>
+                <Button
+                  type="submit"
+                  isLoading={updateMut.isPending}
+                  disabled={!editName.trim()}
+                >
+                  Enregistrer
                 </Button>
               </div>
             </ModalForm>

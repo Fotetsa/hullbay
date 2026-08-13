@@ -22,6 +22,9 @@ model Project {
   edges       Edge[]
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+
+  clusterId   String
+  cluster     Cluster @relation(fields: [clusterId], references: [id], onDelete: Cascade)
 }
 
 model Node {
@@ -79,6 +82,7 @@ model User {
   mfaEnabled   Boolean   @default(false)
   createdAt    DateTime  @default(now())
   auditLogs    AuditLog[]
+  updates      SystemUpdate[]
 }
 
 model AuditLog {
@@ -114,6 +118,9 @@ model Server {
   lastError     String?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
+
+  clusterId     String
+  cluster       Cluster @relation(fields: [clusterId], references: [id], onDelete: Cascade)
 }
 
 // ── Credentials de registre Docker (GHCR) — pour pull sur chaque nœud ──
@@ -131,4 +138,60 @@ model Settings {
   id          String @id @default("singleton")
   domain      String?
   updatedAt   DateTime @updatedAt
+}
+
+// ── Cluster Docker swarm (TON TRAVAIL) ──
+model Cluster {
+  id            String @id @default(cuid())
+  name          String @unique
+  dockerHost    String
+  caddyAdminUrl String
+  isDefault     Boolean @default(false)
+  status        String   @default("pending")
+  servers       Server[]
+  projects      Project[]
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+
+// ── Mises à jour du système (instances auto-hébergées, style Coolify) ──
+// SystemInfo : singleton reflétant l'état courant de l'installation.
+// currentVersion est seedé au boot depuis l'env IMAGE_TAG (source de vérité déployée).
+model SystemInfo {
+  id              String    @id @default("singleton")
+  currentVersion  String    @default("unknown")
+  updateChannel   String    @default("stable") // stable | beta
+  lastCheckAt     DateTime?
+  lastCheckResult Json?
+  // Audit des changements de canal : [{ at, from, to }], dernier au début (max 10).
+  channelHistory  Json      @default("[]")
+  updatedAt       DateTime  @updatedAt
+}
+
+// Un historique de mise à jour : une entrée par apply/rollback.
+// steps/logs : JSON array, persistés pour traçabilité post-mortem (le process API
+// meurt pendant l'update de lui-même — la finalisation a lieu au boot suivant).
+model SystemUpdate {
+  id            String      @id @default(cuid())
+  status        String      @default("pending") // pending | running | success | failed | rolled_back
+  fromVersion   String
+  toVersion     String
+  channel       String      @default("stable")
+  steps         Json        @default("[]")
+  logs          Json        @default("[]")
+  error         String?
+  // Rollback : l'update d'origine réussie est marquée rolledBack une fois annulée ;
+  // le rollback crée un NOUVEL enregistrement (rollbackOfId → l'update source).
+  rolledBack    Boolean     @default(false)
+  rollbackOfId  String?
+  startedAt     DateTime?
+  finishedAt    DateTime?
+  triggeredById String?
+  triggeredBy   User?       @relation(fields: [triggeredById], references: [id], onDelete: SetNull)
+  createdAt     DateTime    @default(now())
+
+  @@index([status])
+  @@index([createdAt])
+  @@index([rollbackOfId])
 }

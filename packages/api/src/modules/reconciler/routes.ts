@@ -1,6 +1,7 @@
 import type { FastifyInstance, FastifyRequest } from "fastify"
 import { projectsService } from "../projects/service"
-import { reconcilerService } from "./service"
+import { ReconcilerService} from "./service"
+import { DockerEngineService } from "../docker-engine/service"
 import { rebuildFromDocker } from "./rebuild"
 import { deployProjectWorkflow, DeployError } from "../../workflows/deploy-project"
 import { eventBus } from "../../lib/event-bus"
@@ -40,7 +41,9 @@ export async function registerReconcilerRoutes(app: FastifyInstance) {
       const { id } = req.params as { id: string };
       const graph = await projectsService.getProjectGraph(id);
       if (!graph) return reply.code(404).send({ error: "project not found" });
-      return reconcilerService.plan(graph);
+      const engine = await DockerEngineService.forCluster(graph.clusterId)
+      const reconciler = await new ReconcilerService(engine)
+      return reconciler.plan(graph);
     },
   );
 
@@ -111,7 +114,9 @@ export async function registerReconcilerRoutes(app: FastifyInstance) {
       const { id } = req.params as { id: string };
       const graph = await projectsService.getProjectGraph(id);
       if (!graph) return reply.code(404).send({ error: "project not found" });
-      const log = await reconcilerService.destroy(graph);
+      const engine = await DockerEngineService.forCluster(graph.clusterId)
+      const reconciler = new ReconcilerService(engine)
+      const log = await reconciler.destroy(graph);
       await projectsService.updateProject(id, { status: "draft" });
       // Réinitialise l'état runtime observé.
       await prisma.node.updateMany({
@@ -139,8 +144,16 @@ export async function registerReconcilerRoutes(app: FastifyInstance) {
       },
     },
     async () => {
-      const result = await rebuildFromDocker();
-      return { ok: true, ...result };
+      const clusters = await prisma.cluster.findMany({ select: { id: true } })
+      let total = { projects: 0, nodes: 0, edges: 0, degraded: 0 }
+      for (const c of clusters) {
+        const r = await rebuildFromDocker(c.id).catch(() => null)
+        if (r) {
+          total.projects += r.projects; total.nodes += r.nodes
+          total.edges += r.edges; total.degraded += r.degraded
+        }
+      }
+      return { ok: true, ...total };
     },
   );
 

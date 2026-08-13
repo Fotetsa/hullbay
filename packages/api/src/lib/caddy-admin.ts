@@ -1,5 +1,8 @@
 import { request as httpRequest } from "node:http";
 import { request as httpsRequest } from "node:https";
+import { getDefaultCluster } from "../modules/docker-engine/client";
+import { ensureTunnel } from "./ssh-tunnel";
+import { prisma } from "./prisma";
 
 /**
  * Client HTTP partagé vers l'API admin Caddy (http://caddy:2019), utilise par
@@ -7,7 +10,23 @@ import { request as httpsRequest } from "node:https";
  * eviter la duplication du comportement stricte et identique de l'original.
  */
 
-const CADDY_ADMIN = process.env.CADDY_ADMIN_URL || "http://localhost:2019";
+//const CADDY_ADMIN = process.env.CADDY_ADMIN_URL || "http://localhost:2019";
+
+/** URL admin Caddy du cluster SYSTÈME (celui d'hullbay lui-même). Centralisé
+ * pour que tout appelant système (settings/caddy-domain.ts, futurs modules)
+ * passe par le même chemin, sans risque d'oubli. */
+export async function getSystemAdminUrl(): Promise<string> {
+  return (await getDefaultCluster()).caddyAdminUrl
+}
+
+export async function getAdminUrlForCluster(clusterId: string): Promise<string> {
+  const cluster = await prisma.cluster.findUniqueOrThrow({ where: { id: clusterId } })
+  if (cluster.isDefault) return cluster.caddyAdminUrl
+  const remote = new URL(cluster.caddyAdminUrl)
+  const remotePort = Number(remote.port || 2019)
+  const localPort = await ensureTunnel(clusterId, remotePort)
+  return `http://127.0.0.1:${localPort}`
+}
 
 /** Forme partielle de la config http renvoyée par l'admin Caddy. */
 export type CaddyServers = Record<
@@ -20,7 +39,7 @@ export type CaddyServers = Record<
 >;
 
 export type AdminResponse = { ok: boolean; status: number; body: string };
-
+  
 /**
  * Appel à l'API d'admin Caddy via le module `http` natif de Node (PAS `fetch`).
  *
@@ -30,11 +49,12 @@ export type AdminResponse = { ok: boolean; status: number; body: string };
  * (comme curl) -> l'admin répond normalement. Aucune config Caddy à relâcher.
  */
 export function caddyAdmin(
+  adminUrl: string,
   path: string,
   method = "GET",
   jsonBody?: unknown,
 ): Promise<AdminResponse> {
-  const url = new URL(`${CADDY_ADMIN}${path}`);
+  const url = new URL(`${adminUrl}${path}`);
   const isHttps = url.protocol === "https:";
   const requester = isHttps ? httpsRequest : httpRequest;
   const payload = jsonBody !== undefined ? JSON.stringify(jsonBody) : undefined;
@@ -79,8 +99,8 @@ export function caddyAdmin(
  * connue de Caddy, issue #5322). On interroge donc l'admin et on choisit le
  * serveur qui écoute sur le port public (80/443), avec repli sur le 1er serveur.
  */
-export async function resolveServerName(): Promise<string> {
-  const res = await caddyAdmin(`/config/apps/http/servers`);
+export async function resolveServerName(adminUrl: string): Promise<string> {
+  const res = await caddyAdmin(adminUrl, `/config/apps/http/servers`);
   if (!res.ok) {
     throw new Error(`Caddy: lecture des serveurs impossible (${res.status})`);
   }
@@ -93,7 +113,7 @@ export async function resolveServerName(): Promise<string> {
   const names = Object.keys(servers ?? {});
   if (names.length === 0) {
     throw new Error(
-      "Caddy: aucun serveur HTTP configuré (le Caddyfile de l'ops-panel n'est pas chargé ?)",
+      "Caddy: aucun serveur HTTP configuré",
     );
   }
   // Préfère le serveur qui publie le trafic public (port 80 ou 443).

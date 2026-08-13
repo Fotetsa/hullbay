@@ -18,6 +18,9 @@ import { registerServersRoutes } from "./modules/servers/routes";
 import { registerObservabilityRoutes } from "./modules/observability/routes";
 import { registerSecretsRoutes } from "./modules/secrets/routes";
 import { registerSettingsRoutes } from "./modules/settings/routes";
+import { registerUpdatesRoutes } from "./modules/updates/routes";
+import { updaterService } from "./modules/updates/updater";
+import { prisma } from "./lib/prisma";
 import { attachWebSocket } from "./loaders/websocket";
 import { startObserver } from "./modules/observer/service";
 import { registerObservabilitySubscribers } from "./modules/observability/service";
@@ -150,11 +153,23 @@ app.setErrorHandler((error: FastifyError, request, reply) => {
     await registerObservabilityRoutes(app);
     await registerSecretsRoutes(app);
     await registerSettingsRoutes(app);
+    await registerUpdatesRoutes(app);
   }
 
   if (!skipSideEffects) {
     // socket.io attaché au serveur HTTP de Fastify (calque chat-websocket.ts).
     attachWebSocket(app.server);
+
+    // Seed du singleton SystemInfo (version courante = tag déployé via IMAGE_TAG).
+    await seedSystemInfo();
+
+    // Reprise des mises à jour orphelines (le process meurt pendant l'update de
+    // l'API lui-même — la finalisation success/failed se joue ici, au boot).
+    // Le --catch renvoie au prochain boot si la DB est indisponible : on refuse
+    // de crash le boot pour une vérification non critique.
+    await updaterService.finalizeOrphanUpdates().catch((err) => {
+      console.warn(`[updates] finalize orphelines ignoré (DB indisponible ?): ${err}`);
+    });
 
     // Observer Docker (Réel -> canvas live), lecture seule.
     startObserver();
@@ -166,6 +181,28 @@ app.setErrorHandler((error: FastifyError, request, reply) => {
     startAutoScaler();
   }
   return app;
+}
+
+/**
+ * Seed du singleton SystemInfo au boot : synchronise la version courante avec le
+ * tag d'image déployé (IMAGE_TAG, défaut "unknown" hors conteneur). Ne touche
+ * jamais un currentVersion déjà renseigné (sinon on écraserait un tag manuel).
+ * "latest" (défaut install.sh) est rejeté : ambigu, casse la comparaison semver
+ * — le placeholder est résolu plus tard par UpdaterService.current() vers le
+ * tag réellement déployé.
+ */
+async function seedSystemInfo() {
+  const tag = process.env.IMAGE_TAG;
+  const version = tag && tag !== "latest" ? tag : "unknown";
+  await prisma.systemInfo
+    .upsert({
+      where: { id: "singleton" },
+      create: { id: "singleton", currentVersion: version },
+      update: {},
+    })
+    .catch((err) => {
+      console.warn(`[updates] seed SystemInfo ignoré (DB indisponible ?): ${err}`);
+    });
 }
 
 async function main() {

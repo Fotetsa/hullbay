@@ -27,7 +27,10 @@ export class SettingsService {
             update: { domain },
         })
 
-        return { domain: Settings.domain }
+        return { 
+            domain: Settings.domain,
+            url: `https://${Settings.domain}`
+        }
     }
 }
 

@@ -65,7 +65,10 @@ describe("SettingsService", () => {
 
       const result = await settingsService.setDomain("ops.exemple.com");
 
-      expect(result).toEqual({ domain: "ops.exemple.com" });
+      expect(result).toEqual({ 
+        domain: "ops.exemple.com",
+        url: "https://ops.exemple.com"
+      });
       expect(mockApplyDomainToCaddy).toHaveBeenCalledWith("ops.exemple.com");
       expect(mockPrisma.settings.upsert).toHaveBeenCalledWith({
         where: { id: SINGLETON_ID },

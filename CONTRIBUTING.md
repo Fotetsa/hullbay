@@ -125,6 +125,42 @@ npm run build --workspace @hullbay/api
 npm run build --workspace @hullbay/web
 ```
 
+### API tests and coverage
+
+```bash
+cd packages/api
+npm test                          # suite complète (vitest)
+npm run test:coverage             # couverture sur src/modules
+```
+
+The system-update module (`src/modules/updates`) must keep **coverage above
+80%** (statements/lines). New branches in `updater.ts`, `github.ts` or the
+routes must come with unit tests.
+
+### Web E2E (Playwright)
+
+The updates UI is covered by end-to-end specs that **stub the API** via
+`page.route` — no Postgres, Redis or Docker is required to run them:
+
+```bash
+cd packages/web
+npm run e2e:install                # one-time Chromium download
+npm run e2e
+```
+
+New UI flows on the updates page should be mirrored in
+`packages/web/e2e/updates.spec.ts`.
+
+### Documentation
+
+The updates system is documented in `docs/`:
+
+- `updates-guide-utilisateur.md` — user-facing workflow (update, rollback, channels)
+- `updates-guide-developpeur.md` — architecture, API, sensitive points
+- `updates-troubleshooting.md` — common failures and fixes
+
+Update these guides when changing user-visible behavior or the pipeline.
+
 ## Pull requests
 
 Before opening a pull request, ensure that:

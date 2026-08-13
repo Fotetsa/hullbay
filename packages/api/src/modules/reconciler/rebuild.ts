@@ -13,9 +13,10 @@ import { prisma } from "../../lib/prisma"
  * canvas -> upsert. Si bozando.spec est illisible, on marque le nœud dégradé
  * (config approximative depuis inspect, à compléter par l'utilisateur).
  */
-export async function rebuildFromDocker(
-  docker = new DockerEngineService()
-): Promise<{ projects: number; nodes: number; edges: number; degraded: number }> {
+export async function rebuildFromDocker(clusterId: string): Promise<{ projects: number; nodes: number; edges: number; degraded: number }> {
+  //const defaultCluster = await prisma.cluster.findFirstOrThrow({ where: { isDefault: true } })
+  const docker = await DockerEngineService.forCluster(clusterId)
+
   const services = await docker.listManagedServices()
   const networks = await docker.listManagedNetworks()
   const volumes = await docker.listManagedVolumes()
@@ -55,7 +56,7 @@ export async function rebuildFromDocker(
     await prisma.project.upsert({
       where: { id: projectId },
       update: { slug, status: "deployed" },
-      create: { id: projectId, name: slug, slug, status: "deployed" },
+      create: { id: projectId, name: slug, slug, status: "deployed", clusterId },
     })
 
     // Nœuds.

@@ -35,6 +35,7 @@ export const ProjectSchema = z.object({
     .regex(/^[a-z0-9][a-z0-9-]*$/, "slug: minuscules, chiffres et tirets"),
   description: z.string().nullable().optional(),
   status: ProjectStatus.default("draft"),
+  clusterId: z.string(),
   createdAt: z.coerce.date().optional(),
   updatedAt: z.coerce.date().optional(),
 })

@@ -1,5 +1,3 @@
-// packages/api/src/modules/servers/__tests__/servers.test.ts
-
 import { describe, it, expect, beforeAll, afterAll, beforeEach, vi, } from "vitest";
 import { buildTestApp } from "../../../__tests__/helpers/build-test-app";
 import { registerServersRoutes } from "../routes";
@@ -25,19 +23,16 @@ const { mockServersService, mockDockerMethods } = vi.hoisted(() => ({
   },
 }));
 
-
-vi.mock("../service", () => ({
-  serversService: mockServersService,
-}));
+vi.mock("../service", () => ({ serversService: mockServersService }));
 
 vi.mock("../../docker-engine/service", () => {
-  return {
-    DockerEngineService: class {
-      constructor() {
-        return mockDockerMethods;
-      }
-    },
-  };
+  class MockDockerEngineService {
+    static forCluster = vi.fn(async () => mockDockerMethods);
+    constructor() {
+      return mockDockerMethods;
+    }
+  }
+  return { DockerEngineService: MockDockerEngineService };
 });
 
 vi.mock("../../../workflows/provision-server", () => ({
@@ -51,6 +46,20 @@ vi.mock("../../../lib/event-bus", () => ({
 
 vi.mock("../../auth/service", () => ({
   authService: { verifyToken: vi.fn() },
+}));
+
+import { prisma } from "../../../lib/prisma";
+
+vi.mock("../../../lib/prisma", () => ({
+  prisma: {
+    cluster: {
+      findUnique: vi.fn(),
+      delete: vi.fn(),
+    },
+    server: {
+      count: vi.fn(),
+    },
+  },
 }));
 
 const mockOwnerToken = "mock_owner_token";
@@ -93,8 +102,18 @@ describe("GET /api/servers", () => {
 
   it("devrait retourner la liste des serveurs avec les infos Swarm", async () => {
     const mockServers = [
-      { id: "server-1", name: "prod-1", ip: "192.168.1.10" },
-      { id: "server-2", name: "prod-2", ip: "192.168.1.11" },
+      {
+        id: "server-1",
+        name: "prod-1",
+        ip: "192.168.1.10",
+        clusterId: "cluster-1",
+      },
+      {
+        id: "server-2",
+        name: "prod-2",
+        ip: "192.168.1.11",
+        clusterId: "cluster-1",
+      },
     ];
     const mockNodes = [{ id: "node-1" }, { id: "node-2" }];
     const mockManagers = { total: 1, reachable: 1, quorumOk: true };
@@ -203,4 +222,54 @@ describe("GET /api/servers", () => {
 
     expect(response.statusCode).toBe(403);
   });
+
+  describe("DELETE /api/clusters/:id", () => {
+    it("devrait supprimer un cluster failed", async () => {
+      vi.mocked(prisma.cluster.findUnique).mockResolvedValue({
+        id: "c1",
+        status: "failed",
+      } as any);
+      vi.mocked(prisma.server.count).mockResolvedValue(1);
+      vi.mocked(prisma.cluster.delete).mockResolvedValue({} as any);
+
+      const response = await app.inject({
+        method: "DELETE",
+        url: "/api/clusters/c1",
+        headers: { authorization: `Bearer ${mockOwnerToken}` },
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toEqual({ ok: true, removedServers: 1 });
+    });
+
+    it("devrait refuser de supprimer un cluster ready (409)", async () => {
+      vi.mocked(prisma.cluster.findUnique).mockResolvedValue({
+        id: "c1",
+        status: "ready",
+      } as any);
+
+      const response = await app.inject({
+        method: "DELETE",
+        url: "/api/clusters/c1",
+        headers: { authorization: `Bearer ${mockOwnerToken}` },
+      });
+
+      expect(response.statusCode).toBe(409);
+      expect(prisma.cluster.delete).not.toHaveBeenCalled();
+    });
+
+    it("devrait retourner 404 si le cluster n'existe pas", async () => {
+      vi.mocked(prisma.cluster.findUnique).mockResolvedValue(null);
+
+      const response = await app.inject({
+        method: "DELETE",
+        url: "/api/clusters/inconnu",
+        headers: { authorization: `Bearer ${mockOwnerToken}` },
+      });
+
+      expect(response.statusCode).toBe(404);
+    });
+  });
 });
+
+

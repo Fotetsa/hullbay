@@ -5,6 +5,7 @@ import { provisionServerWorkflow } from "../../workflows/provision-server"
 import { DockerEngineService } from "../docker-engine/service"
 import { requireRole, currentUser } from "../auth/rbac"
 import { eventBus } from "../../lib/event-bus"
+import { prisma } from "../../lib/prisma";
 
 
 /**
@@ -18,45 +19,76 @@ import { eventBus } from "../../lib/event-bus"
 
 // Provisionner / retirer des serveurs = OWNER uniquement (action infra sensible).
 const owner = { preHandler: requireRole("owner") }
-const localDocker = new DockerEngineService()
 
 export async function registerServersRoutes(app: FastifyInstance) {
   // Liste des serveurs (croisée avec l'état Swarm réel, best effort).
   // Owner-only : la gestion d'infra est réservée (et évite toute fuite de métadonnées serveur).
-  app.get("/api/servers", {
-    ...owner,
-    schema: {
-      tags: ["servers"],
-      summary: "Lister les serveurs connus (owner uniquement)",
-      security: [{ bearerAuth: []}],
+  app.get(
+    "/api/servers",
+    {
+      ...owner,
+      schema: {
+        tags: ["servers"],
+        summary: "Lister les serveurs connus (owner uniquement)",
+        security: [{ bearerAuth: [] }],
+      },
     },
-  }, async () => {
-    const servers = await serversService.list()
-    let nodes: unknown[] = []
-    let managers = { total: 0, reachable: 0, quorumOk: false }
-    try {
-      nodes = await localDocker.listNodes()
-      managers = await localDocker.managerHealth()
-    } catch {
-      // Swarm peut être inactif
-    }
-    return { servers, swarmNodes: nodes.length, managers }
-  })
+    async () => {
+      const servers = await serversService.list();
+      const clusterIds = [...new Set(servers.map((s) => s.clusterId))];
+      let totalNodes = 0;
+      let checkedAny = false;
+      const managersAgg = { total: 0, reachable: 0, quorumOk: true };
+      for (const clusterId of clusterIds) {
+        try {
+          const engine = await DockerEngineService.forCluster(clusterId);
+          const nodes = await engine.listNodes();
+          const managers = await engine.managerHealth();
+          totalNodes += nodes.length;
+          managersAgg.total += managers.total;
+          managersAgg.reachable += managers.reachable;
+          managersAgg.quorumOk = managersAgg.quorumOk && managers.quorumOk;
+          checkedAny = true;
+        } catch {
+          // Cluster inaccessible : on ignore, on ne bloque pas la liste.
+        }
+      }
+      return {
+        servers,
+        swarmNodes: totalNodes,
+        managers: {
+          ...managersAgg,
+          quorumOk: checkedAny && managersAgg.quorumOk,
+        },
+      };
+    },
+  );
 
   // Provisionner un nouveau serveur. La credential PERSO n'est jamais persistée.
-  const provisionBody = z.object({
-    name: z.string().min(1),
-    host: z.string().min(1),
-    port: z.number().int().min(1).max(65535).default(22),
-    user: z.string().min(1).default("root"),
-    // Rôle explicite optionnel : "manager" pour ajouter un manager (HA quorum Raft).
-    // Par défaut, 1er serveur = manager, suivants = worker.
-    role: z.enum(["manager", "worker"]).optional(),
-    credential: z.discriminatedUnion("type", [
-      z.object({ type: z.literal("key"), privateKey: z.string().min(1), passphrase: z.string().optional() }),
-      z.object({ type: z.literal("password"), password: z.string().min(1) }),
-    ]),
-  })
+  const provisionBody = z
+    .object({
+      name: z.string().min(1),
+      host: z.string().min(1),
+      port: z.number().int().min(1).max(65535).default(22),
+      user: z.string().min(1).default("root"),
+      // Rôle explicite optionnel : "manager" pour ajouter un manager (HA quorum Raft).
+      // Par défaut, 1er serveur = manager, suivants = worker.
+      role: z.enum(["manager", "worker"]).optional(),
+      clusterId: z.string().optional(),
+      newClusterName: z.string().min(1).optional(),
+      credential: z.discriminatedUnion("type", [
+        z.object({
+          type: z.literal("key"),
+          privateKey: z.string().min(1),
+          passphrase: z.string().optional(),
+        }),
+        z.object({ type: z.literal("password"), password: z.string().min(1) }),
+      ]),
+    })
+    .refine((b) => Boolean(b.clusterId) !== Boolean(b.newClusterName), {
+      message:
+        "fournir soit id du cluster existant soit le nom du nouveau cluster, mais pas les deux",
+    });
 
   app.post(
     "/api/servers",
@@ -70,26 +102,45 @@ export async function registerServersRoutes(app: FastifyInstance) {
       },
     },
     async (req, reply) => {
-      const { name, host, port, user, credential } = req.body as {
-        name: string;
-        host: string;
-        port: number;
-        user: string;
-        role?: "manager" | "worker";
-        credential:
-          | { type: "key"; privateKey: string; passphrase?: string }
-          | { type: "password"; password: string };
-      };
+      const body = req.body as z.infer<typeof provisionBody>;
+      const { name, host, port, user, credential } = body;
 
-      // Rôle : explicite si fourni, sinon 1er serveur = manager / suivants = worker.
-      const body = req.body as any;
-      const role = body.role ?? ((await serversService.hasManager()) ? "worker" : "manager");
+      let clusterId: string;
+      let role: "manager" | "worker";
+      if (body.clusterId) {
+        clusterId = body.clusterId;
+        role = body.role ?? "worker";
+      } else {
+        const cluster = await prisma.cluster.create({
+          data: {
+            name: body.newClusterName!,
+            dockerHost: "",
+            caddyAdminUrl: "",
+            status: "pending",
+          },
+        });
+
+        clusterId = cluster.id;
+        role = "manager";
+      }
+
+      if (body.clusterId) {
+        const target = await prisma.cluster.findUniqueOrThrow({
+          where: { id: body.clusterId },
+        });
+        if (target.status !== "ready") {
+          return reply.code(409).send({
+            error: `cluster "${target.name}" pas encore prêt (statut: ${target.status})`,
+          });
+        }
+      }
       const server = await serversService.create({
         name,
         host,
         port,
         user,
         role,
+        clusterId,
       });
 
       // Provisioning en arrière-plan : on répond tout de suite, le front suit via WS.
@@ -100,6 +151,8 @@ export async function registerServersRoutes(app: FastifyInstance) {
         user,
         role,
         credential,
+        clusterId,
+        isNewCluster: !body.clusterId,
       })
         .then(() =>
           eventBus.emit("server.provisioned", {
@@ -114,6 +167,63 @@ export async function registerServersRoutes(app: FastifyInstance) {
       return reply
         .code(202)
         .send({ id: server.id, role, status: "provisioning" });
+    },
+  );
+  // Affichage de la liste des clusters existant.
+  app.get(
+    "/api/clusters",
+    {
+      ...owner,
+      schema: {
+        tags: ["servers"],
+        summary: "Lister les clusters (owne uniquement)",
+        security: [{ bearerAuth: [] }],
+      },
+    },
+    async () => {
+      return prisma.cluster.findMany({
+        select: { id: true, name: true, isDefault: true, status: true },
+        orderBy: { createdAt: "asc" },
+      });
+    },
+  );
+
+  // Nettoyage d'un cluster resté "failed" (échec de provisioning avant finalisation).
+  // Volontairement restreint aux clusters failed uniquement : jamais de suppression
+  // d'un cluster pending (encore en cours) ni ready (en usage réel). La suppression
+  // cascade vers Server (onDelete: Cascade dans le schéma) -- les serveurs orphelins
+  // de ce provisioning raté (status "error") disparaissent avec lui, c'est voulu :
+  // ils n'appartiennent qu'à ce cluster qui n'a jamais existé "pour de vrai".
+  app.delete(
+    "/api/clusters/:id",
+    {
+      ...owner,
+      schema: {
+        tags: ["servers"],
+        summary: "Supprimer un cluster resté en échec (owner uniquement)",
+        security: [{ bearerAuth: [] }],
+      },
+    },
+    async (req, reply) => {
+      const { id } = req.params as { id: string };
+      const cluster = await prisma.cluster.findUnique({ where: { id } });
+      if (!cluster)
+        return reply.code(404).send({ error: "cluster introuvable" });
+      if (cluster.status !== "failed") {
+        return reply.code(409).send({
+          error: `seul un cluster au statut "failed" peut être supprimé (statut actuel: ${cluster.status})`,
+        });
+      }
+      const removedServers = await prisma.server.count({
+        where: { clusterId: id },
+      });
+      await prisma.cluster.delete({ where: { id } });
+      await eventBus.emit("cluster.removed", {
+        clusterId: id,
+        userId: currentUser(req)?.sub,
+        removedServers,
+      });
+      return { ok: true, removedServers };
     },
   );
 
@@ -134,8 +244,9 @@ export async function registerServersRoutes(app: FastifyInstance) {
       if (!server)
         return reply.code(404).send({ error: "serveur introuvable" });
       if (server.swarmNodeId) {
-        await localDocker.drainNode(server.swarmNodeId).catch(() => {});
-        await localDocker.removeNode(server.swarmNodeId).catch(() => {});
+        const engine = await DockerEngineService.forCluster(server.clusterId);
+        await engine.drainNode(server.swarmNodeId).catch(() => {});
+        await engine.removeNode(server.swarmNodeId).catch(() => {});
       }
       await serversService.remove(id);
       await eventBus.emit("server.removed", {
@@ -149,7 +260,7 @@ export async function registerServersRoutes(app: FastifyInstance) {
   // Promouvoir / rétrograder un nœud (manager <-> worker) — HA quorum Raft.
   // Recommandation : nombre IMPAIR de managers (3 tolère 1 panne, 5 en tolère 2).
 
-  const setRoleBody = z.object({ role: z.enum(["manager", "worker"]) })
+  const setRoleBody = z.object({ role: z.enum(["manager", "worker"]) });
   app.post(
     "/api/servers/:id/role",
     {
@@ -173,7 +284,8 @@ export async function registerServersRoutes(app: FastifyInstance) {
       }
       try {
         const body = setRoleBody.parse(req.body);
-        await localDocker.setNodeRole(server.swarmNodeId, body.role);
+        const engine = await DockerEngineService.forCluster(server.clusterId);
+        await engine.setNodeRole(server.swarmNodeId, body.role);
       } catch (err) {
         return reply
           .code(500)
