@@ -43,10 +43,9 @@ export function ProjectsPage() {
   const [editDescription, setEditDescription] = useState("")
 
   const createMut = useMutationToast({
-    mutationFn: () => api.createProject({ name, description: description || undefined }),
-    success: t('projects.toast.createSuccess'),
+    // Utilisation de la version avec clusterId et de la traduction
     mutationFn: () => api.createProject({ name, description: description || undefined, clusterId }),
-    success: "Projet créé",
+    success: t('projects.toast.createSuccess'),
     invalidate: [["projects"]],
     onSuccess: () => {
       setCreateOpen(false)
@@ -110,7 +109,7 @@ export function ProjectsPage() {
             >
               <ArrowPath /> {t('projects.actions.rebuild')}
             </Button>
-            <Button size="small" onClick={() => setCreateOpen(true)}>
+            <Button size="small" onClick={() => openCreate()}>
               <Plus /> {t('projects.actions.new')}
             </Button>
           </>
@@ -126,7 +125,7 @@ export function ProjectsPage() {
             title={t('projects.empty.title')}
             description={t('projects.empty.description')}
             action={
-              <Button size="small" onClick={() => setCreateOpen(true)}>
+              <Button size="small" onClick={() => openCreate()}>
                 <Plus /> {t('projects.actions.new')}
               </Button>
             }
@@ -224,22 +223,12 @@ export function ProjectsPage() {
                 <Button variant="secondary" type="button" onClick={() => setCreateOpen(false)}>
                   {t('projects.actions.cancel')}
                 </Button>
-                <Button type="submit" isLoading={createMut.isPending} disabled={!name.trim()}>
-                  {t('projects.actions.create')}
-                </Button>
-                <Button
-                  variant="secondary"
-                  type="button"
-                  onClick={() => setCreateOpen(false)}
-                >
-                  Annuler
-                </Button>
                 <Button
                   type="submit"
                   isLoading={createMut.isPending}
                   disabled={!name.trim() || !clusterId}
                 >
-                  Créer
+                  {t('projects.actions.create')}
                 </Button>
               </div>
             </ModalForm>
@@ -261,16 +250,6 @@ export function ProjectsPage() {
                 <Text size="xsmall" className="mt-1 text-ui-fg-muted">
                   {t('projects.editModal.slugHint')}
                 </Text>
-                <Label size="small">Nom</Label>
-                <Input
-                  value={editName}
-                  onChange={(e) => setEditName(e.target.value)}
-                  autoFocus
-                />
-                <Text size="xsmall" className="mt-1 text-ui-fg-muted">
-                  Le slug technique (préfixe des ressources Docker) ne change
-                  pas.
-                </Text>
               </div>
               <div>
                 <Label size="small">{t('projects.editModal.descLabel')}</Label>
@@ -285,20 +264,6 @@ export function ProjectsPage() {
                 </Button>
                 <Button type="submit" isLoading={updateMut.isPending} disabled={!editName.trim()}>
                   {t('projects.actions.save')}
-                </Button>
-                <Button
-                  variant="secondary"
-                  type="button"
-                  onClick={() => setEditing(null)}
-                >
-                  Annuler
-                </Button>
-                <Button
-                  type="submit"
-                  isLoading={updateMut.isPending}
-                  disabled={!editName.trim()}
-                >
-                  Enregistrer
                 </Button>
               </div>
             </ModalForm>
