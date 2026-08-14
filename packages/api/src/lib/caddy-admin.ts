@@ -39,7 +39,14 @@ export type CaddyServers = Record<
 >;
 
 export type AdminResponse = { ok: boolean; status: number; body: string };
-  
+
+
+export type CaddyAdminRequest = {
+  adminUrl: string
+  path: string
+  method?: string
+  body?: unknown
+}
 /**
  * Appel à l'API d'admin Caddy via le module `http` natif de Node (PAS `fetch`).
  *
@@ -48,16 +55,16 @@ export type AdminResponse = { ok: boolean; status: number; body: string };
  * anti-DNS-rebinding de l'API admin). Le client `http` natif n'envoie pas cet en-tête
  * (comme curl) -> l'admin répond normalement. Aucune config Caddy à relâcher.
  */
-export function caddyAdmin(
-  adminUrl: string,
-  path: string,
+export function caddyAdmin({
+  adminUrl,
+  path,
   method = "GET",
-  jsonBody?: unknown,
-): Promise<AdminResponse> {
+  body }:
+  CaddyAdminRequest): Promise<AdminResponse> {
   const url = new URL(`${adminUrl}${path}`);
   const isHttps = url.protocol === "https:";
   const requester = isHttps ? httpsRequest : httpRequest;
-  const payload = jsonBody !== undefined ? JSON.stringify(jsonBody) : undefined;
+  const payload = body !== undefined ? JSON.stringify(body) : undefined;
 
   return new Promise<AdminResponse>((resolve, reject) => {
     const req = requester(
@@ -74,13 +81,13 @@ export function caddyAdmin(
           : {},
       },
       (res) => {
-        let body = "";
+        let responseBody = "";
         res.on("data", (c) => (body += c));
         res.on("end", () =>
           resolve({
             ok: (res.statusCode ?? 0) < 400,
             status: res.statusCode ?? 0,
-            body,
+            body: responseBody,
           }),
         );
       },
@@ -100,7 +107,7 @@ export function caddyAdmin(
  * serveur qui écoute sur le port public (80/443), avec repli sur le 1er serveur.
  */
 export async function resolveServerName(adminUrl: string): Promise<string> {
-  const res = await caddyAdmin(adminUrl, `/config/apps/http/servers`);
+  const res = await caddyAdmin({ adminUrl, path: `/config/apps/http/servers` });
   if (!res.ok) {
     throw new Error(`Caddy: lecture des serveurs impossible (${res.status})`);
   }

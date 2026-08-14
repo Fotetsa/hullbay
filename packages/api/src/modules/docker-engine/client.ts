@@ -58,7 +58,31 @@ export async function getDockerForCluster(clusterId: string): Promise<Docker> {
   if (cached) return cached
   const cluster = await prisma.cluster.findUniqueOrThrow({ where: { id: clusterId } })
   const params = await resolveConnectionParams(cluster)
-  const client = params ? new Docker (params) : new Docker ({ socketPath: DOCKER_SOCKET_PATH})
+
+  let client: Docker
+  let connectionMode: string
+
+  if (params) {
+    client = new Docker(params);
+
+    if (cluster.isDefault) {
+      connectionMode = `tcp://${params.host}:${params.port}`;
+      console.log(
+        `[docker-engine] Cluster ${clusterId} (${cluster.name}): connexion TCP directe ${connectionMode}`,
+      );
+    } else {
+      connectionMode = `tunnel 127.0.0.1:${params.port} → ${cluster.dockerHost}`;
+      console.log(
+        `[docker-engine] Cluster ${clusterId} (${cluster.name}): connexion via SSH tunnel ${connectionMode}`,
+      );
+    }
+  } else {
+    client = new Docker({ socketPath: DOCKER_SOCKET_PATH });
+    connectionMode = `socket ${DOCKER_SOCKET_PATH}`;
+    console.log(
+      `[docker-engine] Cluster ${clusterId} (${cluster.name}): connexion via socket Unix ${connectionMode}`,
+    );
+  }
   registry.set(clusterId, client)
   return client
 }

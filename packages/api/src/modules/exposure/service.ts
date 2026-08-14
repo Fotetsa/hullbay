@@ -44,7 +44,7 @@ export class ExposureService {
     domain: string,
     skip: boolean
   ): Promise<void> {
-    const res = await caddyAdmin(adminUrl, `/config/apps/http/servers/${server}`)
+    const res = await caddyAdmin({ adminUrl, path: `/config/apps/http/servers/${server}` })
     if (!res.ok) return
     let cfg: { automatic_https?: { skip?: string[] } } = {}
     try {
@@ -56,7 +56,7 @@ export class ExposureService {
     if (skip) current.add(domain)
     else current.delete(domain)
     // Écrit la liste `skip` (idempotent). PUT sur le sous-chemin remplace la valeur.
-    await caddyAdmin(adminUrl, `/config/apps/http/servers/${server}/automatic_https/skip`, "PUT", [...current])
+    await caddyAdmin({adminUrl, path: `/config/apps/http/servers/${server}/automatic_https/skip`, method: "PUT", body: [...current]})
   }
 
   /**
@@ -95,7 +95,7 @@ export class ExposureService {
     // matcher) qui intercepte TOUTES les requêtes. Une route passerelle ajoutée
     // APRÈS ne serait jamais atteinte (le catch-all matche d'abord) -> 502 « lookup
     // web ». On l'insère donc avant le catch-all via le sous-chemin .../routes/0.
-    const res = await caddyAdmin(adminUrl, `/config/apps/http/servers/${server}/routes/0`, "PUT", route)
+    const res = await caddyAdmin({ adminUrl, path: `/config/apps/http/servers/${server}/routes/0`, method: "PUT", body: route })
     if (!res.ok) {
       throw new Error(`Caddy upsert route ${id} a échoué (${res.status})`)
     }
@@ -105,7 +105,7 @@ export class ExposureService {
   async deleteRoute(clusterId: string, projectSlug: string, nodeName: string): Promise<void> {
     const adminUrl = await getAdminUrlForCluster(clusterId);
     const id = routeId(projectSlug, nodeName)
-    await caddyAdmin(adminUrl, `/id/${id}`, "DELETE")
+    await caddyAdmin({ adminUrl, path: `/id/${id}`, method: "DELETE" })
   }
 }
 

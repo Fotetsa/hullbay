@@ -25,7 +25,7 @@ export interface ProvisionInput {
   port: number
   user: string
   role: "manager" | "worker"
-  credential: SshCredential // PERSO — mémoire seule
+  credential: SshCredential
   clusterId: string
   isNewCluster: boolean
 }
@@ -48,13 +48,22 @@ function log(serverId: string, message: string) {
   void eventBus.emit("provision.step", { serverId, message })
 }
 
+/** Résout s.engine à la demande, une seule fois, en le mettant en cache.
+ * Ne doit être appelé que quand le cluster cible existe déjà, jamais
+ * pour le tout premier manager d'un cluster en cours de création. 
+ * */
+async function getEngineLazy(input: ProvisionInput, s: ProvShared): Promise<DockerEngineService> {
+  if (s.engine) return s.engine
+  s.engine = await DockerEngineService.forCluster(input.clusterId)
+  return s.engine
+}
+
 const connectStep: Step<ProvisionInput> = {
   name: "connect",
   run: async (input, ctx) => {
     const s = ctx.shared as ProvShared
     s.isNewCluster = input.isNewCluster
-    s.engine = await DockerEngineService.forCluster(input.clusterId)
-    log(input.serverId, "Connexion SSH…")
+    log(input.serverId, "connexion SSH...")
     s.session = await SshSession.connect({
       host: input.host,
       port: input.port,
@@ -88,8 +97,12 @@ const swarmJoinStep: Step<ProvisionInput> = {
   name: "swarm-join",
   run: async (input, ctx) => {
     const s = ctx.shared as ProvShared
+
+    const check = await s.session!.exec(
+      "docker info --format '{{.Swarm.LocalNodeState}}' 2>/dev/null || echo inactive",
+    );
     // Un Swarm local existe-t-il déjà ? Détermine init (1er manager) vs join.
-    const swarmExists = await s.engine!.isSwarmActive().catch(() => false)
+    const swarmExists = check.stdout.trim() === "active"
     s.hadExistingSwarm = swarmExists
 
     if (input.role === "manager" && !swarmExists) {
@@ -126,6 +139,113 @@ const swarmJoinStep: Step<ProvisionInput> = {
   },
 }
 
+const deploySocketProxyStep: Step<ProvisionInput> = {
+  name: "deploy-socket-proxy",
+  run: async (input, ctx) => {
+    const s = ctx.shared as ProvShared;
+    // Seulement pour le 1er manager d'un NOUVEAU cluster — un worker ou un
+    // manager additionnel (HA) rejoint un cluster qui a déjà son proxy.
+    const swarmWasFreshlyInitialized =
+      input.role === "manager" && !s.hadExistingSwarm;
+    if (!swarmWasFreshlyInitialized) return;
+
+    log(input.serverId, "Déploiement du docker-socket-proxy…");
+
+    const check = await s.session!.exec(
+      "docker ps -a --filter name=hullbay-socket-proxy --format '{{.Names}}'",
+    );
+    if (check.stdout.includes("hullbay-socket-proxy")) {
+      log(input.serverId, "socket-proxy déjà présent.");
+      return;
+    }
+
+    // Mêmes restrictions exactes que le socket-proxy système (docker-compose.prod.yml)
+    const cmd = [
+      "docker run -d",
+      "--name hullbay-socket-proxy",
+      "--restart unless-stopped",
+      "-e EVENTS=1 -e PING=1 -e VERSION=1 -e INFO=1 -e SERVICES=1 -e TASKS=1",
+      "-e NODES=1 -e NETWORKS=1 -e SWARM=1 -e IMAGES=1 -e VOLUMES=1 -e SECRETS=1 -e POST=1",
+      "-e EXEC=0 -e CONTAINERS=0 -e ALLOW_RESTARTS=0",
+      "-v /var/run/docker.sock:/var/run/docker.sock:ro",
+      `-p 127.0.0.1:2375:2375`,
+      "tecnativa/docker-socket-proxy:latest",
+    ].join(" ");
+
+    const res = await s.session!.exec(cmd);
+    if (res.code !== 0)
+      throw new Error(`socket-proxy: ${res.stderr || res.stdout}`);
+
+    //log(input.serverId, "socket-proxy démarré.");
+    log(
+      input.serverId,
+      `SÉCURITÉ CRITIQUE : le port 2375 (Docker API) est exposé sur ${input.host}. ` +
+        `Restreins-le maintenant à l'IP de ce serveur hullbay. Sur un VPS classique : ` +
+        `ssh ${input.user}@${input.host} "ufw allow from <IP_HULLBAY> to any port 2375 proto tcp && ufw allow 22 && ufw --force enable". ` +
+        `Tant que ce n'est pas fait, n'importe qui avec cette IP a un contrôle total du serveur.`,
+    );
+  },
+  compensate: async (_input, ctx) => {
+    const s = ctx.shared as ProvShared;
+    await s.session?.exec("docker rm -f hullbay-socket-proxy").catch(() => {});
+  },
+};
+
+const deployCaddyStep: Step<ProvisionInput> = {
+  name: "deploy-caddy",
+  run: async (input, ctx) => {
+    const s = ctx.shared as ProvShared;
+    const swarmWasFreshlyInitialized =
+      input.role === "manager" && !s.hadExistingSwarm;
+    if (!swarmWasFreshlyInitialized) return;
+
+    log(input.serverId, "Déploiement de Caddy (cluster)…");
+
+    const check = await s.session!.exec(
+      "docker ps -a --filter name=hullbay-caddy --format '{{.Names}}'",
+    );
+    if (check.stdout.includes("hullbay-caddy")) {
+      log(input.serverId, "Caddy déjà présent.");
+      return;
+    }
+
+    // Config minimale : admin seul, aucun site pré-défini — tout sera ajouté
+    // dynamiquement via l'API admin (exposure/settings), comme pour le système.
+    await s.session!.exec(
+      `mkdir -p /opt/hullbay-caddy && printf '{\\n\\tadmin 0.0.0.0:2019\\n}\\n' > /opt/hullbay-caddy/Caddyfile`,
+    );
+
+    const cmd = [
+      "docker run -d",
+      "--name hullbay-caddy",
+      "--restart unless-stopped",
+      "-p 80:80 -p 443:443",
+      // Admin bindé sur l'IP du serveur, pas 0.0.0.0 — même logique que le
+      // socket-proxy (à compléter par pare-feu, IP hullbay uniquement).
+      `-p 127.0.0.1:2019:2019`,
+      "-v /opt/hullbay-caddy/Caddyfile:/etc/caddy/Caddyfile:ro",
+      "-v hullbay_caddy_data:/data",
+      "caddy:2-alpine",
+    ].join(" ");
+
+    const res = await s.session!.exec(cmd);
+    if (res.code !== 0) throw new Error(`caddy: ${res.stderr || res.stdout}`);
+
+    log(input.serverId, "Caddy démarré.");
+    log(
+      input.serverId,
+      `SÉCURITÉ CRITIQUE : le port 2019 (Docker API) est exposé sur ${input.host}. ` +
+        `Restreins-le maintenant à l'IP de ce serveur hullbay. Sur un VPS classique : ` +
+        `ssh ${input.user}@${input.host} "ufw allow from <IP_HULLBAY> to any port 2375 proto tcp && ufw allow 22 && ufw --force enable". ` +
+        `Tant que ce n'est pas fait, n'importe qui avec cette IP a un contrôle total du serveur.`,
+    );
+  },
+  compensate: async (_input, ctx) => {
+    const s = ctx.shared as ProvShared;
+    await s.session?.exec("docker rm -f hullbay-caddy").catch(() => {});
+  },
+};
+
 export const finalizeClusterStep: Step<ProvisionInput> = {
   name: "finalize-cluster",
   run: async (input, ctx) => {
@@ -135,6 +255,17 @@ export const finalizeClusterStep: Step<ProvisionInput> = {
         where: { id: input.clusterId },
         data: { dockerHost: `tcp://${input.host}:2375`, caddyAdminUrl: `http://${input.host}:2019`, status: "ready"},
       })
+
+      await eventBus.emit("cluster.status", {
+        clusterId: input.clusterId,
+        from: "pending",
+        to: "ready",
+        timestamp: new Date().toISOString(),
+      })
+
+      console.log(
+        `[cluster] Status transition: pending → ready (cluster: ${input.clusterId})`,
+      );
     }
   },
 }
@@ -178,17 +309,28 @@ const installToolKeyStep: Step<ProvisionInput> = {
 const persistStep: Step<ProvisionInput> = {
   name: "persist",
   run: async (input, ctx) => {
-    const s = ctx.shared as ProvShared
-    // Récupère l'ID du nœud Swarm correspondant (par hostname/adresse).
-    let swarmNodeId: string | undefined
+    const s = ctx.shared as ProvShared;
+    let swarmNodeId: string | undefined;
     try {
-      const nodes = await s.engine!.listNodes();
-      const match = nodes.find(
-        (n) =>
-          (n as { Status?: { Addr?: string } }).Status?.Addr === input.host ||
-          (n as { Description?: { Hostname?: string } }).Description?.Hostname === input.host
-      )
-      swarmNodeId = (match as { ID?: string } | undefined)?.ID
+      if (input.role === "manager" && s.isNewCluster) {
+        const res = await s.session!.exec(
+          "docker node inspect self --format '{{.ID}}'",
+        );
+        if (res.code === 0 && res.stdout.trim())
+          swarmNodeId = res.stdout.trim();
+      } else {
+        // Worker, ou manager additionnel (HA) : le cluster existe déjà,
+        // le manager cible (potentiellement un AUTRE serveur) est ready.
+        const engine = await getEngineLazy(input, s);
+        const nodes = await engine.listNodes();
+        const match = nodes.find(
+          (n) =>
+            (n as { Status?: { Addr?: string } }).Status?.Addr === input.host ||
+            (n as { Description?: { Hostname?: string } }).Description
+              ?.Hostname === input.host,
+        );
+        swarmNodeId = (match as { ID?: string } | undefined)?.ID;
+      }
     } catch {
       // best effort
     }
@@ -200,10 +342,10 @@ const persistStep: Step<ProvisionInput> = {
       publicKey: s.toolPublicKey ?? null,
       hostKeyFp: s.hostKeyFp ?? null,
       lastError: null,
-    })
-    log(input.serverId, "Serveur enregistré et prêt.")
+    });
+    log(input.serverId, "Serveur enregistré et prêt.");
   },
-}
+};
 
 export async function provisionServerWorkflow(input: ProvisionInput): Promise<void> {
   const shared: ProvShared = {}
@@ -237,6 +379,17 @@ export async function provisionServerWorkflow(input: ProvisionInput): Promise<vo
             data: { status: "failed" },
           })
           .catch(() => {});
+
+        await eventBus.emit("cluster.status", {
+          clusterId: input.clusterId,
+          from: "pending",
+          to: "failed",
+          timestamp: new Date().toISOString(),
+        });
+
+        console.log(
+          `[cluster] Status transition: pending → failed (cluster: ${input.clusterId})`,
+        );
       }
       await eventBus.emit("provision.step", {
         serverId: input.serverId,
@@ -255,108 +408,6 @@ export async function provisionServerWorkflow(input: ProvisionInput): Promise<vo
   }
 }
 
-const deploySocketProxyStep: Step<ProvisionInput> = {
-  name: "deploy-socket-proxy",
-  run: async (input, ctx) => {
-    const s = ctx.shared as ProvShared;
-    // Seulement pour le 1er manager d'un NOUVEAU cluster — un worker ou un
-    // manager additionnel (HA) rejoint un cluster qui a déjà son proxy.
-    const swarmWasFreshlyInitialized =
-      input.role === "manager" && !s.hadExistingSwarm;
-    if (!swarmWasFreshlyInitialized) return;
-
-    log(input.serverId, "Déploiement du docker-socket-proxy…");
 
 
-    const check = await s.session!.exec(
-      "docker ps -a --filter name=hullbay-socket-proxy --format '{{.Names}}'",
-    );
-    if (check.stdout.includes("hullbay-socket-proxy")) {
-      log(input.serverId, "socket-proxy déjà présent.");
-      return;
-    }
 
-    // Mêmes restrictions exactes que le socket-proxy système (docker-compose.prod.yml)
-    const cmd = [
-      "docker run -d",
-      "--name hullbay-socket-proxy",
-      "--restart unless-stopped",
-      "-e EVENTS=1 -e PING=1 -e VERSION=1 -e INFO=1 -e SERVICES=1 -e TASKS=1",
-      "-e NODES=1 -e NETWORKS=1 -e SWARM=1 -e IMAGES=1 -e VOLUMES=1 -e SECRETS=1 -e POST=1",
-      "-e EXEC=0 -e CONTAINERS=0 -e ALLOW_RESTARTS=0",
-      "-v /var/run/docker.sock:/var/run/docker.sock:ro",
-      `-p 127.0.0.1:2375:2375`,
-      "tecnativa/docker-socket-proxy:latest",
-    ].join(" ");
-
-    const res = await s.session!.exec(cmd);
-    if (res.code !== 0)
-      throw new Error(`socket-proxy: ${res.stderr || res.stdout}`);
-
-    //log(input.serverId, "socket-proxy démarré.");
-    log(
-      input.serverId,
-      `SÉCURITÉ CRITIQUE : le port 2375 (Docker API) est exposé sur ${input.host}. ` +
-        `Restreins-le maintenant à l'IP de ce serveur hullbay. Sur un VPS classique : ` +
-        `ssh ${input.user}@${input.host} "ufw allow from <IP_HULLBAY> to any port 2375 proto tcp && ufw allow 22 && ufw --force enable". ` +
-        `Tant que ce n'est pas fait, n'importe qui avec cette IP a un contrôle total du serveur.`,
-    );
-  },
-  compensate: async (_input, ctx) => {
-    const s = ctx.shared as ProvShared;
-    await s.session?.exec("docker rm -f hullbay-socket-proxy").catch(() => {});
-  },
-};
-
-
-const deployCaddyStep: Step<ProvisionInput> = {
-  name: "deploy-caddy",
-  run: async (input, ctx) => {
-    const s = ctx.shared as ProvShared
-    const swarmWasFreshlyInitialized = input.role === "manager" && !s.hadExistingSwarm
-    if (!swarmWasFreshlyInitialized) return
-
-    log(input.serverId, "Déploiement de Caddy (cluster)…")
-
-    const check = await s.session!.exec("docker ps -a --filter name=hullbay-caddy --format '{{.Names}}'")
-    if (check.stdout.includes("hullbay-caddy")) {
-      log(input.serverId, "Caddy déjà présent.")
-      return
-    }
-
-    // Config minimale : admin seul, aucun site pré-défini — tout sera ajouté
-    // dynamiquement via l'API admin (exposure/settings), comme pour le système.
-    await s.session!.exec(
-      `mkdir -p /opt/hullbay-caddy && printf '{\\n\\tadmin 0.0.0.0:2019\\n}\\n' > /opt/hullbay-caddy/Caddyfile`
-    )
-
-    const cmd = [
-      "docker run -d",
-      "--name hullbay-caddy",
-      "--restart unless-stopped",
-      "-p 80:80 -p 443:443",
-      // Admin bindé sur l'IP du serveur, pas 0.0.0.0 — même logique que le
-      // socket-proxy (à compléter par pare-feu, IP hullbay uniquement).
-      `-p 127.0.0.1:2019:2019`,
-      "-v /opt/hullbay-caddy/Caddyfile:/etc/caddy/Caddyfile:ro",
-      "-v hullbay_caddy_data:/data",
-      "caddy:2-alpine",
-    ].join(" ")
-
-    const res = await s.session!.exec(cmd)
-    if (res.code !== 0) throw new Error(`caddy: ${res.stderr || res.stdout}`)
-
-    log(input.serverId, "Caddy démarré.")
-    log(
-      input.serverId,
-      `SÉCURITÉ CRITIQUE : le port 2019 (Docker API) est exposé sur ${input.host}. ` +
-        `Restreins-le maintenant à l'IP de ce serveur hullbay. Sur un VPS classique : ` +
-        `ssh ${input.user}@${input.host} "ufw allow from <IP_HULLBAY> to any port 2375 proto tcp && ufw allow 22 && ufw --force enable". ` +
-        `Tant que ce n'est pas fait, n'importe qui avec cette IP a un contrôle total du serveur.`,
-    );
-  },
-  compensate: async (_input, ctx) => {
-    const s = ctx.shared as ProvShared
-    await s.session?.exec("docker rm -f hullbay-caddy").catch(() => {})
-  },
-}
