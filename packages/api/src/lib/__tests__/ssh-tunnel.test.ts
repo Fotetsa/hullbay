@@ -306,4 +306,33 @@ it("nettoyage un seul appel même si close et error se suivent", async () => {
     expect(rb).toMatchObject({ name: "TunnelError", code: "NO_READY_MANAGER", statusCode: 409 })
     expect(mockConnect).not.toHaveBeenCalled()
   })
+
+  it("closeTunnel pendant une création en échec → aucune rejection orpheline", async () => {
+    mockFindFirst.mockResolvedValue(null)
+
+    const tunnel = ensureTunnel("cluster-1", 2375)
+    closeTunnel("cluster-1", 2375) // création en vol, va échouer (NO_READY_MANAGER)
+
+    await expect(tunnel).rejects.toMatchObject({ code: "NO_READY_MANAGER" })
+
+    // le `.then` orphelin de closeTunnel consomme la rejection : aucun
+    // unhandled rejection (vitest le fait échouer sinon)
+    await new Promise((r) => setTimeout(r, 20))
+  })
+
+  it("teardown survit à un dispose() qui lève", async () => {
+    const port = await ensureTunnel("cluster-1", 2375)
+
+    vi.mocked(mockSession.dispose).mockImplementationOnce(() => {
+      throw new Error("client déjà détruit")
+    })
+
+    const closeCb = vi.mocked(mockSession.onClose).mock.calls[0]![0]
+    expect(() => closeCb()).not.toThrow()
+
+    // entrée purgée malgré le dispose qui a levé : un nouvel appel repart proprement
+    await connectExpectRefused(port)
+    await ensureTunnel("cluster-1", 2375)
+    expect(mockConnect).toHaveBeenCalledTimes(2)
+  })
 })

@@ -142,7 +142,7 @@ async function createTunnel(clusterId: string, remotePort: number): Promise<numb
             for (const socket of sockets) socket.destroy()
             sockets.clear()
             // dispose() est idempotent : double-appel avec closeTunnel sans risque.
-            session.dispose()
+            try { session.dispose() } catch { /* client déjà détruit (ssh2) */ }
             // Session morte avant le callback de listen : ne laisse JAMAIS
             // l'appelant obtenir un port dont le tunnel est déjà détruit.
             if (!settled) reject(cause ?? new Error("Session SSH fermée avant l'écoute du tunnel."))
@@ -189,10 +189,14 @@ export function closeTunnel(clusterId: string, remotePort: number): void {
     const entry = tunnels.get(key)
     if (entry) {
         entry.server.close()
-        entry.session.dispose()
+        try { entry.session.dispose() } catch { /* client déjà détruit (ssh2) */ }
         tunnels.delete(key)
         return
     }
-    // Création encore en vol : la ferme dès qu'elle est montée.
-    pendingTunnels.get(key)?.then(() => closeTunnel(clusterId, remotePort))
+    // Création encore en vol : la ferme dès qu'elle est montée. Si la création
+    // échoue, on consomme la rejection (sinon promesse orpheline non gérée).
+    pendingTunnels.get(key)?.then(
+        () => closeTunnel(clusterId, remotePort),
+        () => {},
+    )
 }
