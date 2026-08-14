@@ -8,6 +8,7 @@ import { eventBus } from "../../lib/event-bus"
 import { prisma } from "../../lib/prisma"
 import { requireRole, currentUser } from "../auth/rbac"
 import { pruneOrphans } from "../../jobs/prune-orphans"
+import { runWithConcurrency, CLUSTER_CONCURRENCY } from "../../lib/concurrency"
 
 const operator = { preHandler: requireRole("operator") }
 const owner = { preHandler: requireRole("owner") }
@@ -145,14 +146,19 @@ export async function registerReconcilerRoutes(app: FastifyInstance) {
     },
     async () => {
       const clusters = await prisma.cluster.findMany({ select: { id: true } })
+      const { items, totalMs } = await runWithConcurrency(
+        clusters.map((c) => c.id),
+        CLUSTER_CONCURRENCY,
+        (clusterId) => rebuildFromDocker(clusterId),
+      )
       let total = { projects: 0, nodes: 0, edges: 0, degraded: 0 }
-      for (const c of clusters) {
-        const r = await rebuildFromDocker(c.id).catch(() => null)
-        if (r) {
-          total.projects += r.projects; total.nodes += r.nodes
-          total.edges += r.edges; total.degraded += r.degraded
+      for (const it of items) {
+        if (it.status === "fulfilled" && it.value) {
+          total.projects += it.value.projects; total.nodes += it.value.nodes
+          total.edges += it.value.edges; total.degraded += it.value.degraded
         }
       }
+      console.log(`[reconciler] rebuild ${clusters.length} clusters en ${totalMs.toFixed(0)}ms (concurrency=${CLUSTER_CONCURRENCY})`)
       return { ok: true, ...total };
     },
   );

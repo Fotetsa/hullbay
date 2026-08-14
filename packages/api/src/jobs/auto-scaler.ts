@@ -7,6 +7,7 @@ import {
 import { DockerEngineService } from "../modules/docker-engine/service"
 import { prisma } from "../lib/prisma"
 import { eventBus } from "../lib/event-bus"
+import { runWithConcurrency, CLUSTER_CONCURRENCY } from "../lib/concurrency"
 
 /**
  * Auto-scaler — la brique que Swarm NE fournit PAS nativement.
@@ -42,11 +43,18 @@ type RawService = {
 /** Un tick d'auto-scaling sur tous les services gérés éligibles. */
 export async function runAutoScale(): Promise<void> {
   const clusters = await prisma.cluster.findMany({ select: { id: true } })
-  for (const c of clusters) {
-    await runAutoScaleForCluster(c.id).catch(() => {
+  const { items, totalMs } = await runWithConcurrency(
+    clusters.map((c) => c.id),
+    CLUSTER_CONCURRENCY,
+    (clusterId) => runAutoScaleForCluster(clusterId),
+  )
+  for (const it of items) {
+    if (it.status === "rejected") {
       // un cluster injoignable ne doit pas bloquer les autres.
-    })
+      console.warn(`[auto-scaler] cluster ${clusters[it.index]!.id} injoignable: ${String(it.reason)}`)
+    }
   }
+  console.log(`[auto-scaler] tick ${clusters.length} clusters en ${totalMs.toFixed(0)}ms (concurrency=${CLUSTER_CONCURRENCY})`)
 }
 
 async function runAutoScaleForCluster(clusterId: string): Promise<void> {
