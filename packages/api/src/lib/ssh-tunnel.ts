@@ -12,6 +12,21 @@ const pendingTunnels = new Map<string, Promise<number>>()
  *  (le pending resterait dans pendingTunnels et bloquerait tout nouvel essai). */
 const CONNECT_TIMEOUT_MS = 15_000
 
+/** Lit une durée en ms depuis l'env, en fallback sur une valeur sûre si absente,
+ *  non numérique ou non strictement positive (évite 0/NaN → setTimeout invalide). */
+function positiveIntEnv(name: string, fallback: number): number {
+    const raw = process.env[name]
+    if (raw === undefined) return fallback
+    const n = Number(raw)
+    return Number.isInteger(n) && n > 0 ? n : fallback
+}
+
+/** Inactivité (aucun octet échangé) au-delà de laquelle une connexion du tunnel
+ *  est coupée. Surchargeable via l'env — couvre aussi un forwardOut pendant. */
+const IDLE_TIMEOUT_MS = positiveIntEnv("SSH_TUNNEL_IDLE_TIMEOUT_MS", 300_000)
+/** Délai maximal pour ouvrir un canal forwardOut (manager distant muet). */
+const FORWARD_TIMEOUT_MS = positiveIntEnv("SSH_TUNNEL_FORWARD_TIMEOUT_MS", 10_000)
+
 export type TunnelErrorCode =
   | "NO_READY_MANAGER"
   | "MANAGER_NO_KEY"
@@ -152,15 +167,30 @@ async function createTunnel(clusterId: string, remotePort: number): Promise<numb
             sockets.add(socket)
             socket.on("error", () => socket.destroy())
             socket.on("close", () => sockets.delete(socket))
-            session
-                .forwardOut("127.0.0.1", remotePort)
+            // Inactivité → coupe la connexion (évite les sockets fantômes dans le set).
+            socket.setTimeout(IDLE_TIMEOUT_MS)
+            socket.on("timeout", () => socket.destroy())
+            let timer: ReturnType<typeof setTimeout> | undefined
+            Promise.race([
+                session.forwardOut("127.0.0.1", remotePort),
+                new Promise<never>((_, reject) => {
+                    timer = setTimeout(() => reject(new Error("forwardOut: timeout")), FORWARD_TIMEOUT_MS)
+                }),
+            ])
                 .then((stream) => {
-                    stream.pipe(socket)
-                    socket.pipe(stream)
+                    clearTimeout(timer)
+                    // Socket déjà coupé (idle/timeout gagné pendant le forwardOut) :
+                    // ne pipe rien vers un socket mort, le canal est juste détruit.
+                    if (socket.destroyed) { stream.destroy(); return }
+                    // 'error' sans listener sur un stream = crash process (EventEmitter).
+                    // destroy() est idempotent : les deux côtés se détruisent sans double-effet.
+                    stream.on("error", () => { stream.destroy(); socket.destroy() })
                     stream.on("close", () => socket.destroy())
                     socket.on("close", () => stream.destroy())
+                    stream.pipe(socket)
+                    socket.pipe(stream)
                 })
-            .catch(() => socket.destroy())
+                .catch(() => { clearTimeout(timer); socket.destroy() })
         })
 
         // Session SSH tombée (réseau, serveur distant) → nettoie tout.

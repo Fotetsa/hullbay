@@ -69,6 +69,8 @@ describe("ssh-tunnel — cycle de vie", () => {
     // state module interne (Map tunnels) : module neuf par test
     vi.resetModules()
     vi.clearAllMocks()
+    delete process.env.SSH_TUNNEL_IDLE_TIMEOUT_MS
+    delete process.env.SSH_TUNNEL_FORWARD_TIMEOUT_MS
     const mod = await import("../ssh-tunnel")
     ensureTunnel = mod.ensureTunnel
     closeTunnel = mod.closeTunnel
@@ -317,6 +319,70 @@ it("nettoyage un seul appel même si close et error se suivent", async () => {
 
     // le `.then` orphelin de closeTunnel consomme la rejection : aucun
     // unhandled rejection (vitest le fait échouer sinon)
+    await new Promise((r) => setTimeout(r, 20))
+  })
+
+  it("stream forwardOut en erreur → socket fermé, pas de crash, tunnel vivant", async () => {
+    const port = await ensureTunnel("cluster-1", 2375)
+
+    const socket = net.connect({ host: "127.0.0.1", port })
+    await new Promise((r) => socket.once("connect", r))
+
+    // attendre que le handler serveur ait appelé forwardOut (mock.results rempli)
+    for (let i = 0; i < 10 && vi.mocked(mockSession.forwardOut).mock.results.length === 0; i++) {
+      await Promise.resolve()
+    }
+    const stream = await vi.mocked(mockSession.forwardOut).mock.results[0]!.value as PassThrough
+    for (let i = 0; i < 10 && stream.listenerCount("error") === 0; i++) await Promise.resolve()
+    expect(stream.listenerCount("error")).toBeGreaterThan(0)
+
+    // 'error' sans handler aurait crashé le process (EventEmitter)
+    stream.emit("error", new Error("canal SSH rompu"))
+    await Promise.race([
+      new Promise((r) => socket.once("close", r)),
+      new Promise((_, rej) => setTimeout(() => rej(new Error("socket jamais fermé")), 2000)),
+    ])
+
+    // seul le socket a été coupé : le tunnel entier reste debout
+    const s2 = net.connect({ host: "127.0.0.1", port })
+    await new Promise((r) => s2.once("connect", r))
+    expect(mockSession.forwardOut).toHaveBeenCalledTimes(2)
+    s2.destroy()
+  })
+
+  it("socket inactif au-delà du idle timeout → fermé", async () => {
+    process.env.SSH_TUNNEL_IDLE_TIMEOUT_MS = "50"
+    vi.resetModules()
+    ensureTunnel = (await import("../ssh-tunnel")).ensureTunnel
+
+    const port = await ensureTunnel("cluster-1", 2375)
+    const socket = net.connect({ host: "127.0.0.1", port })
+    await new Promise((r) => socket.once("connect", r))
+
+    // aucune data échangée → timeout idle → destroy
+    await Promise.race([
+      new Promise((r) => socket.once("close", r)),
+      new Promise((_, rej) => setTimeout(() => rej(new Error("socket jamais fermé")), 2000)),
+    ])
+    expect(mockSession.dispose).not.toHaveBeenCalled() // tunnel entier intact
+  })
+
+  it("forwardOut muet → socket fermé après le délai, sans rejection orpheline", async () => {
+    process.env.SSH_TUNNEL_FORWARD_TIMEOUT_MS = "50"
+    vi.resetModules()
+    ensureTunnel = (await import("../ssh-tunnel")).ensureTunnel
+    vi.mocked(mockSession.forwardOut).mockImplementationOnce(
+      () => new Promise<never>(() => {}) as never,
+    )
+
+    const port = await ensureTunnel("cluster-1", 2375)
+    const socket = net.connect({ host: "127.0.0.1", port })
+    await Promise.race([
+      new Promise((r) => socket.once("close", r)),
+      new Promise((_, rej) => setTimeout(() => rej(new Error("socket jamais fermé")), 2000)),
+    ])
+
+    // timer clearé par le catch : pas d'unhandled rejection (vitest échoue sinon)
     await new Promise((r) => setTimeout(r, 20))
   })
 
