@@ -45,6 +45,9 @@ export async function registerProjectRoutes(app: FastifyInstance) {
   const createProjectBody = z.object({
     name: z.string().min(1),
     description: z.string().optional(),
+    // Cluster de destination. L'UI le présélectionne ; sans lui, on retombe sur
+    // le cluster par défaut (isDefault) — comportement historique conservé.
+    clusterId: z.string().optional(),
   })
   app.post("/api/projects", {
     ...operator,
@@ -55,7 +58,8 @@ export async function registerProjectRoutes(app: FastifyInstance) {
       security: [{ bearerAuth: []}],
     },
   }, async (req) => {
-    return projectsService.createProject(req.body as { name: string; description?: string})
+    const body = req.body as { name: string; description?: string; clusterId?: string }
+    return projectsService.createProject(body)
   })
 
   const updateProjectBody = z.object({

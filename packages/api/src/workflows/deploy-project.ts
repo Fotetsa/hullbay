@@ -296,6 +296,28 @@ const gatewaysStep: Step<DeployInput> = {
   run: async (input, ctx) => {
     const s = ctx.shared as DeployShared
     const slug = input.graph.slug
+
+    // Caddy du cluster doit être sur les overlays du projet pour résoudre le nom
+    // de service cible (DNS Swarm). Rattachement auto, idempotent — seulement si
+    // le projet expose réellement une passerelle.
+    if (input.graph.nodes.some((n) => n.type === "gateway")) {
+      const caddyContainer = "hullbay-caddy"
+      const overlays = [
+        "boz_system",
+        ...input.graph.nodes
+          .filter((n) => n.type === "network")
+          .map((n) => resourceName(slug, n.name)),
+      ]
+      for (const overlay of overlays) {
+        await s.engine
+          .connectContainerToNetwork(caddyContainer, overlay)
+          .catch((err) => {
+            const detail = err instanceof Error ? err.message : String(err)
+            s.log.push(`Caddy non rattaché à ${overlay} (best effort) : ${detail}`)
+          })
+      }
+    }
+
     for (const node of input.graph.nodes.filter((n) => n.type === "gateway")) {
       const cfg = parseNodeConfig("gateway", node.config) as GatewayConfig;
       // La cible = le conteneur lié par un edge "gateway" (ou le 1er conteneur lié).

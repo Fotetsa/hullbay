@@ -1,5 +1,8 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from "vitest"
 import { EventEmitter } from "node:events"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
+import { rmSync } from "node:fs"
 
 const { mockPrisma, mockEventBus, mockDocker, mockGithub, mockSpawn } =
   vi.hoisted(() => ({
@@ -135,7 +138,10 @@ describe("UpdaterService", () => {
     }))
     mockSpawnSuccess()
     process.env.DATABASE_URL = "postgresql://ops:pw@localhost:5432/hullbay"
-    process.env.BACKUP_DIR = "/tmp/opencode/hullbay-backups"
+    // Répertoire de backup dans le tmpdir de l'utilisateur (lisible en écriture) :
+    // un chemin codé en dur dans /tmp/opencode (propriétaire root) cassait les
+    // tests avec EACCES pour les utilisateurs non-root.
+    process.env.BACKUP_DIR = join(tmpdir(), `hullbay-backups-${process.pid}`)
     // Pas de service web Swarm dans les tests → waitForWebHealthy est un no-op.
     mockDocker.findHullbayServices.mockResolvedValue({})
     // Par défaut : aucune release (chaque test la branche au besoin).
@@ -146,6 +152,9 @@ describe("UpdaterService", () => {
     delete process.env.DATABASE_URL
     delete process.env.IMAGE_TAG
     delete process.env.GHCR_OWNER
+    // Nettoie le backup temporaire + l'env pour ne pas polluer la session suivante.
+    if (process.env.BACKUP_DIR) rmSync(process.env.BACKUP_DIR, { recursive: true, force: true })
+    delete process.env.BACKUP_DIR
   })
 
   describe("apply", () => {

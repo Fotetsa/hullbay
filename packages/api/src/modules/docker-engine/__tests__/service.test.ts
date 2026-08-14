@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from "vitest"
 import { DockerEngineService } from "../service"
+import type { ContainerConfig } from "@hullbay/shared"
 
 function makeService() {
   const update = vi.fn()
@@ -59,5 +60,84 @@ describe("DockerEngineService.updateSystemServiceImage", () => {
     await expect(
       svc.updateSystemServiceImage("api", "docker.io/library/nginx:latest"),
     ).rejects.toThrow("image cible")
+  })
+})
+
+describe("DockerEngineService.buildServiceSpec — restartPolicy du nœud → Condition Swarm (P4)", () => {
+  /** Config conteneur minimale mais complète pour buildServiceSpec. */
+  const baseConfig = (over: Partial<ContainerConfig> = {}): ContainerConfig => ({
+    image: "nginx",
+    tag: "latest",
+    env: {},
+    secrets: [],
+    ports: [],
+    restartPolicy: "unless-stopped",
+    replicas: 1,
+    updateParallelism: 1,
+    updateDelaySec: 5,
+    ...over,
+  })
+
+  async function specFor(config: ContainerConfig): Promise<{ TaskTemplate: { RestartPolicy: { Condition?: string } } }> {
+    const createService = vi.fn(async (spec: unknown) => ({ id: "svc-x", ...(spec as object) }))
+    const docker = {
+      createService,
+      listSecrets: vi.fn(async () => []),
+      listServices: vi.fn(async () => []),
+    }
+    const svc = new DockerEngineService(docker as never)
+    await svc.createService("s", config, {})
+    return createService.mock.calls[0]?.[0] as never
+  }
+
+  it("défaut unless-stopped → Condition 'any' (comportement historique)", async () => {
+    expect((await specFor(baseConfig())).TaskTemplate.RestartPolicy.Condition).toBe("any")
+  })
+
+  it("always → Condition 'any'", async () => {
+    expect((await specFor(baseConfig({ restartPolicy: "always" }))).TaskTemplate.RestartPolicy.Condition).toBe("any")
+  })
+
+  it("on-failure → Condition 'on-failure'", async () => {
+    expect((await specFor(baseConfig({ restartPolicy: "on-failure" }))).TaskTemplate.RestartPolicy.Condition).toBe("on-failure")
+  })
+
+  it("no → Condition 'none' (one-shot, anti boucle hello-world sur exit 0)", async () => {
+    expect((await specFor(baseConfig({ restartPolicy: "no" }))).TaskTemplate.RestartPolicy.Condition).toBe("none")
+  })
+})
+
+describe("DockerEngineService.connectContainerToNetwork (P5)", () => {
+  function makeService(connectImpl: () => Promise<unknown>) {
+    const connect = vi.fn(connectImpl)
+    const docker = { getNetwork: vi.fn(() => ({ connect })) }
+    return { docker, connect }
+  }
+
+  it("rattache le conteneur au réseau overlay", async () => {
+    const { docker, connect } = makeService(async () => ({}))
+    const svc = new DockerEngineService(docker as never)
+    await svc.connectContainerToNetwork("hullbay-caddy", "boz_system")
+    expect(connect).toHaveBeenCalledWith({ Container: "hullbay-caddy" })
+  })
+
+  it("tolère « already connected » → idempotent (re-déploiement)", async () => {
+    const { docker } = makeService(async () => {
+      throw new Error("container already connected to network")
+    })
+    const svc = new DockerEngineService(docker as never)
+    await expect(
+      svc.connectContainerToNetwork("hullbay-caddy", "boz_system"),
+    ).resolves.toBeUndefined()
+  })
+
+  it("relaie les autres erreurs (réseau introuvable…)", async () => {
+    const { docker } = makeService(async () => {
+      throw new Error("network boz_foo not found")
+    })
+    const svc = new DockerEngineService(docker as never)
+    await expect(
+      svc.connectContainerToNetwork("hullbay-caddy", "boz_foo"),
+    ).rejects.toThrow("network boz_foo not found")
   })
 })

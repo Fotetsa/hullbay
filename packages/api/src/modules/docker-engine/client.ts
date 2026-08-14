@@ -20,6 +20,8 @@ const DOCKER_SOCKET_PATH =
   process.env.DOCKER_SOCKET_PATH || "/var/run/docker.sock"
 
 const registry = new Map<string, Docker>()
+/** Créations en vol : partage la même Promise pour les appels concurrents. */
+const pendingClients = new Map<string, Promise<Docker>>()
 
 /** Paramètres de connexion TCP à l'API Docker. */
 interface DockerHostParams {
@@ -65,23 +67,51 @@ async function resolveConnectionParams(cluster: {
   return { host: "127.0.0.1", port: localPort, protocol: parsed?.protocol ?? "http" };
 }
 
-function buildClient(dockerHost: string | undefined): Docker {
-  const tcp = dockerHost ? parseDockerHost(dockerHost) : null
-  return tcp ? new Docker(tcp) : new Docker({ socketPath: DOCKER_SOCKET_PATH}) 
+/** Construit (sans cache ni mutex) le client dockerode d'un cluster. */
+async function buildClientForCluster(clusterId: string): Promise<Docker> {
+  const cluster = await prisma.cluster.findUniqueOrThrow({ where: { id: clusterId } })
+  const params = await resolveConnectionParams(cluster)
+  return params ? new Docker(params) : new Docker({ socketPath: DOCKER_SOCKET_PATH })
 }
-
-/**
- * Connexion Docker pour un Cluster donné, 
- */
 
 export async function getDockerForCluster(clusterId: string): Promise<Docker> {
   const cached = registry.get(clusterId)
   if (cached) return cached
-  const cluster = await prisma.cluster.findUniqueOrThrow({ where: { id: clusterId } })
-  const params = await resolveConnectionParams(cluster)
-  const client = params ? new Docker (params) : new Docker ({ socketPath: DOCKER_SOCKET_PATH})
-  registry.set(clusterId, client)
-  return client
+  // Création en cours pour ce cluster : partage la même Promise au lieu de relancer
+  // un findUnique + build en parallèle (courses → doubles tunnels/clients).
+  const pending = pendingClients.get(clusterId)
+  if (pending) return pending
+  let creating!: Promise<Docker>
+  creating = buildClientForCluster(clusterId)
+    .then((client) => {
+      // Garde d'identité : si une purge (invalidateDockerClient) a eu lieu entre-temps,
+      // l'entrée pending appartient à une autre build → ne pas ré-insérer de client
+      // obsolète dans le registre.
+      if (pendingClients.get(clusterId) === creating) registry.set(clusterId, client)
+      return client
+    })
+    .finally(() => {
+      // Même garde : ne pas supprimer l'entrée pending d'une build plus récente.
+      if (pendingClients.get(clusterId) === creating) pendingClients.delete(clusterId)
+    })
+    .catch((err) => {
+      // Anti-poison : ne laisse aucune entrée (instance ou promise) corrompue en
+      // cache, sinon le cluster serait bloqué jusqu'à un redémarrage du process.
+      registry.delete(clusterId)
+      throw err
+    })
+  pendingClients.set(clusterId, creating)
+  return creating
+}
+
+/**
+ * Purge le client dockerode d'un cluster du cache. À appeler quand le
+ * dockerHost d'un cluster change (fin de provision) pour ne pas continuer
+ * à viser l'ancienne cible (tunnel ou socket).
+ */
+export function invalidateDockerClient(clusterId: string): void {
+  registry.delete(clusterId)
+  pendingClients.delete(clusterId)
 }
 
 export async function getDefaultCluster() {
