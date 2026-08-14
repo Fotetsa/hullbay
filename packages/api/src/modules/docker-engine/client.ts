@@ -21,12 +21,30 @@ const DOCKER_SOCKET_PATH =
 
 const registry = new Map<string, Docker>()
 
-/** Parse DOCKER_HOST (tcp://host:port) en options dockerode {host, port}. */
-function parseDockerHost(value: string): { host: string; port: number } | null {
+/** Paramètres de connexion TCP à l'API Docker. */
+interface DockerHostParams {
+  host: string;
+  port: number;
+  protocol?: "http" | "https";
+}
+
+/**
+ * Parse DOCKER_HOST (tcp://, http:// ou https://) en options dockerode.
+ * Le protocol est explicité ((tcp|http) → http, https → https) : docker-modem
+ * retombe déjà sur http par défaut, mais l'expliciter évite toute ambiguïté et
+ * — surtout — `https:` était silencieusement rejeté → fallback socket Unix local
+ * (mauvais daemon). https passe en TLS par les CA système ; le TLS mutuel
+ * (ca/cert/key) n'est pas supporté (le modèle Cluster n'a pas ces champs).
+ */
+function parseDockerHost(value: string): DockerHostParams | null {
   try {
     const url = new URL(value)
-    if (url.protocol !== "tcp:" && url.protocol !== "http:") return null
-    return { host: url.hostname, port: Number(url.port || 2375) }
+    let protocol: "http" | "https"
+    if (url.protocol === "http:") protocol = "http"
+    else if (url.protocol === "https:") protocol = "https"
+    else if (url.protocol === "tcp:") protocol = "http"
+    else return null
+    return { host: url.hostname, port: Number(url.port || (protocol === "https" ? 2376 : 2375)), protocol }
   } catch {
     return null
   }
@@ -36,12 +54,15 @@ async function resolveConnectionParams(cluster: {
   id: string;
   isDefault: boolean;
   dockerHost: string;
-}): Promise<{ host: string; port: number } | null> {
+}): Promise<DockerHostParams | null> {
   const parsed = parseDockerHost(cluster.dockerHost);
   if (cluster.isDefault) return parsed;
   const remotePort = parsed?.port ?? 2375;
   const localPort = await ensureTunnel(cluster.id, remotePort);
-  return { host: "127.0.0.1", port: localPort };
+  // Tunnel SSH → forward TCP brut : le protocol d'origine est conservé (http
+  // pour le proxy socket Tecnativa, https si le daemon parle TLS, TLS se
+  // terminant au daemon distant et traversant le tunnel sans modification).
+  return { host: "127.0.0.1", port: localPort, protocol: parsed?.protocol ?? "http" };
 }
 
 function buildClient(dockerHost: string | undefined): Docker {
