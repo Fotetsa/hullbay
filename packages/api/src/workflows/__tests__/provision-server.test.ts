@@ -44,9 +44,11 @@ describe("provision-server — finalizeClusterStep", () => {
     const updateMock = vi.mocked(prisma.cluster.update);
     expect(updateMock).toHaveBeenCalledTimes(1);
 
-    const callArg = updateMock.mock.calls[0][0] as any;
-    expect(callArg).toBeDefined();
+    const updateCall = updateMock.mock.calls[0];
+    expect(updateCall).toBeDefined();
 
+    const callArg = updateCall?.[0] as any;
+    expect(callArg).toBeDefined();
 
     expect(callArg.data.dockerHost).toBe("tcp://203.0.113.0:2375");
     expect(callArg.data.caddyAdminUrl).toBe("http://203.0.113.0:2019");
