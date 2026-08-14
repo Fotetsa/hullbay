@@ -4,6 +4,7 @@ import { ReconcilerService} from "./service"
 import { DockerEngineService } from "../docker-engine/service"
 import { rebuildFromDocker } from "./rebuild"
 import { deployProjectWorkflow, DeployError } from "../../workflows/deploy-project"
+import { TunnelError } from "../../lib/ssh-tunnel"
 import { eventBus } from "../../lib/event-bus"
 import { prisma } from "../../lib/prisma"
 import { requireRole, currentUser } from "../auth/rbac"
@@ -92,7 +93,10 @@ export async function registerReconcilerRoutes(app: FastifyInstance) {
         });
         // Erreur MÉTIER prévisible (image, garde multi-nœuds, secret…) → 422 + message
         // propre. Sinon vrai bug serveur → 500.
-        const status = err instanceof DeployError ? 422 : 500;
+        const status =
+          err instanceof DeployError ? 422 :
+          err instanceof TunnelError ? err.statusCode :
+          500;
         return reply.code(status).send({ ok: false, error: message });
       } finally {
         deployingProjects.delete(id);

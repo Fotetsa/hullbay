@@ -6,6 +6,7 @@ import { DockerEngineService } from "../docker-engine/service"
 import { requireRole, currentUser } from "../auth/rbac"
 import { eventBus } from "../../lib/event-bus"
 import { runWithConcurrency, CLUSTER_CONCURRENCY } from "../../lib/concurrency"
+import { TunnelError } from "../../lib/ssh-tunnel"
 import { prisma } from "../../lib/prisma";
 
 
@@ -298,8 +299,9 @@ export async function registerServersRoutes(app: FastifyInstance) {
         const engine = await DockerEngineService.forCluster(server.clusterId);
         await engine.setNodeRole(server.swarmNodeId, body.role);
       } catch (err) {
+        const status = err instanceof TunnelError ? err.statusCode : 500;
         return reply
-          .code(500)
+          .code(status)
           .send({ error: err instanceof Error ? err.message : String(err) });
       }
       const body = setRoleBody.parse(req.body);

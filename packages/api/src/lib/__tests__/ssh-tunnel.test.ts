@@ -221,4 +221,89 @@ it("nettoyage un seul appel même si close et error se suivent", async () => {
     await connectExpectRefused(port)
     expect(mockSession.dispose).toHaveBeenCalled()
   })
+
+  it("aucun manager ready → TunnelError NO_READY_MANAGER (409)", async () => {
+    mockFindFirst.mockResolvedValue(null)
+
+    await expect(ensureTunnel("cluster-1", 2375)).rejects.toMatchObject({
+      name: "TunnelError",
+      code: "NO_READY_MANAGER",
+      statusCode: 409,
+      message: /Aucun manager prêt pour le cluster cluster-1/,
+    })
+    expect(mockConnect).not.toHaveBeenCalled()
+  })
+
+  it("manager sans clé de maintenance → TunnelError MANAGER_NO_KEY (409)", async () => {
+    vi.mocked(mockFindFirst).mockImplementationOnce(async () =>
+      ({ ...manager("mgr"), privateKeyEnc: null }) as any,
+    )
+
+    await expect(ensureTunnel("cluster-1", 2375)).rejects.toMatchObject({
+      name: "TunnelError",
+      code: "MANAGER_NO_KEY",
+      statusCode: 409,
+      message: /sans clé de maintenance/,
+    })
+    expect(mockConnect).not.toHaveBeenCalled()
+  })
+
+  it("connect SSH refusé → TunnelError TUNNEL_CONNECT_FAILED (502)", async () => {
+    vi.mocked(mockConnect).mockRejectedValueOnce(new Error("ECONNREFUSED"))
+
+    await expect(ensureTunnel("cluster-1", 2375)).rejects.toMatchObject({
+      name: "TunnelError",
+      code: "TUNNEL_CONNECT_FAILED",
+      statusCode: 502,
+      message: /ECONNREFUSED/,
+    })
+
+    // clé purgée : un nouvel appel retente une session neuve
+    await ensureTunnel("cluster-1", 2375)
+    expect(mockConnect).toHaveBeenCalledTimes(2)
+  })
+
+  it("connect pendu → TunnelError TUNNEL_CONNECT_TIMEOUT (504) puis clé purgée", async () => {
+    vi.useFakeTimers()
+    try {
+      vi.mocked(mockConnect).mockImplementationOnce(
+        () => new Promise<never>(() => {}) as never,
+      )
+
+      const tunnel = ensureTunnel("cluster-1", 2375)
+      // handler attaché AVANT l'avance des timers, sinon la rejection est
+      // "unhandled" pendant le flush interne de advanceTimersByTimeAsync
+      const assertion = expect(tunnel).rejects.toMatchObject({
+        name: "TunnelError",
+        code: "TUNNEL_CONNECT_TIMEOUT",
+        statusCode: 504,
+        message: /timeout 15000ms/,
+      })
+      await vi.advanceTimersByTimeAsync(15_000)
+      await assertion
+
+      vi.useRealTimers()
+
+      // clé purgée après le timeout : un nouvel appel repart d'une session neuve
+      await ensureTunnel("cluster-1", 2375)
+      expect(mockConnect).toHaveBeenCalledTimes(2)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it("appels concurrents sans manager ready → même TunnelError, aucune connexion", async () => {
+    mockFindFirst.mockResolvedValue(null)
+
+    const [a, b] = await Promise.allSettled([
+      ensureTunnel("cluster-1", 2375),
+      ensureTunnel("cluster-1", 2375),
+    ])
+
+    const ra = a.status === "rejected" ? a.reason : null
+    const rb = b.status === "rejected" ? b.reason : null
+    expect(ra).toMatchObject({ name: "TunnelError", code: "NO_READY_MANAGER", statusCode: 409 })
+    expect(rb).toMatchObject({ name: "TunnelError", code: "NO_READY_MANAGER", statusCode: 409 })
+    expect(mockConnect).not.toHaveBeenCalled()
+  })
 })

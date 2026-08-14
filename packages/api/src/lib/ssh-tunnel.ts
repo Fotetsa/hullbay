@@ -12,6 +12,26 @@ const pendingTunnels = new Map<string, Promise<number>>()
  *  (le pending resterait dans pendingTunnels et bloquerait tout nouvel essai). */
 const CONNECT_TIMEOUT_MS = 15_000
 
+export type TunnelErrorCode =
+  | "NO_READY_MANAGER"
+  | "MANAGER_NO_KEY"
+  | "TUNNEL_CONNECT_FAILED"
+  | "TUNNEL_CONNECT_TIMEOUT";
+
+/** Erreur contrôlée du tunnel SSH. Shippée avec un statusCode HTTP : le
+ *  handler d'erreur global (server.ts) répond ce status, pas un 500 générique. */
+export class TunnelError extends Error {
+  code: TunnelErrorCode
+  statusCode: number
+
+  constructor(code: TunnelErrorCode, message: string, statusCode: number) {
+    super(message)
+    this.name = "TunnelError"
+    this.code = code
+    this.statusCode = statusCode
+  }
+}
+
 function tunnelKey(clusterId: string, remotePort: number): string {
     return `${clusterId}:${remotePort}`
 }
@@ -23,21 +43,32 @@ async function openSessionForCluster(clusterId: string): Promise<SshSession> {
     })
 
     if (!manager) {
-        throw new Error(`Aucun manager prêt pour le cluster ${clusterId}, tunnel impossible.`)
+        throw new TunnelError(
+            "NO_READY_MANAGER",
+            `Aucun manager prêt pour le cluster ${clusterId}, tunnel impossible.`,
+            409,
+        )
     }
     if (!manager.privateKeyEnc) {
-        throw new Error(
-          `Manager ${manager.name} sans clé de maintenance enregistrée, reprovisionner.`,
-        );
+        throw new TunnelError(
+            "MANAGER_NO_KEY",
+            `Manager ${manager.name} sans clé de maintenance enregistrée, reprovisionner.`,
+            409,
+        )
     }
 
-    return SshSession.connect({
-        host: manager.host,
-        port: manager.port,
-        user: manager.user,
-        credential: { type: "key", privateKey: decryptSecret(manager.privateKeyEnc) },
-        knownHostKeyFp: manager.hostKeyFp ?? undefined,
-    })
+    try {
+        return await SshSession.connect({
+            host: manager.host,
+            port: manager.port,
+            user: manager.user,
+            credential: { type: "key", privateKey: decryptSecret(manager.privateKeyEnc) },
+            knownHostKeyFp: manager.hostKeyFp ?? undefined,
+        })
+    } catch (err) {
+        const detail = err instanceof Error ? err.message : String(err)
+        throw new TunnelError("TUNNEL_CONNECT_FAILED", detail, 502)
+    }
 }
 
 /**
@@ -45,6 +76,13 @@ async function openSessionForCluster(clusterId: string): Promise<SshSession> {
  * retourne le port local sur lequel se connecter (127.0.0.1:localPort).
  * Idempotent et atomique : les appels concurrents pour la même clé partagent
  * la même Promise de création (Map pendingTunnels) et un seul tunnel est monté.
+ *
+ * CONTRAT : exige un manager `ready` avec clé de maintenance pour le cluster.
+ * En l'absence, rejette une TunnelError (code + statusCode HTTP) :
+ *  - NO_READY_MANAGER (409) : aucun manager prêt — reprovisionner/attendre.
+ *  - MANAGER_NO_KEY (409)   : manager sans clé de maintenance — reprovisionner.
+ *  - TUNNEL_CONNECT_FAILED (502) : connect SSH refusé/échoué (hôte, host key).
+ *  - TUNNEL_CONNECT_TIMEOUT (504) : connect SSH sans réponse dans le délai.
  */
 
 export async function ensureTunnel(clusterId: string, remotePort: number): Promise<number> {
@@ -66,15 +104,27 @@ export async function ensureTunnel(clusterId: string, remotePort: number): Promi
 async function createTunnel(clusterId: string, remotePort: number): Promise<number> {
     const key = tunnelKey(clusterId, remotePort)
     let timer: ReturnType<typeof setTimeout> | undefined
-    const session = await Promise.race([
-        openSessionForCluster(clusterId),
-        new Promise<never>((_, reject) => {
-            timer = setTimeout(
-                () => reject(new Error(`SSH: connexion du cluster ${clusterId} en attente (timeout ${CONNECT_TIMEOUT_MS}ms)`)),
-                CONNECT_TIMEOUT_MS,
-            )
-        }),
-    ]).finally(() => clearTimeout(timer))
+    let timedOut = false
+    const sessionPromise = openSessionForCluster(clusterId)
+    const timeoutPromise = new Promise<never>((_, reject) => {
+        timer = setTimeout(() => {
+            timedOut = true
+            reject(new TunnelError(
+                "TUNNEL_CONNECT_TIMEOUT",
+                `SSH: connexion du cluster ${clusterId} en attente (timeout ${CONNECT_TIMEOUT_MS}ms)`,
+                504,
+            ))
+        }, CONNECT_TIMEOUT_MS)
+    })
+    let session: SshSession
+    try {
+        session = await Promise.race([sessionPromise, timeoutPromise])
+    } finally {
+        clearTimeout(timer)
+        // Timeout gagné : la connexion peut aboutir après coup → session
+        // orpheline jamais montée ni disposée. On la nettoie à son arrivée.
+        if (timedOut) sessionPromise.then((s) => s.dispose()).catch(() => {})
+    }
 
     return new Promise<number>((resolve, reject) => {
         let closed = false
