@@ -1,5 +1,4 @@
-import { Key } from '@medusajs/icons';
-import { createServer, type Server as NetServer } from "node:net"
+import { createServer, type Server as NetServer, type Socket as NetSocket } from "node:net"
 import { prisma } from "./prisma"
 import { decryptSecret } from "../modules/auth/crypto"
 import { SshSession } from "./ssh"
@@ -50,7 +49,31 @@ export async function ensureTunnel(clusterId: string, remotePort: number): Promi
     const session = await openSessionForCluster(clusterId)
 
     return new Promise<number>((resolve, reject) => {
+        let closed = false
+        let settled = false
+        const sockets = new Set<NetSocket>()
+
+        /** Ferme le serveur local + la session SSH et purge la Map. Idempotent. */
+        const teardown = (cause?: Error | null) => {
+            if (closed) return
+            closed = true
+            tunnels.delete(key)
+            try { server.close() } catch { /* jamais écouté (ERR_SERVER_NOT_RUNNING) */ }
+            // Les sockets locaux en attente de forwardOut sont orphelins :
+            // sans ça server.close() attendrait leur fin (fuite de descripteurs).
+            for (const socket of sockets) socket.destroy()
+            sockets.clear()
+            // dispose() est idempotent : double-appel avec closeTunnel sans risque.
+            session.dispose()
+            // Session morte avant le callback de listen : ne laisse JAMAIS
+            // l'appelant obtenir un port dont le tunnel est déjà détruit.
+            if (!settled) reject(cause ?? new Error("Session SSH fermée avant l'écoute du tunnel."))
+        }
+
         const server = createServer((socket) => {
+            sockets.add(socket)
+            socket.on("error", () => socket.destroy())
+            socket.on("close", () => sockets.delete(socket))
             session
                 .forwardOut("127.0.0.1", remotePort)
                 .then((stream) => {
@@ -62,12 +85,18 @@ export async function ensureTunnel(clusterId: string, remotePort: number): Promi
             .catch(() => socket.destroy())
         })
 
-        server.on("error", (err) => {
-            tunnels.delete(key)
-            reject(err)
-        })
+        // Session SSH tombée (réseau, serveur distant) → nettoie tout.
+        session.onClose(() => teardown())
+        session.onError((err) => teardown(err))
+        // Serveur local fermé (y compris via closeTunnel) → purge la Map.
+        server.on("close", teardown)
+        server.on("error", (err) => teardown(err))
 
         server.listen(0, "127.0.0.1", () => {
+            // Session déjà morte pendant le listen : ne ré-ajoute pas d'entrée
+            // fantôme (teardown a déjà rejeté le promise).
+            if (closed) return
+            settled = true
             const addr = server.address()
             const localPort = typeof addr === "object" && addr ? addr.port : 0
             tunnels.set(key, { session, server, localPort })
