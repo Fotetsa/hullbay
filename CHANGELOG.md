@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.3.0](https://github.com/Fotetsa/hullbay/compare/v1.2.4...v1.3.0) (2026-08-14)
+
+
+### Features
+
+* multi cluster ([#77](https://github.com/Fotetsa/hullbay/issues/77)) ([f169c6f](https://github.com/Fotetsa/hullbay/commit/f169c6f9d07302a8a7b8cff36a75abb91be866df))
+* **updates:** ajouter la mise à jour automatisée de hullbay ([#74](https://github.com/Fotetsa/hullbay/issues/74)) ([4333d9b](https://github.com/Fotetsa/hullbay/commit/4333d9ba3bad7338ec90393ee4f8d16b357ec787))
+
+
+### Bug Fixes
+
+* parcourt boostrap jusqaua la config du domain ([#38](https://github.com/Fotetsa/hullbay/issues/38)) ([55df685](https://github.com/Fotetsa/hullbay/commit/55df685ad8f4b9a693af9194d5aa4bf2f22c2c40))
+* **provisioning:** sécurisation de la création de cluster et garantir l'atomicité des états ([#87](https://github.com/Fotetsa/hullbay/issues/87)) ([cd382c1](https://github.com/Fotetsa/hullbay/commit/cd382c15030d27e62012a0b0fb6d584573c8c1cc))
+* **settings:** corriger la route domaine, navigation et badge canal ([#86](https://github.com/Fotetsa/hullbay/issues/86)) ([4cbbca6](https://github.com/Fotetsa/hullbay/commit/4cbbca612b39474b16d00efceeb04b69951d21a2))
+
 ## [1.2.4](https://github.com/Fotetsa/hullbay/compare/v1.2.3...v1.2.4) (2026-08-08)
 
 
