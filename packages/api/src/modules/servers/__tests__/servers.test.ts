@@ -54,6 +54,7 @@ vi.mock("../../../lib/prisma", () => ({
   prisma: {
     cluster: {
       findUnique: vi.fn(),
+      findUniqueOrThrow: vi.fn(),
       delete: vi.fn(),
     },
     server: {
@@ -268,6 +269,33 @@ describe("GET /api/servers", () => {
       });
 
       expect(response.statusCode).toBe(404);
+    });
+  });
+
+  describe("POST /api/servers", () => {
+    it("devrait refuser de provisionner sur un cluster pas prêt (409)", async () => {
+      vi.mocked(prisma.cluster.findUniqueOrThrow).mockResolvedValue({
+        id: "c1",
+        name: "Cluster lent",
+        status: "pending",
+      } as any);
+
+      const response = await app.inject({
+        method: "POST",
+        url: "/api/servers",
+        payload: {
+          name: "node-1",
+          host: "192.168.1.20",
+          port: 22,
+          user: "root",
+          credential: { type: "password", password: "secret" },
+          clusterId: "c1",
+        },
+        headers: { authorization: `Bearer ${mockOwnerToken}` },
+      });
+
+      expect(response.statusCode).toBe(409);
+      expect(mockServersService.create).not.toHaveBeenCalled();
     });
   });
 });
