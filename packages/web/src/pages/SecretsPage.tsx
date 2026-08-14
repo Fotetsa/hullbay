@@ -1,4 +1,5 @@
 import { useState } from "react"
+import { useParams } from "react-router-dom" // <-- Ajout pour récupérer l'ID dans l'URL
 import { useQuery } from "@tanstack/react-query"
 import { Button, Container, Heading, Input, Label, Text, Badge } from "@medusajs/ui"
 import { Plus, Trash, Key } from "@medusajs/icons"
@@ -18,15 +19,24 @@ import { useTranslation } from "react-i18next"
  */
 export function SecretsPage() {
   const { t } = useTranslation()
-  const { data: secrets } = useQuery({ queryKey: ["secrets"], queryFn: api.listSecrets })
+  
+  // 1. Récupération du clusterId depuis l'URL
+  const { clusterId } = useParams<{ clusterId: string }>()
+
+  // 2. Ajout du clusterId dans la queryKey et la queryFn
+  const { data: secrets } = useQuery({ 
+    queryKey: ["secrets", clusterId], 
+    queryFn: () => api.listSecrets(clusterId!) 
+  })
 
   const [name, setName] = useState("")
   const [value, setValue] = useState("")
 
   const save = useMutationToast({
-    mutationFn: () => api.setSecret({ name, value }),
+    // 3. Ajout du clusterId pour la création
+    mutationFn: () => api.setSecret(clusterId!, { name, value }),
     success: t('secrets.toast.saveSuccess'),
-    invalidate: [["secrets"]],
+    invalidate: [["secrets", clusterId]], // Invalidation ciblée
     onSuccess: () => {
       setName("")
       setValue("")
@@ -34,9 +44,10 @@ export function SecretsPage() {
   })
 
   const removeSecret = useConfirmDelete<string>({
-    mutationFn: (n) => api.deleteSecret(n),
+    // 4. Ajout du clusterId pour la suppression
+    mutationFn: (n) => api.deleteSecret(clusterId!, n),
     success: t('secrets.toast.removeSuccess'),
-    invalidate: [["secrets"]],
+    invalidate: [["secrets", clusterId]], // Invalidation ciblée
     confirm: (n) => ({
       title: t('secrets.deleteConfirm.title'),
       description: t('secrets.deleteConfirm.description', { name: n }),
