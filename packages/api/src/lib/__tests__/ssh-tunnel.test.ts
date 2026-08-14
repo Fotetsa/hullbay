@@ -93,6 +93,37 @@ describe("ssh-tunnel — cycle de vie", () => {
     expect(mockConnect).toHaveBeenCalledTimes(1)
   })
 
+  it("appels concurrents → une seule session et le même port", async () => {
+    const [first, second] = await Promise.all([
+      ensureTunnel("cluster-1", 2375),
+      ensureTunnel("cluster-1", 2375),
+    ])
+
+    expect(first).toBe(second)
+    expect(mockConnect).toHaveBeenCalledTimes(1)
+  })
+
+  it("course en vol : pending partagé, aucune connexion double", async () => {
+    let release!: (s: unknown) => void
+    const gated = new Promise((resolve) => {
+      release = resolve
+    })
+    vi.mocked(mockConnect).mockImplementationOnce(() => gated as never)
+
+    const a = ensureTunnel("cluster-1", 2375)
+    const b = ensureTunnel("cluster-1", 2375)
+
+    // la session a déjà reçu sa 1ère connexion (gated, en vol) : pas de 2e lancée
+    await Promise.resolve()
+    expect(mockConnect).toHaveBeenCalledTimes(1)
+
+    release(mockSession)
+    const [pa, pb] = await Promise.all([a, b])
+
+    expect(pa).toBe(pb)
+    expect(mockConnect).toHaveBeenCalledTimes(1)
+  })
+
   it("nettoyage quand la session SSH se ferme (close)", async () => {
     const port = await ensureTunnel("cluster-1", 2375)
 
@@ -120,8 +151,8 @@ describe("ssh-tunnel — cycle de vie", () => {
 it("nettoyage un seul appel même si close et error se suivent", async () => {
     await ensureTunnel("cluster-1", 2375)
 
-    const closeCb = vi.mocked(mockSession.onClose).mock.calls[0][0]
-    const errCb = vi.mocked(mockSession.onError).mock.calls[0][0]
+    const closeCb = vi.mocked(mockSession.onClose).mock.calls[0]![0]
+    const errCb = vi.mocked(mockSession.onError).mock.calls[0]![0]
     errCb(new Error("boom"))
     closeCb()
 
@@ -137,7 +168,7 @@ it("nettoyage un seul appel même si close et error se suivent", async () => {
     }
     expect(mockSession.onError).toHaveBeenCalled()
 
-    const errCb = vi.mocked(mockSession.onError).mock.calls[0][0]
+    const errCb = vi.mocked(mockSession.onError).mock.calls[0]![0]
     errCb(new Error("connexion coupée"))
 
     await expect(promise).rejects.toThrow(/coupée|fermée/)
@@ -161,5 +192,33 @@ it("nettoyage un seul appel même si close et error se suivent", async () => {
 
     // teardown idempotent : un second closeTunnel ne lève rien
     expect(() => closeTunnel("cluster-1", 2375)).not.toThrow()
+  })
+
+  it("création échouée → clé purgée, un nouvel appel retente (anti-poison)", async () => {
+    vi.mocked(mockConnect).mockRejectedValueOnce(new Error("SSH: connexion refusée"))
+
+    await expect(ensureTunnel("cluster-1", 2375)).rejects.toThrow(/refusée/)
+
+    // pending purgé après l'échec : le prochain appel repart d'une session neuve
+    await ensureTunnel("cluster-1", 2375)
+    expect(mockConnect).toHaveBeenCalledTimes(2)
+  })
+
+  it("closeTunnel pendant la création → fermé une fois monté", async () => {
+    let release!: (s: unknown) => void
+    const gated = new Promise((resolve) => {
+      release = resolve
+    })
+    vi.mocked(mockConnect).mockImplementationOnce(() => gated as never)
+
+    const tunnel = ensureTunnel("cluster-1", 2375)
+    closeTunnel("cluster-1", 2375) // création encore en vol
+
+    release(mockSession)
+    const port = await tunnel
+
+    // tunnel monté puis fermé immédiatement : port refusé, session disposée
+    await connectExpectRefused(port)
+    expect(mockSession.dispose).toHaveBeenCalled()
   })
 })

@@ -6,6 +6,11 @@ import { SshSession } from "./ssh"
 type TunnelEntry = { session: SshSession; server: NetServer; localPort: number }
 
 const tunnels = new Map<string, TunnelEntry>()
+const pendingTunnels = new Map<string, Promise<number>>()
+
+/** Borne le connect SSH : un hôte injoignable ne doit pas empoisonner la clé
+ *  (le pending resterait dans pendingTunnels et bloquerait tout nouvel essai). */
+const CONNECT_TIMEOUT_MS = 15_000
 
 function tunnelKey(clusterId: string, remotePort: number): string {
     return `${clusterId}:${remotePort}`
@@ -38,7 +43,8 @@ async function openSessionForCluster(clusterId: string): Promise<SshSession> {
 /**
  * Garatit un tunnel actif vers <clusterId>:<remotePort> (côte manager),
  * retourne le port local sur lequel se connecter (127.0.0.1:localPort).
- * Idempotent : reutilise le tunnel existant s'il est deja ouver.
+ * Idempotent et atomique : les appels concurrents pour la même clé partagent
+ * la même Promise de création (Map pendingTunnels) et un seul tunnel est monté.
  */
 
 export async function ensureTunnel(clusterId: string, remotePort: number): Promise<number> {
@@ -46,7 +52,29 @@ export async function ensureTunnel(clusterId: string, remotePort: number): Promi
     const existing = tunnels.get(key)
     if (existing) return existing.localPort
 
-    const session = await openSessionForCluster(clusterId)
+    // Création en cours pour cette clé : partage la même promesse au lieu de
+    // relancer une session SSH en parallèle (évite tunnels dupliqués).
+    const pending = pendingTunnels.get(key)
+    if (pending) return pending
+
+    const creating = createTunnel(clusterId, remotePort)
+        .finally(() => pendingTunnels.delete(key))
+    pendingTunnels.set(key, creating)
+    return creating
+}
+
+async function createTunnel(clusterId: string, remotePort: number): Promise<number> {
+    const key = tunnelKey(clusterId, remotePort)
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const session = await Promise.race([
+        openSessionForCluster(clusterId),
+        new Promise<never>((_, reject) => {
+            timer = setTimeout(
+                () => reject(new Error(`SSH: connexion du cluster ${clusterId} en attente (timeout ${CONNECT_TIMEOUT_MS}ms)`)),
+                CONNECT_TIMEOUT_MS,
+            )
+        }),
+    ]).finally(() => clearTimeout(timer))
 
     return new Promise<number>((resolve, reject) => {
         let closed = false
@@ -109,8 +137,12 @@ export async function ensureTunnel(clusterId: string, remotePort: number): Promi
 export function closeTunnel(clusterId: string, remotePort: number): void {
     const key = tunnelKey(clusterId, remotePort)
     const entry = tunnels.get(key)
-    if (!entry) return
-    entry.server.close()
-    entry.session.dispose()
-    tunnels.delete(key)
+    if (entry) {
+        entry.server.close()
+        entry.session.dispose()
+        tunnels.delete(key)
+        return
+    }
+    // Création encore en vol : la ferme dès qu'elle est montée.
+    pendingTunnels.get(key)?.then(() => closeTunnel(clusterId, remotePort))
 }
