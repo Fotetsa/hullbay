@@ -24,6 +24,7 @@ vi.mock("../../lib/event-bus", () => ({
   },
 }));
 
+
 const baseInput: ProvisionInput = {
   serverId: "server-1",
   host: "203.0.113.0",
