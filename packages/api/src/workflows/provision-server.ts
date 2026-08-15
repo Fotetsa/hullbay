@@ -2,6 +2,7 @@ import { runWorkflow, type Step } from "../lib/workflow"
 import { SshSession, shellQuote, type SshCredential } from "../lib/ssh"
 import { generateToolKeyPair } from "../lib/keys"
 import { DockerEngineService } from "../modules/docker-engine/service"
+import { invalidateDockerClient } from "../modules/docker-engine/client"
 import { registryService } from "../modules/registry/service"
 import { serversService } from "../modules/servers/service"
 import { eventBus } from "../lib/event-bus"
@@ -133,8 +134,11 @@ export const finalizeClusterStep: Step<ProvisionInput> = {
     if (s.isNewCluster) {
       await prisma.cluster.update({
         where: { id: input.clusterId },
-        data: { dockerHost: `tcp://${input.host}:2375`, caddyAdminUrl: `http://${input.host}:2019`, status: "ready"},
+        data: { dockerHost: `tcp://${input.host}:2375`, caddyAdminUrl: `http://${input.host}:2019`, status: "ready" },
       })
+      // Le dockerHost du cluster vient d'être fixé : purge le client dockerode
+      // en cache, sinon les prochaines opérations visent encore l'ancienne cible.
+      invalidateDockerClient(input.clusterId)
     }
   },
 }
