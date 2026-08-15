@@ -6,11 +6,10 @@ import { api, type AuditEntry } from "../lib/api"
 import { PageHeader, PageContainer } from "../components/PageHeader"
 import { ListContainer } from "../components/ListContainer"
 import { EmptyState } from "../components/EmptyState"
+import { useTranslation } from 'react-i18next'
 
 const PAGE_SIZE = 50
 
-// Actions connues (alimente le filtre). Liste alignée sur la table AUDITED du
-// subscriber on-deploy-finished côté backend.
 const ACTIONS = [
   "deploy.success",
   "deploy.failed",
@@ -30,7 +29,6 @@ const ACTIONS = [
   "prune.finished",
 ]
 
-/** Couleur du badge d'action : rouge pour les échecs/destructions, sinon neutre/vert. */
 function actionColor(action: string): "red" | "orange" | "green" | "grey" {
   if (action.includes("failed") || action === "destroy" || action.includes("removed") || action === "user.deleted") {
     return "red"
@@ -42,11 +40,8 @@ function actionColor(action: string): "red" | "orange" | "green" | "grey" {
   return "grey"
 }
 
-/**
- * Journal d'audit : rend lisible la table AuditLog (qui a fait quoi, quand).
- * Indispensable pour tracer les actions d'un employé délégué. operator+.
- */
 export function AuditPage() {
+  const { t } = useTranslation() 
   const [action, setAction] = useState<string>("__all")
   const [offset, setOffset] = useState(0)
   const [detailEntry, setDetailEntry] = useState<AuditEntry | null>(null)
@@ -71,8 +66,8 @@ export function AuditPage() {
   return (
     <PageContainer size="5xl">
       <PageHeader
-        title="Journal d'audit"
-        subtitle="Trace des actions sensibles (déploiements, destructions, comptes, serveurs)."
+        title={t('auditLog.title')}
+        subtitle={t('auditLog.subtitle')}
         actions={
           <div className="flex items-center gap-2">
             <div className="w-56">
@@ -84,10 +79,10 @@ export function AuditPage() {
                 }}
               >
                 <Select.Trigger>
-                  <Select.Value placeholder="Toutes les actions" />
+                  <Select.Value placeholder={t('auditLog.filterAllActions')} />
                 </Select.Trigger>
                 <Select.Content>
-                  <Select.Item value="__all">Toutes les actions</Select.Item>
+                  <Select.Item value="__all">{t('auditLog.filterAllActions')}</Select.Item>
                   {ACTIONS.map((a) => (
                     <Select.Item key={a} value={a}>
                       {a}
@@ -96,8 +91,8 @@ export function AuditPage() {
                 </Select.Content>
               </Select>
             </div>
-            <Button variant="secondary" size="small" onClick={() => refetch()} aria-label="Rafraîchir">
-              <ArrowPath /> Rafraîchir
+            <Button variant="secondary" size="small" onClick={() => refetch()} aria-label={t('auditLog.refresh')}>
+              <ArrowPath /> {t('auditLog.refresh')}
             </Button>
             {isFetching && !isLoading && (
               <Spinner className="animate-spin text-ui-fg-muted" />
@@ -107,14 +102,14 @@ export function AuditPage() {
       />
 
       <ListContainer
-        title="Évènements"
-        subtitle={total ? `${total} évènement(s)` : undefined}
+        title={t('auditLog.eventsTitle')}
+        subtitle={total ? t('auditLog.eventsCount', { count: total }) : undefined}
         isEmpty={!isLoading && entries.length === 0}
         empty={
           <EmptyState
             icon={DocumentText}
-            title="Aucun évènement"
-            description="Les actions sensibles apparaîtront ici dès qu'elles seront effectuées."
+            title={t('auditLog.emptyTitle')}
+            description={t('auditLog.emptyDescription')}
           />
         }
       >
@@ -127,10 +122,10 @@ export function AuditPage() {
             <Table>
               <Table.Header>
                 <Table.Row>
-                  <Table.HeaderCell>Date</Table.HeaderCell>
-                  <Table.HeaderCell>Action</Table.HeaderCell>
-                  <Table.HeaderCell>Utilisateur</Table.HeaderCell>
-                  <Table.HeaderCell>Cible</Table.HeaderCell>
+                  <Table.HeaderCell>{t('auditLog.table.date')}</Table.HeaderCell>
+                  <Table.HeaderCell>{t('auditLog.table.action')}</Table.HeaderCell>
+                  <Table.HeaderCell>{t('auditLog.table.user')}</Table.HeaderCell>
+                  <Table.HeaderCell>{t('auditLog.table.target')}</Table.HeaderCell>
                 </Table.Row>
               </Table.Header>
               <Table.Body>
@@ -144,7 +139,7 @@ export function AuditPage() {
         <Drawer open={!!detailEntry} onOpenChange={(open) => !open && setDetailEntry(null)}>
           <Drawer.Content>
             <Drawer.Header>
-              <Drawer.Title>Détail de l'évènement</Drawer.Title>
+              <Drawer.Title>{t('auditLog.drawer.title')}</Drawer.Title>
             </Drawer.Header>
             <Drawer.Body className="flex flex-col gap-4 overflow-y-auto">
               {detailEntry ? (
@@ -158,32 +153,32 @@ export function AuditPage() {
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <Text size="small" className="text-ui-fg-muted">
-                        Date
+                        {t('auditLog.table.date')}
                       </Text>
                       <Text>{new Date(detailEntry.createdAt).toLocaleString()}</Text>
                     </div>
                     <div>
                       <Text size="small" className="text-ui-fg-muted">
-                        Utilisateur
+                        {t('auditLog.table.user')}
                       </Text>
-                      <Text>{detailEntry.userEmail ?? "système"}</Text>
+                      <Text>{detailEntry.userEmail ?? t('auditLog.system')}</Text>
                     </div>
                     <div>
                       <Text size="small" className="text-ui-fg-muted">
-                        Cible
+                        {t('auditLog.table.target')}
                       </Text>
                       <Text>
                         {detailEntry.projectId
-                          ? `projet ${detailEntry.projectId.slice(0, 8)}`
+                          ? t('auditLog.targetProject', { id: detailEntry.projectId.slice(0, 8) })
                           : detailEntry.serverId
-                          ? `serveur ${detailEntry.serverId.slice(0, 8)}`
+                          ? t('auditLog.targetServer', { id: detailEntry.serverId.slice(0, 8) })
                           : "—"}
                       </Text>
                     </div>
                   </div>
                   <div>
                     <Text size="small" className="text-ui-fg-muted">
-                      Payload
+                      {t('auditLog.drawer.payload')}
                     </Text>
                     <pre className="mt-2 overflow-x-auto rounded border border-ui-border-base bg-ui-bg-subtle p-3 text-xs">
                       {JSON.stringify(detailEntry.payload ?? {}, null, 2)}
@@ -191,14 +186,14 @@ export function AuditPage() {
                   </div>
                 </div>
               ) : (
-                <Text className="text-ui-fg-subtle">Sélectionnez un évènement pour voir les détails.</Text>
+                <Text className="text-ui-fg-subtle">{t('auditLog.drawer.selectPrompt')}</Text>
               )}
             </Drawer.Body>
           </Drawer.Content>
         </Drawer>
         <div className="flex items-center justify-between px-6 py-3">
           <Text size="small" className="text-ui-fg-subtle">
-            Page {page} / {pages}
+            {t('auditLog.pagination.pageInfo', { page, pages })}
           </Text>
           <div className="flex gap-2">
             <Button
@@ -207,7 +202,7 @@ export function AuditPage() {
               disabled={offset === 0}
               onClick={() => setOffset(Math.max(0, offset - PAGE_SIZE))}
             >
-              Précédent
+              {t('auditLog.pagination.prev')}
             </Button>
             <Button
               variant="secondary"
@@ -215,7 +210,7 @@ export function AuditPage() {
               disabled={offset + PAGE_SIZE >= total}
               onClick={() => setOffset(offset + PAGE_SIZE)}
             >
-              Suivant
+              {t('auditLog.pagination.next')}
             </Button>
           </div>
         </div>
@@ -225,12 +220,14 @@ export function AuditPage() {
 }
 
 function AuditRow({ e, onSelect }: { e: AuditEntry; onSelect: () => void }) {
+  const { t } = useTranslation() // Hook également ici pour le sous-composant
   const target =
     e.projectId
-      ? `projet ${e.projectId.slice(0, 8)}`
+      ? t('auditLog.targetProject', { id: e.projectId.slice(0, 8) })
       : e.serverId
-        ? `serveur ${e.serverId.slice(0, 8)}`
+        ? t('auditLog.targetServer', { id: e.serverId.slice(0, 8) })
         : (e.payload as { email?: string; role?: string } | null)?.email ?? "—"
+
   return (
     <Table.Row
       className="cursor-pointer transition hover:bg-ui-bg-subtle"
@@ -246,7 +243,7 @@ function AuditRow({ e, onSelect }: { e: AuditEntry; onSelect: () => void }) {
           {e.action}
         </Badge>
       </Table.Cell>
-      <Table.Cell>{e.userEmail ?? <span className="text-ui-fg-muted">système</span>}</Table.Cell>
+      <Table.Cell>{e.userEmail ?? <span className="text-ui-fg-muted">{t('auditLog.system')}</span>}</Table.Cell>
       <Table.Cell>
         <Text size="small" className="text-ui-fg-subtle">
           {target}

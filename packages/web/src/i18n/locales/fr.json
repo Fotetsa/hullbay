@@ -1,0 +1,321 @@
+{
+  "common": {
+    "save": "Enregistrer",
+    "cancel": "Annuler",
+    "loading": "Chargement...",
+    "error": "Erreur",
+    "success": "Succès",
+    "delete": "Supprimer",
+    "confirm": "Confirmer"
+  },
+  "bootstrap": {
+    "title": "Bienvenue sur hullbay",
+    "description": "Aucun compte n'existe encore. Crée le compte administrateur (owner) qui pilotera l'infrastructure. Tu pourras ensuite déléguer un accès limité à un employé et activer la double authentification.",
+    "emailLabel": "Email",
+    "emailPlaceholder": "owner@bozando.com",
+    "passwordLabel": "Mot de passe",
+    "passwordPlaceholder": "8 caractères minimum",
+    "minCharsError": "Au moins 8 caractères.",
+    "confirmPasswordLabel": "Confirmer le mot de passe",
+    "mismatchError": "Les mots de passe ne correspondent pas.",
+    "submitButton": "Créer le compte administrateur",
+    "toast": {
+      "accountCreated": "Compte créé",
+      "pleaseLogin": "Connecte-toi.",
+      "creationFailed": "Création impossible"
+    }
+  },
+  "auth": {
+    "title": "hullbay",
+    "subtitle": "Console d'infrastructure",
+    "login": {
+      "emailLabel": "Email",
+      "emailPlaceholder": "owner@bozando.com",
+      "passwordLabel": "Mot de passe",
+      "submitButton": "Se connecter"
+    },
+    "mfa": {
+      "instruction": "Saisis le code de ton application d'authentification.",
+      "codePlaceholder": "123456",
+      "submitButton": "Valider"
+    },
+    "toast": {
+      "loginFailed": "Connexion échouée",
+      "mfaEnrollFailed": "Impossible de démarrer l'activation MFA",
+      "invalidCode": "Code invalide"
+    },
+    "mfaModal": {
+      "title": "Active la MFA",
+      "description": "Pour sécuriser ton compte, active la double authentification. Scanne ce QR code avec ton application d'authentification (Google Authenticator, Authy, etc.) puis saisis le code.",
+      "preparing": "Préparation en cours...",
+      "manualEntryLabel": "Saisie manuelle (à copier)",
+      "manualEntryHint": "Copie ce secret dans ton application si tu ne peux pas scanner.",
+      "copy": "Copier",
+      "copied": "Copié",
+      "verificationCodeLabel": "Code de vérification",
+      "confirmButton": "Confirmer l'activation"
+    }   
+  },
+  
+  "nav": {
+    "projects": "Projets",
+    "health": "Santé",
+    "logs": "Journal",
+    "servers": "Serveurs",
+    "registries": "Registres",
+    "secrets": "Secrets",
+    "users": "Utilisateurs",
+    "settings": "Paramètres",
+    "logout": "Déconnexion",
+    "ownerBadge": "Owner"
+  },
+  "projects": {
+    "pageTitle": "Projets",
+    "loading": "Chargement…",
+    "toast": {
+      "createSuccess": "Projet créé",
+      "updateSuccess": "Projet mis à jour",
+      "rebuildSuccess": "Reconstruit : {{projects}} projets, {{nodes}} nœuds",
+      "deleteSuccess": "Projet supprimé"
+    },
+    "deleteConfirm": {
+      "title": "Supprimer le projet ?",
+      "description": "« {{name}} » et tous ses nœuds/liens seront supprimés du désiré. Les ressources Docker déjà déployées doivent être détruites séparément depuis le canvas."
+    },
+    "actions": {
+      "rebuild": "Reconstruire depuis Docker",
+      "new": "Nouveau projet",
+      "rename": "Renommer",
+      "delete": "Supprimer",
+      "cancel": "Annuler",
+      "create": "Créer",
+      "save": "Enregistrer"
+    },
+    "empty": {
+      "title": "Aucun projet",
+      "description": "Crée un projet, puis dessine son architecture sur le canvas (conteneurs, réseaux, volumes, passerelles)."
+    },
+    "createModal": {
+      "title": "Nouveau projet",
+      "nameLabel": "Nom",
+      "namePlaceholder": "Boutique Bozando Prod",
+      "descLabel": "Description",
+      "descPlaceholder": "À quoi sert ce projet ?"
+    },
+    "editModal": {
+      "title": "Renommer le projet",
+      "nameLabel": "Nom",
+      "slugHint": "Le slug technique (préfixe des ressources Docker) ne change pas.",
+      "descLabel": "Description"
+    }
+  },
+  "health": {
+    "title": "Santé du cluster",
+    "refresh": "Rafraîchir",
+    "nodes": {
+      "title": "Nœuds ({{count}})",
+      "host": "Hôte",
+      "role": "Rôle",
+      "state": "État",
+      "availability": "Dispo."
+    },
+    "services": {
+      "title": "Services ({{count}})",
+      "service": "Service",
+      "replicas": "Replicas",
+      "nodes": "Nœuds",
+      "avgCpu": "CPU moy.",
+      "memory": "Mémoire",
+      "empty": "Aucun service géré."
+    },
+    "orphaned": {
+      "title": "Ressources orphelines",
+      "description": "Ressources gérées (bozando.managed) dont le projet n'existe plus. Le système (bozando.system) n'est jamais touché.",
+      "analyzeButton": "Analyser"
+    }
+  },
+  "auditLog": {
+    "title": "Journal d'audit",
+    "subtitle": "Trace des actions sensibles (déploiements, destructions, comptes, serveurs).",
+    "filterAllActions": "Toutes les actions",
+    "refresh": "Rafraîchir",
+    "eventsTitle": "Évènements",
+    "eventsCount": "{{count}} évènement(s)",
+    "emptyTitle": "Aucun évènement",
+    "emptyDescription": "Les actions sensibles apparaîtront ici dès qu'elles seront effectuées.",
+    "system": "système",
+    "targetProject": "projet {{id}}",
+    "targetServer": "serveur {{id}}",
+    "table": {
+      "date": "Date",
+      "action": "Action",
+      "user": "Utilisateur",
+      "target": "Cible"
+    },
+    "drawer": {
+      "title": "Détail de l'évènement",
+      "payload": "Payload",
+      "selectPrompt": "Sélectionnez un évènement pour voir les détails."
+    },
+    "pagination": {
+      "pageInfo": "Page {{page}} / {{pages}}",
+      "prev": "Précédent",
+      "next": "Suivant"
+    }
+  },
+  "servers": {
+    "title": "Serveurs",
+    "addServer": "Ajouter un serveur",
+    "quorum": {
+      "title": "Quorum (HA control plane)",
+      "description": "{{reachable}}/{{total}} managers joignables. Recommandé : nombre impair (3 tolère 1 panne, 5 en tolère 2).",
+      "statusOk": "quorum OK"
+    },
+    "empty": "Aucun serveur. Le premier ajouté devient le manager du cluster."
+  },
+
+  "integrations": {
+    "pageTitle": "Registres de conteneurs",
+    "toast": {
+      "saveSuccess": "Registre enregistré",
+      "removeSuccess": "Registre retiré"
+    },
+    "deleteConfirm": {
+      "title": "Retirer ce registre ?",
+      "description": "Les identifiants pour « {{registry}} » seront supprimés. Les images privées de ce registre ne pourront plus être tirées au déploiement."
+    },
+    "list": {
+      "title": "Registres",
+      "subtitle": "{{count}} registre(s)"
+    },
+    "empty": {
+      "title": "Aucun registre",
+      "description": "Ajoute Docker Hub, GHCR ou un registre privé pour déployer des images privées."
+    },
+    "actions": {
+      "delete": "Supprimer"
+    },
+    "form": {
+      "title": "Ajouter / mettre à jour un registre",
+      "registryLabel": "Registre",
+      "registryPlaceholder": "ghcr.io / docker.io / registry.exemple.com",
+      "registryHint": "Docker Hub = docker.io · GitHub = ghcr.io · ou l'hôte de ton registre privé.",
+      "userLabel": "Utilisateur",
+      "userPlaceholder": "Entrez l'identifiant utilisateur...",
+      "tokenLabel": "Token / mot de passe",
+      "tokenPlaceholder": "(jamais réaffiché)",
+      "saveButton": "Enregistrer"
+    }
+  },
+
+  "secrets": {
+    "pageTitle": "Secrets",
+    "toast": {
+      "saveSuccess": "Secret enregistré",
+      "removeSuccess": "Secret retiré"
+    },
+    "deleteConfirm": {
+      "title": "Supprimer ce secret ?",
+      "description": "« {{name}} » sera supprimé. Un service qui le référence encore échouera au prochain déploiement."
+    },
+    "list": {
+      "title": "Secrets",
+      "subtitle": "{{count}} secret(s)"
+    },
+    "empty": {
+      "title": "Aucun secret",
+      "description": "Crée un secret puis référence-le par son nom dans un conteneur (monté en /run/secrets)."
+    },
+    "badge": {
+      "encrypted": "chiffré"
+    },
+    "actions": {
+      "delete": "Supprimer"
+    },
+    "form": {
+      "title": "Ajouter / remplacer un secret",
+      "nameLabel": "Nom",
+      "namePlaceholder": "DB_PASSWORD",
+      "nameHint": "Monté dans le conteneur en /run/secrets/<nom>.",
+      "valueLabel": "Valeur",
+      "valuePlaceholder": "(jamais réaffichée)",
+      "saveButton": "Enregistrer"
+    }
+  },
+  "setupDomain": {
+    "loading": "Chargement…",
+    "title": "Configure ton domaine",
+    "description": "Indique le domaine public que tu veux utiliser pour accéder à ton instance hullbay.",
+    "domainLabel": "Domaine public",
+    "domainPlaceholder": "ops.exemple.com",
+    "submitButton": "Enregistrer le domaine",
+    "successMessage": "Domaine prêt à être envoyé au backend."
+  },
+  "users": {
+    "pageTitle": "Utilisateurs",
+    "pageSubtitle": "Délègue un accès limité (operator/viewer) à un employé.",
+    "loading": "Chargement…",
+    "toast": {
+      "createSuccess": "Compte créé",
+      "roleChanged": "Rôle changé : {{role}}",
+      "deleteSuccess": "Compte supprimé"
+    },
+    "deleteConfirm": {
+      "title": "Supprimer ce compte ?",
+      "description": "« {{email}} » perdra immédiatement l'accès à la console."
+    },
+    "list": {
+      "title": "Comptes",
+      "subtitle": "{{count}} compte(s)"
+    },
+    "empty": {
+      "title": "Aucun autre compte",
+      "description": "Crée un operator (peut déployer) ou un viewer (lecture seule) pour déléguer."
+    },
+    "badge": {
+      "you": "vous",
+      "mfaEnabled": "MFA activée"
+    },
+    "actions": {
+      "new": "Nouvel utilisateur",
+      "setRole": "Définir {{role}}",
+      "delete": "Supprimer",
+      "cancel": "Annuler",
+      "create": "Créer le compte"
+    },
+    "createModal": {
+      "title": "Nouvel utilisateur",
+      "emailLabel": "Email",
+      "emailPlaceholder": "employe@bozando.com",
+      "passwordLabel": "Mot de passe initial",
+      "passwordPlaceholder": "8 caractères minimum",
+      "passwordHint": "L'utilisateur pourra le changer dans Paramètres et activer la MFA.",
+      "roleLabel": "Rôle",
+      "roleViewer": "viewer — lecture seule",
+      "roleOperator": "operator — peut déployer/détruire",
+      "roleHint": "La promotion en owner se fait après coup, explicitement, depuis la liste."
+    }
+  },
+  "settings": {
+    "pageTitle": "Paramètres",
+    "account": {
+      "title": "Compte",
+      "emailLabel": "Email",
+      "roleLabel": "Rôle"
+    },
+    "password": {
+      "title": "Mot de passe",
+      "currentLabel": "Mot de passe actuel",
+      "newLabel": "Nouveau mot de passe",
+      "newPlaceholder": "8 caractères minimum",
+      "tooShortError": "Au moins 8 caractères.",
+      "confirmLabel": "Confirmer le nouveau mot de passe",
+      "mismatchError": "Les mots de passe ne correspondent pas.",
+      "submitButton": "Changer le mot de passe"
+    },
+    "toast": {
+      "passwordChanged": "Mot de passe modifié"
+    }
+  }
+}
+

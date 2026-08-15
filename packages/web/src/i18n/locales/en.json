@@ -1,0 +1,288 @@
+{
+  "common": {
+    "save": "Save",
+    "cancel": "Cancel",
+    "loading": "Loading...",
+    "error": "Error",
+    "success": "Success",
+    "delete": "Delete",
+    "confirm":"Confirm"
+  },
+  "bootstrap": {
+    "title": "Welcome to hullbay",
+    "description": "No accounts exist yet. Create the administrator account (owner) that will manage the infrastructure. You will then be able to delegate limited access to an employee and enable two-factor authentication.",
+    "emailLabel": "Email",
+    "emailPlaceholder": "owner@bozando.com",
+    "passwordLabel": "Password",
+    "passwordPlaceholder": "At least 8 characters",
+    "minCharsError": "At least 8 characters.",
+    "confirmPasswordLabel": "Confirm password",
+    "mismatchError": "Passwords do not match.",
+    "submitButton": "Create administrator account",
+    "toast": {
+      "accountCreated": "Account created",
+      "pleaseLogin": "Please log in.",
+      "creationFailed": "Creation failed"
+    }
+  },
+  "auth": {
+    "title": "hullbay",
+    "subtitle": "Infrastructure Console",
+    "login": {
+      "emailLabel": "Email",
+      "placeholder": "owner@bozando.com",
+      "passwordLabel": "Password",
+      "submitButton": "Sign in"
+    },
+    "mfa": {
+      "instruction": "Enter the code from your authenticator app.",
+      "codePlaceholder": "123456",
+      "submitButton": "Verify"
+    },
+    "toast": {
+      "loginFailed": "Login failed",
+      "mfaEnrollFailed": "Failed to start MFA enrollment",
+      "invalidCode": "Invalid code"
+    },
+    "mfaModal": {
+      "title": "Enable MFA",
+      "description": "To secure your account, enable two-factor authentication. Scan this QR code with your authenticator app (Google Authenticator, Authy, etc.) and then enter the code.",
+      "preparing": "Preparing...",
+      "manualEntryLabel": "Manual entry (to copy)",
+      "manualEntryHint": "Copy this secret into your app if you can't scan.",
+      "copy": "Copy",
+      "copied": "Copied",
+      "verificationCodeLabel": "Verification code",
+      "confirmButton": "Confirm activation"
+    }
+
+  },
+  "nav": {
+    "projects": "Projects",
+    "health": "Health",
+    "logs": "Logs",
+    "servers": "Servers",
+    "registries": "Registries",
+    "secrets": "Secrets",
+    "users": "Users",
+    "settings": "Settings",
+    "logout": "Logout",
+    "ownerBadge": "Owner"
+  },
+  "projects": {
+    "pageTitle": "Projects",
+    "loading": "Loading…",
+    "toast": {
+      "createSuccess": "Project created",
+      "updateSuccess": "Project updated",
+      "rebuildSuccess": "Rebuilt: {{projects}} projects, {{nodes}} nodes",
+      "deleteSuccess": "Project deleted"
+    },
+    "deleteConfirm": {
+      "title": "Delete project?",
+      "description": "\"{{name}}\" and all its nodes/links will be removed from the desired state. Docker resources already deployed must be destroyed separately from the canvas."
+    },
+    "actions": {
+      "rebuild": "Rebuild from Docker",
+      "new": "New project",
+      "rename": "Rename",
+      "delete": "Delete",
+      "cancel": "Cancel",
+      "create": "Create",
+      "save": "Save"
+    },
+    "empty": {
+      "title": "No projects",
+      "description": "Create a project, then design its architecture on the canvas (containers, networks, volumes, gateways)."
+    },
+    "createModal": {
+      "title": "New project",
+      "nameLabel": "Name",
+      "namePlaceholder": "Bozando Prod Store",
+      "descLabel": "Description",
+      "descPlaceholder": "What is this project for?"
+    },
+    "editModal": {
+      "title": "Rename project",
+      "nameLabel": "Name",
+      "slugHint": "The technical slug (Docker resource prefix) cannot be changed.",
+      "descLabel": "Description"
+    }
+  },
+  "auditLog": {
+    "title": "Audit log",
+    "subtitle": "Track sensitive actions (deployments, destructions, accounts, servers).",
+    "filterAllActions": "All actions",
+    "refresh": "Refresh",
+    "eventsTitle": "Events",
+    "eventsCount": "{{count}} event(s)",
+    "emptyTitle": "No events",
+    "emptyDescription": "Sensitive actions will appear here once performed.",
+    "system": "system",
+    "targetProject": "project {{id}}",
+    "targetServer": "server {{id}}",
+    "table": {
+      "date": "Date",
+      "action": "Action",
+      "user": "User",
+      "target": "Target"
+    },
+    "drawer": {
+      "title": "Event details",
+      "payload": "Payload",
+      "selectPrompt": "Select an event to view details."
+    },
+    "pagination": {
+      "pageInfo": "Page {{page}} of {{pages}}",
+      "prev": "Previous",
+      "next": "Next"
+    }
+  },
+  "servers": {
+    "title": "Servers",
+    "addServer": "Add a server",
+    "quorum": {
+      "title": "Quorum (HA control plane)",
+      "description": "{{reachable}}/{{total}} managers reachable. Recommended: odd number (3 tolerates 1 failure, 5 tolerates 2).",
+      "statusOk": "quorum OK"
+    },
+    "empty": "No servers. The first one added becomes the cluster manager."
+  },
+  "integrations": {
+    "pageTitle": "Container Registries",
+    "toast": {
+      "saveSuccess": "Registry saved",
+      "removeSuccess": "Registry removed"
+    },
+    "deleteConfirm": {
+      "title": "Remove this registry?",
+      "description": "Credentials for \"{{registry}}\" will be deleted. Private images from this registry can no longer be pulled during deployment."
+    },
+    "list": {
+      "title": "Registries",
+      "subtitle": "{{count}} registry/registries"
+    },
+    "empty": {
+      "title": "No registry",
+      "description": "Add Docker Hub, GHCR, or a private registry to deploy private images."
+    },
+    "actions": {
+      "delete": "Delete"
+    },
+    "form": {
+      "title": "Add / update a registry",
+      "registryLabel": "Registry",
+      "registryPlaceholder": "ghcr.io / docker.io / registry.example.com",
+      "registryHint": "Docker Hub = docker.io · GitHub = ghcr.io · or your private registry host.",
+      "userLabel": "Username",
+      "userPlaceholder": "Enter username...",
+      "tokenLabel": "Token / password",
+      "tokenPlaceholder": "(never shown again)",
+      "saveButton": "Save"
+    }
+  },
+"secrets": {
+    "pageTitle": "Secrets",
+    "toast": {
+      "saveSuccess": "Secret saved",
+      "removeSuccess": "Secret removed"
+    },
+    "deleteConfirm": {
+      "title": "Delete this secret?",
+      "description": "\"{{name}}\" will be deleted. Any service still referencing it will fail on the next deployment."
+    },
+    "list": {
+      "title": "Secrets",
+      "subtitle": "{{count}} secret(s)"
+    },
+    "empty": {
+      "title": "No secrets",
+      "description": "Create a secret and reference it by name in a container (mounted in /run/secrets)."
+    },
+    "badge": {
+      "encrypted": "encrypted"
+    },
+    "actions": {
+      "delete": "Delete"
+    },
+    "form": {
+      "title": "Add / replace a secret",
+      "nameLabel": "Name",
+      "namePlaceholder": "DB_PASSWORD",
+      "nameHint": "Mounted in the container at /run/secrets/<name>.",
+      "valueLabel": "Value",
+      "valuePlaceholder": "(never shown again)",
+      "saveButton": "Save"
+    }
+  },
+  "setupDomain": {
+    "loading": "Loading…",
+    "title": "Configure your domain",
+    "description": "Enter the public domain you want to use to access your hullbay instance.",
+    "domainLabel": "Public domain",
+    "domainPlaceholder": "ops.example.com",
+    "submitButton": "Save domain",
+    "successMessage": "Domain ready to be sent to the backend."
+  },
+  "users": {
+    "pageTitle": "Users",
+    "pageSubtitle": "Delegate limited access (operator/viewer) to an employee.",
+    "loading": "Loading…",
+    "toast": {
+      "createSuccess": "Account created",
+      "roleChanged": "Role changed: {{role}}",
+      "deleteSuccess": "Account deleted"
+    },
+    "deleteConfirm": {
+      "title": "Delete this account?",
+      "description": "\"{{email}}\" will immediately lose access to the console."
+    },
+    "list": {
+      "title": "Accounts",
+      "subtitle": "{{count}} account(s)"
+    },
+    "empty": {
+      "title": "No other accounts",
+      "description": "Create an operator (can deploy) or a viewer (read-only) to delegate."
+    },
+    "badge": {
+      "you": "you",
+      "mfaEnabled": "MFA enabled"
+    },
+    "actions": {
+      "new": "New user",
+      "setRole": "Set {{role}}",
+      "delete": "Delete",
+      "cancel": "Cancel",
+      "create": "Create account"
+    },
+    "createModal": {
+      "title": "New user",
+      "emailLabel": "Email",
+      "emailPlaceholder": "employee@bozando.com",
+      "passwordLabel": "Initial password",
+      "passwordPlaceholder": "At least 8 characters",
+      "passwordHint": "The user can change it in Settings and enable MFA.",
+      "roleLabel": "Role",
+      "roleViewer": "viewer — read-only",
+      "roleOperator": "operator — can deploy/destroy",
+      "roleHint": "Promotion to owner is done afterwards, explicitly from the list."
+    }
+  },
+  "settings": {
+    "title": "Settings",
+    "account": {
+      "title": "Account",
+      "emailLabel": "Email",
+      "roleLabel": "Role"
+    },
+    "password": {
+      "title": "Password",
+      "currentLabel": "Current password",
+      "newLabel": "New password",
+      "newPlaceholder": "At least 8 characters",
+      "confirmLabel": "Confirm new password",
+      "submitButton": "Change password"
+    }
+  }
+}

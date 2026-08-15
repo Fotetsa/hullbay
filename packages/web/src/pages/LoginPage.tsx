@@ -3,12 +3,14 @@ import { useNavigate } from "react-router-dom"
 import { api, auth } from "../lib/api"
 import { Button, FocusModal, Heading, Text, Input, Label, toast, Container } from "@medusajs/ui"
 import { QRCodeSVG } from "qrcode.react"
+import { useTranslation } from 'react-i18next'
 
 /**
  * Login en 2 temps : email/password puis, si MFA activée, code TOTP.
  * Conventions Medusa UI (Container/Heading/Input/Button).
  */
 export function LoginPage({ onAuthed }: { onAuthed: () => void }) {
+  const { t } = useTranslation()
   const navigate = useNavigate()
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
@@ -42,6 +44,7 @@ export function LoginPage({ onAuthed }: { onAuthed: () => void }) {
         }
       }
     } catch (e) {
+      toast.error(t('login.toast.loginFailed'), { description: (e as Error).message })
       const err = e as Error & { code?: string }
       if (err.code === "invalid_credentials") {
         toast.error("Connexion échouée", { description: "Email ou mot de passe incorrect." })
@@ -60,9 +63,8 @@ export function LoginPage({ onAuthed }: { onAuthed: () => void }) {
       setOtpauth(activation.otpauth)
       setCode("")
     } catch (e) {
-      const err = e as Error & { code?: string }
-      toast.error("Impossible de démarrer l'activation MFA", {
-        description: err.code === "mfa_not_enabled" ? "Active d’abord la MFA avant de poursuivre." : err.message,
+      toast.error(t('login.toast.mfaEnrollFailed'), {
+        description: (e as Error).message,
       })
       setLoginToken(null)
     }
@@ -77,6 +79,7 @@ export function LoginPage({ onAuthed }: { onAuthed: () => void }) {
       onAuthed()
       navigate("/", { replace: true })
     } catch (e) {
+      toast.error(t('login.toast.invalidCode'), { description: (e as Error).message })
       const err = e as Error & { code?: string }
       if (err.code === "mfa_code_invalid" || err.code === "mfa_token_invalid") {
         toast.error("Code invalide", { description: "Le code MFA est incorrect ou expiré." })
@@ -101,6 +104,7 @@ export function LoginPage({ onAuthed }: { onAuthed: () => void }) {
       setCode("")
       navigate("/", { replace: true })
     } catch (e) {
+      toast.error(t('login.toast.invalidCode'), { description: (e as Error).message })
       const err = e as Error & { code?: string }
       if (err.code === "mfa_code_invalid" || err.code === "mfa_enrollment_missing") {
         toast.error("Code invalide", { description: "Le code de confirmation MFA est incorrect." })
@@ -112,33 +116,27 @@ export function LoginPage({ onAuthed }: { onAuthed: () => void }) {
     }
   }
 
-  // const ModalMfa = () => {
-  //   return(
-      
-  //   )
-  // }
-
   return (
     <div className="flex h-full items-center justify-center bg-ui-bg-subtle">
       <Container className="w-[400px] p-6">
         <Heading level="h1" className="mb-1">
           hullbay
         </Heading>
-        <Text className="text-ui-fg-subtle mb-6">Console d'infrastructure</Text>
+        <Text className="text-ui-fg-subtle mb-6">{t('login.subtitle')}</Text>
 
         {!pendingToken ? (
           <div className="flex flex-col gap-3">
             <div>
-              <Label size="small">Email</Label>
+              <Label size="small">{t('login.emailLabel')}</Label>
               <Input
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="owner@bozando.com"
+                placeholder={t('login.emailPlaceholder')}
               />
             </div>
             <div>
-              <Label size="small">Mot de passe</Label>
+              <Label size="small">{t('login.passwordLabel')}</Label>
               <Input
                 type="password"
                 value={password}
@@ -146,13 +144,13 @@ export function LoginPage({ onAuthed }: { onAuthed: () => void }) {
               />
             </div>
             <Button onClick={submitCredentials} isLoading={loading} className="mt-2">
-              Se connecter
+              {t('login.submitButton')}
             </Button>
           </div>
         ) : (
           <div className="flex flex-col gap-3">
             <Text className="text-ui-fg-subtle">
-              Saisis le code de ton application d'authentification.
+              {t('login.mfaStepDescription')}
             </Text>
             <Input
               value={code}
@@ -161,7 +159,7 @@ export function LoginPage({ onAuthed }: { onAuthed: () => void }) {
               inputMode="numeric"
             />
             <Button onClick={submitMfa} isLoading={loading}>
-              Valider
+              {t('login.verifyButton')}
             </Button>
           </div>
         )}
@@ -169,32 +167,30 @@ export function LoginPage({ onAuthed }: { onAuthed: () => void }) {
         <FocusModal open={!!loginToken} onOpenChange={(open) => !open && setLoginToken(null)}>
           <FocusModal.Content>
             <FocusModal.Header>
-              <Heading level="h2">Active la MFA</Heading>
+              <Heading level="h2">{t('login.mfaModal.title')}</Heading>
             </FocusModal.Header>
             <FocusModal.Body className="overflow-y-auto px-4 py-8">
               <div className="mx-auto flex w-full max-w-[520px] flex-col gap-5">
                 <div className="rounded-3xl bg-ui-bg-base p-5 shadow-sm">
                   <Text className="text-ui-fg-subtle mb-3">
-                    Pour sécuriser ton compte, active la double authentification.
-                    Scanne ce QR code avec ton application d'authentification
-                    (Google Authenticator, Authy, etc.) puis saisis le code.
+                    {t('login.mfaModal.description')}
                   </Text>
                   {otpauth ? (
                     <div className="mx-auto flex w-full max-w-xs justify-center rounded-3xl p-4 ">
                       <QRCodeSVG value={otpauth} size={180} marginSize={2} />
                     </div>
                   ) : (
-                    <Text className="text-ui-fg-muted mb-4">Préparation en cours...</Text>
+                    <Text className="text-ui-fg-muted mb-4">{t('login.mfaModal.preparing')}</Text>
                   )}
                 </div>
 
                 <div className="rounded-3xl bg-ui-bg-base p-4 shadow-sm">
                   <div className="mb-3">
                     <Label size="small" className="mb-1 block">
-                      Saisie manuelle (à copier)
+                      {t('login.mfaModal.manualEntryLabel')}
                     </Label>
                     <Text size="small" className="text-ui-fg-subtle">
-                      Copie ce secret dans ton application si tu ne peux pas scanner.
+                      {t('login.mfaModal.manualEntryHint')}
                     </Text>
                   </div>
                   <div className="flex flex-col gap-1 rounded-2xl bg-ui-bg-base-pressed p-3 text-sm text-ui-fg-base">
@@ -213,13 +209,13 @@ export function LoginPage({ onAuthed }: { onAuthed: () => void }) {
                         }
                       }}
                     >
-                      {copied ? "Copié" : "Copier"}
+                      {copied ? t('login.mfaModal.copied') : t('login.mfaModal.copy')}
                     </Button>
                   </div>
                 </div>
 
                 <div className="rounded-3xl bg-ui-bg-base p-4 shadow-sm">
-                  <Label size="small">Code de vérification</Label>
+                  <Label size="small">{t('login.mfaModal.verificationCodeLabel')}</Label>
                   <Input
                     value={code}
                     onChange={(e) => setCode(e.target.value)}
@@ -231,7 +227,7 @@ export function LoginPage({ onAuthed }: { onAuthed: () => void }) {
 
                 <div className="flex">
                   <Button onClick={confirmActivation} isLoading={loading} className="w-fit px-6 mx-auto">
-                    Confirmer l'activation
+                    {t('login.mfaModal.confirmButton')}
                   </Button>
                 </div>
               </div>
