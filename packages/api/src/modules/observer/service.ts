@@ -1,4 +1,5 @@
 import { LabelKeys } from "@hullbay/shared";
+import type Docker from "dockerode";
 import { getDockerForCluster } from "../docker-engine/client";
 import { DockerEngineService } from "../docker-engine/service";
 import { eventBus } from "../../lib/event-bus";
@@ -61,10 +62,22 @@ export async function startObserver(): Promise<void> {
 }
 
 async function startObserverForCluster(clusterId: string): Promise<void> {
-  const engine = await DockerEngineService.forCluster(clusterId);
+  let engine: DockerEngineService;
+  try {
+    engine = await DockerEngineService.forCluster(clusterId);
+  } catch {
+    scheduleRetry(clusterId);
+    return;
+  }
   void syncInitialState(engine);
 
-  const rawDocker = await getDockerForCluster(clusterId);
+  let rawDocker: Docker;
+  try {
+    rawDocker = await getDockerForCluster(clusterId);
+  } catch {
+    scheduleRetry(clusterId);
+    return;
+  }
 
   rawDocker.getEvents(
     { filters: { label: [`${LabelKeys.managed}=true`], type: ["container"] } },
@@ -72,10 +85,7 @@ async function startObserverForCluster(clusterId: string): Promise<void> {
       if (err || !stream) {
         // Pas de socket / daemon pas encore prêt : on retente plus tard plutôt
         // que d'abandonner définitivement.
-        const retryIndex = retryIndexByCluster.get(clusterId) ?? 0;
-        const delay = retryDelays[Math.min(retryIndex, retryDelays.length - 1)];
-        retryIndexByCluster.set(clusterId, retryIndex + 1);
-        setTimeout(() => startObserverForCluster(clusterId), delay);
+        scheduleRetry(clusterId);
         return;
       }
 
@@ -101,20 +111,18 @@ async function startObserverForCluster(clusterId: string): Promise<void> {
       // Le stream Docker peut se fermer (daemon restart, coupure du socket) sans
       // jamais rouvrir tout seul — sans ce ré-armement, l'observer reste mort
       // jusqu'au prochain restart du process API (c'était le bug initial).
-      stream.on("end", () => {
-        const retryIndex = retryIndexByCluster.get(clusterId) ?? 0;
-        const delay = retryDelays[Math.min(retryIndex, retryDelays.length - 1)];
-        retryIndexByCluster.set(clusterId, retryIndex + 1);
-        setTimeout(() => startObserverForCluster(clusterId), delay);
-      });
-      stream.on("error", () => {
-        const retryIndex = retryIndexByCluster.get(clusterId) ?? 0;
-        const delay = retryDelays[Math.min(retryIndex, retryDelays.length - 1)];
-        retryIndexByCluster.set(clusterId, retryIndex + 1);
-        setTimeout(() => startObserverForCluster(clusterId), delay);
-      });
+      stream.on("end", () => scheduleRetry(clusterId));
+      stream.on("error", () => scheduleRetry(clusterId));
     },
   );
+}
+
+/** Réarme l'observer d'un cluster avec backoff exponentiel borné. */
+function scheduleRetry(clusterId: string) {
+  const retryIndex = retryIndexByCluster.get(clusterId) ?? 0;
+  const delay = retryDelays[Math.min(retryIndex, retryDelays.length - 1)];
+  retryIndexByCluster.set(clusterId, retryIndex + 1);
+  setTimeout(() => startObserverForCluster(clusterId), delay);
 }
 
 /**

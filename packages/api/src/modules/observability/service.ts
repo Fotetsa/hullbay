@@ -3,6 +3,7 @@ import { DockerEngineService } from "../docker-engine/service"
 import type { ServiceMetrics } from "../docker-engine/service"
 import { eventBus } from "../../lib/event-bus"
 import { prisma } from "../../lib/prisma"
+import { runWithConcurrency, CLUSTER_CONCURRENCY } from "../../lib/concurrency"
 import { driftTracker } from "./drift"
 
 /**
@@ -174,15 +175,22 @@ export class ObservabilityService {
 
 export async function systemHealth(): Promise<ClusterHealth[]> {
   const clusters = await prisma.cluster.findMany({ select: { id: true, name: true } });
+  const { items, totalMs } = await runWithConcurrency(
+    clusters,
+    CLUSTER_CONCURRENCY,
+    async (c) => (await ObservabilityService.forCluster(c.id)).clusterHealth(),
+  );
   const results: ClusterHealth[] = [];
-  for (const c of clusters) {
-    try {
-      const svc = await ObservabilityService.forCluster(c.id);
-      results.push(await svc.clusterHealth());
-    } catch {
-      results.push({  clusterId: c.id, clusterName: c.name, swarmActive: false, nodes: [], services: [] });
+  for (const it of items) {
+    if (it.status === "fulfilled") {
+      results.push(it.value);
+    } else {
+      const c = clusters[it.index]!;
+      results.push({ clusterId: c.id, clusterName: c.name, swarmActive: false, nodes: [], services: [] });
+      console.warn(`[observability] systemHealth cluster ${c.id} injoignable: ${String(it.reason)}`);
     }
   }
+  console.log(`[observability] systemHealth: ${clusters.length} clusters en ${totalMs.toFixed(0)}ms (concurrency=${CLUSTER_CONCURRENCY})`);
   return results;
 }
 

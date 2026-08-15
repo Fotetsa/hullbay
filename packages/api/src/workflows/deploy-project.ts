@@ -18,6 +18,7 @@ import {
   ImageUnavailableError,
 } from "../modules/docker-engine/service"
 import { exposureService } from "../modules/exposure/service"
+import { TunnelError } from "../lib/ssh-tunnel"
 import { ReconcilerService } from "../modules/reconciler/service"
 import { registryService } from "../modules/registry/service"
 import { prisma } from "../lib/prisma"
@@ -420,9 +421,10 @@ export async function deployProjectWorkflow(input: DeployInput) {
     shared as unknown as Record<string, unknown>,
   );
   if (!result.ok) {
-    // Préserve le type d'erreur d'origine (DeployError → 422 côté route) ;
-    // pour les autres, message brut prefixé (vrai bug → 500).
+    // Préserve le type d'erreur d'origine (DeployError → 422 côté route, TunnelError
+    // → 409/502/504) ; pour les autres, message brut prefixé (vrai bug → 500).
     if (result.errorCause instanceof DeployError) throw result.errorCause
+    if (result.errorCause instanceof TunnelError) throw result.errorCause
     throw new Error(result.error || "déploiement échoué")
   }
 

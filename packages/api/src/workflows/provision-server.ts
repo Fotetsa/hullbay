@@ -255,7 +255,7 @@ export async function provisionServerWorkflow(input: ProvisionInput): Promise<vo
   }
 }
 
-const deploySocketProxyStep: Step<ProvisionInput> = {
+export const deploySocketProxyStep: Step<ProvisionInput> = {
   name: "deploy-socket-proxy",
   run: async (input, ctx) => {
     const s = ctx.shared as ProvShared;
@@ -293,13 +293,10 @@ const deploySocketProxyStep: Step<ProvisionInput> = {
     if (res.code !== 0)
       throw new Error(`socket-proxy: ${res.stderr || res.stdout}`);
 
-    //log(input.serverId, "socket-proxy démarré.");
     log(
       input.serverId,
-      `SÉCURITÉ CRITIQUE : le port 2375 (Docker API) est exposé sur ${input.host}. ` +
-        `Restreins-le maintenant à l'IP de ce serveur hullbay. Sur un VPS classique : ` +
-        `ssh ${input.user}@${input.host} "ufw allow from <IP_HULLBAY> to any port 2375 proto tcp && ufw allow 22 && ufw --force enable". ` +
-        `Tant que ce n'est pas fait, n'importe qui avec cette IP a un contrôle total du serveur.`,
+      `docker-socket-proxy démarré : port 2375 bindé sur 127.0.0.1 uniquement. ` +
+        `Pas d'exposition publique, accès via tunnel SSH — aucune règle pare-feu requise.`,
     );
   },
   compensate: async (_input, ctx) => {
@@ -309,7 +306,7 @@ const deploySocketProxyStep: Step<ProvisionInput> = {
 };
 
 
-const deployCaddyStep: Step<ProvisionInput> = {
+export const deployCaddyStep: Step<ProvisionInput> = {
   name: "deploy-caddy",
   run: async (input, ctx) => {
     const s = ctx.shared as ProvShared
@@ -326,6 +323,9 @@ const deployCaddyStep: Step<ProvisionInput> = {
 
     // Config minimale : admin seul, aucun site pré-défini — tout sera ajouté
     // dynamiquement via l'API admin (exposure/settings), comme pour le système.
+    // admin 0.0.0.0 DANS le conteneur (réseau bridge Docker interne, jamais
+    // publié vers l'hôte sur cette IP) : la sécurité d'exposition est assurée
+    // par le `-p 127.0.0.1:2019:2019` ci-dessous — comme le Caddy système.
     await s.session!.exec(
       `mkdir -p /opt/hullbay-caddy && printf '{\\n\\tadmin 0.0.0.0:2019\\n}\\n' > /opt/hullbay-caddy/Caddyfile`
     )
@@ -335,24 +335,22 @@ const deployCaddyStep: Step<ProvisionInput> = {
       "--name hullbay-caddy",
       "--restart unless-stopped",
       "-p 80:80 -p 443:443",
-      // Admin bindé sur l'IP du serveur, pas 0.0.0.0 — même logique que le
-      // socket-proxy (à compléter par pare-feu, IP hullbay uniquement).
+      // Admin bindé sur 127.0.0.1 de l'hôte uniquement (jamais d'exposition
+      // publique, quel que soit le pare-feu) — accès via tunnel SSH. Même
+      // logique que le docker-socket-proxy.
       `-p 127.0.0.1:2019:2019`,
       "-v /opt/hullbay-caddy/Caddyfile:/etc/caddy/Caddyfile:ro",
       "-v hullbay_caddy_data:/data",
       "caddy:2-alpine",
     ].join(" ")
-
     const res = await s.session!.exec(cmd)
     if (res.code !== 0) throw new Error(`caddy: ${res.stderr || res.stdout}`)
 
     log(input.serverId, "Caddy démarré.")
     log(
       input.serverId,
-      `SÉCURITÉ CRITIQUE : le port 2019 (Docker API) est exposé sur ${input.host}. ` +
-        `Restreins-le maintenant à l'IP de ce serveur hullbay. Sur un VPS classique : ` +
-        `ssh ${input.user}@${input.host} "ufw allow from <IP_HULLBAY> to any port 2375 proto tcp && ufw allow 22 && ufw --force enable". ` +
-        `Tant que ce n'est pas fait, n'importe qui avec cette IP a un contrôle total du serveur.`,
+      `Admin Caddy publié sur 127.0.0.1 de l'hôte uniquement (réseau bridge interne isolé). ` +
+        `Pas d'exposition publique, accès via tunnel SSH — aucune règle pare-feu requise.`,
     );
   },
   compensate: async (_input, ctx) => {
