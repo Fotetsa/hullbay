@@ -3,7 +3,12 @@ import { prisma } from "./prisma"
 import { decryptSecret } from "../modules/auth/crypto"
 import { SshSession } from "./ssh"
 
-type TunnelEntry = { session: SshSession; server: NetServer; localPort: number }
+type TunnelEntry = {
+    session: SshSession;
+    server: NetServer;
+    localPort: number;
+    lastActivity: number
+}
 
 const tunnels = new Map<string, TunnelEntry>()
 const pendingTunnels = new Map<string, Promise<number>>()
@@ -47,6 +52,9 @@ export class TunnelError extends Error {
   }
 }
 
+const TUNNEL_TTL_MS = Number(process.env.TUNNEL_TTL_MS) || 10 * 60 * 1000
+const CLEANUP_INTERVAL_MS = 60 * 1000
+
 function tunnelKey(clusterId: string, remotePort: number): string {
     return `${clusterId}:${remotePort}`
 }
@@ -86,6 +94,62 @@ async function openSessionForCluster(clusterId: string): Promise<SshSession> {
     }
 }
 
+let cleanupInterval: ReturnType<typeof setInterval> | null = null;
+
+function runCleanupPass() {
+  const now = Date.now();
+  const inactiveTunnels: string[] = [];
+  for (const [key, entry] of tunnels.entries()) {
+    if (now - entry.lastActivity > TUNNEL_TTL_MS) inactiveTunnels.push(key);
+  }
+  for (const key of inactiveTunnels) {
+    const entry = tunnels.get(key);
+    if (entry) {
+      console.log(
+        `[ssh-tunnel] Fermeture automatique du tunnel inactif: ${key}`,
+      );
+      entry.server.close();
+      entry.session.dispose();
+      tunnels.delete(key);
+    }
+  }
+}
+
+/** Démarre le nettoyeur périodique. Idempotent (double appel sans effet). */
+export function startTunnelCleanup(): void {
+  if (cleanupInterval) return;
+  cleanupInterval = setInterval(runCleanupPass, CLEANUP_INTERVAL_MS);
+}
+
+/** Arrête le nettoyeur — à appeler explicitement au shutdown de l'app. */
+export function stopTunnelCleanup(): void {
+  if (cleanupInterval) {
+    clearInterval(cleanupInterval);
+    cleanupInterval = null;
+  }
+}
+
+/** Ferme TOUS les tunnels ouverts — utilisé au shutdown, aux côtés de
+ * stopObserver() pour une extinction propre et complète. */
+export function closeAllTunnels(): void {
+  for (const entry of tunnels.values()) {
+    entry.server.close();
+    try {
+      entry.session.dispose();
+    } catch {}
+  }
+  tunnels.clear();
+  pendingTunnels.clear();
+}
+
+/**Ne démarre jamais automatiquement en environnement de test — c'était la
+* cause exacte des timers fantômes remontés par Bright. En prod/dev, démarre
+* normalement au chargement du module, comme avant.
+*/
+if (process.env.NODE_ENV !== "test") {
+  startTunnelCleanup();
+}
+
 /**
  * Garatit un tunnel actif vers <clusterId>:<remotePort> (côte manager),
  * retourne le port local sur lequel se connecter (127.0.0.1:localPort).
@@ -103,7 +167,10 @@ async function openSessionForCluster(clusterId: string): Promise<SshSession> {
 export async function ensureTunnel(clusterId: string, remotePort: number): Promise<number> {
     const key = tunnelKey(clusterId, remotePort)
     const existing = tunnels.get(key)
-    if (existing) return existing.localPort
+    if (existing) {
+        existing.lastActivity = Date.now()
+        return existing.localPort;
+    }
 
     // Création en cours pour cette clé : partage la même promesse au lieu de
     // relancer une session SSH en parallèle (évite tunnels dupliqués).
@@ -187,6 +254,11 @@ async function createTunnel(clusterId: string, remotePort: number): Promise<numb
                     stream.on("error", () => { stream.destroy(); socket.destroy() })
                     stream.on("close", () => socket.destroy())
                     socket.on("close", () => stream.destroy())
+
+                    const entry = tunnels.get(key)
+                    if (entry) {
+                        entry.lastActivity = Date.now()
+                    }
                     stream.pipe(socket)
                     socket.pipe(stream)
                 })
@@ -207,7 +279,7 @@ async function createTunnel(clusterId: string, remotePort: number): Promise<numb
             settled = true
             const addr = server.address()
             const localPort = typeof addr === "object" && addr ? addr.port : 0
-            tunnels.set(key, { session, server, localPort })
+            tunnels.set(key, { session, server, localPort, lastActivity: Date.now() })
             resolve(localPort)
         })
     })

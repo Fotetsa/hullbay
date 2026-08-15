@@ -1,10 +1,10 @@
 import { LabelKeys } from "@hullbay/shared";
-import type Docker from "dockerode";
 import { getDockerForCluster } from "../docker-engine/client";
 import { DockerEngineService } from "../docker-engine/service";
 import { eventBus } from "../../lib/event-bus";
 import { prisma } from "../../lib/prisma";
 import { ContainerStateTracker, type ContainerState } from "./state-tracker";
+
 
 /**
  * Observer — sens Réel -> Désiré (LECTURE SEULE, aucune correction auto en V1).
@@ -35,6 +35,10 @@ import { ContainerStateTracker, type ContainerState } from "./state-tracker";
  * silence pour toujours (c'était le cas avant — aucun `on("end"/"error")`).
  * Délais de retry croissants (5s -> 10s -> 30s -> 60s) pour éviter le re-loop
  * de souscription/re-snapshot en cas de daemon instable.
+ * 
+ * CLEANUP : activeClusters + reconnectTimers + streamsByCluster garantissent qu'un appel
+ * à stopObserver() ferme tout proprement -aucun timer ni flux ne doit survivre à l'arret
+ * du process. a appeler impérativement au shutdown.
  *
  * SNAPSHOT INITIAL : au démarrage, avant de s'abonner au flux d'events, on lit
  * une fois l'état réel de tous les conteneurs gérés (voir `syncInitialState`) pour
@@ -46,6 +50,14 @@ import { ContainerStateTracker, type ContainerState } from "./state-tracker";
 const retryDelays = [5_000, 10_000, 30_000, 60_000];
 // On utilise une Map pour que chaque cluster ait son propre compteur de retry
 const retryIndexByCluster = new Map<string, number>();
+
+// Etat du cycle de vie
+const activeClusters = new Set<string>();
+const reconnectTimers = new Map<string, NodeJS.Timeout>();
+const streamsByCluster = new Map<
+  string,
+  NodeJS.ReadableStream & { destroy?: () => void }
+>();
 
 let tracker = new ContainerStateTracker();
 
@@ -61,7 +73,55 @@ export async function startObserver(): Promise<void> {
   }
 }
 
+/**
+ * Arrete tous les observers proprement. Idempotent, sans effet si deje stoppe.
+ * A appeler impérativement avant la sortie du process, sinon les timers de reconnexion
+ * et les flux docker ouvert survivent au process.
+ */
+
+export function stopObserver(): void {
+  activeClusters.clear();
+  retryIndexByCluster.clear();
+
+  for (const timer of reconnectTimers.values()) clearTimeout(timer);
+  reconnectTimers.clear();
+
+  for (const stream of streamsByCluster.values()) {
+    if (typeof (stream as { destroy?: () => void }).destroy === "function") {
+      (stream as { destroy: () => void }).destroy();
+    }
+  }
+
+  streamsByCluster.clear();
+}
+
+/**
+ * Planifions une reconnexion pour un cluster, avec le backoff progressif existant.
+ * Centralisons ceux qui était dupliqué 3 fois dans l'ancienne version, Et vérifions "activeCluster"
+ * pour ne jamais reprogrammer une reconnexion aprés un "stopObserver()" sinon un timer déja en vol
+ * au moment du shutdown relancerait un observer sur un cluster arrête.
+ */
+
+function scheduleReconnect(clusterId: string): void {
+  if (!activeClusters.has(clusterId)) return;
+
+  const retryIndex = retryIndexByCluster.get(clusterId) ?? 0;
+  const delay = retryDelays[Math.min(retryIndex, retryDelays.length - 1)];
+  retryIndexByCluster.set(clusterId, retryIndex + 1);
+
+  const existing = reconnectTimers.get(clusterId);
+  if (existing) clearTimeout(existing);
+
+  const timer = setTimeout(() => {
+    reconnectTimers.delete(clusterId);
+    void startObserverForCluster(clusterId);
+  }, delay);
+  reconnectTimers.set(clusterId, timer);
+}
+
 async function startObserverForCluster(clusterId: string): Promise<void> {
+  if (!activeClusters.has(clusterId)) return;
+
   let engine: DockerEngineService;
   try {
     engine = await DockerEngineService.forCluster(clusterId);
@@ -71,13 +131,8 @@ async function startObserverForCluster(clusterId: string): Promise<void> {
   }
   void syncInitialState(engine);
 
-  let rawDocker: Docker;
-  try {
-    rawDocker = await getDockerForCluster(clusterId);
-  } catch {
-    scheduleRetry(clusterId);
-    return;
-  }
+  const rawDocker = await getDockerForCluster(clusterId);
+
 
   rawDocker.getEvents(
     { filters: { label: [`${LabelKeys.managed}=true`], type: ["container"] } },
@@ -85,9 +140,18 @@ async function startObserverForCluster(clusterId: string): Promise<void> {
       if (err || !stream) {
         // Pas de socket / daemon pas encore prêt : on retente plus tard plutôt
         // que d'abandonner définitivement.
-        scheduleRetry(clusterId);
+        scheduleReconnect(clusterId);
         return;
       }
+
+      if (!activeClusters.has(clusterId)) {
+        if (typeof (stream as { destroy?: () => void }).destroy === "function") {
+          (stream as unknown as { destroy: () => void }).destroy();
+        }
+        return;
+      }
+
+      streamsByCluster.set(clusterId, stream);
 
       // Stream ouvert avec succès : on remet le compteur de backoff à zéro pour ce cluster.
       retryIndexByCluster.set(clusterId, 0);
@@ -111,8 +175,14 @@ async function startObserverForCluster(clusterId: string): Promise<void> {
       // Le stream Docker peut se fermer (daemon restart, coupure du socket) sans
       // jamais rouvrir tout seul — sans ce ré-armement, l'observer reste mort
       // jusqu'au prochain restart du process API (c'était le bug initial).
-      stream.on("end", () => scheduleRetry(clusterId));
-      stream.on("error", () => scheduleRetry(clusterId));
+      stream.on("end", () => {
+        streamsByCluster.delete(clusterId);
+        scheduleReconnect(clusterId);
+      });
+      stream.on("error", () => {
+        streamsByCluster.delete(clusterId);
+        scheduleReconnect(clusterId);
+      });
     },
   );
 }

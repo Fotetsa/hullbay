@@ -6,6 +6,8 @@ import {
   type ProvisionInput,
 } from "../provision-server";
 import { prisma } from "../../lib/prisma";
+import { eventBus } from "../../lib/event-bus";
+
 import type { Step } from "../../lib/workflow";
 
 vi.mock("../../lib/prisma", () => ({
@@ -15,6 +17,13 @@ vi.mock("../../lib/prisma", () => ({
     },
   },
 }));
+
+vi.mock("../../lib/event-bus", () => ({
+  eventBus: {
+    emit: vi.fn(),
+  },
+}));
+
 
 const baseInput: ProvisionInput = {
   serverId: "server-1",
@@ -32,9 +41,8 @@ describe("provision-server — finalizeClusterStep", () => {
     vi.clearAllMocks();
   });
 
-  it("écrit une caddyAdminUrl avec un schéma http(s) valide", async () => {
+  it("met à jour le cluster avec les bonnes URLs et le statut ready en UN SEUL appel atomique", async () => {
     vi.mocked(prisma.cluster.update).mockResolvedValue({} as any);
-
 
     await finalizeClusterStep.run(baseInput, {
       shared: { isNewCluster: true },
@@ -43,51 +51,39 @@ describe("provision-server — finalizeClusterStep", () => {
     const updateMock = vi.mocked(prisma.cluster.update);
     expect(updateMock).toHaveBeenCalledTimes(1);
 
-    const callArgs = updateMock.mock.calls[0];
-    expect(callArgs).toBeDefined();
+    const updateCall = updateMock.mock.calls[0];
+    expect(updateCall).toBeDefined();
 
-    const call = callArgs![0] as {
-      data: { caddyAdminUrl: string; dockerHost: string; status: string };
-    };
+    const callArg = updateCall?.[0] as any;
+    expect(callArg).toBeDefined();
 
-    // Vérifie que l'URL a un schéma valide et un port
-    expect(call.data.caddyAdminUrl).toMatch(/^https?:\/\/.+:\d+$/);
-    expect(call.data.caddyAdminUrl).not.toContain("htpp://");
-    expect(call.data.caddyAdminUrl).not.toContain("htpps://");
-  });
+    expect(callArg.data.dockerHost).toBe("tcp://203.0.113.0:2375");
+    expect(callArg.data.caddyAdminUrl).toBe("http://203.0.113.0:2019");
+    expect(callArg.data.status).toBe("ready");
 
-  it("inclut bien l'host fourni dans dockerHost et caddyAdminUrl", async () => {
-    vi.mocked(prisma.cluster.update).mockResolvedValue({} as any);
-
-
-    await finalizeClusterStep.run(baseInput, {
-      shared: { isNewCluster: true },
-    } as any);
-
-    const updateMock = vi.mocked(prisma.cluster.update);
-    expect(updateMock).toHaveBeenCalledTimes(1);
-
-    const callArgs = updateMock.mock.calls[0];
-    expect(callArgs).toBeDefined();
-
-    const call = callArgs![0] as {
-      data: { caddyAdminUrl: string; dockerHost: string; status: string };
-    };
-
-    expect(call.data.dockerHost).toBe("tcp://203.0.113.0:2375");
+    // Vérification de la sécurité (pas de typo dans l'URL - Issue #84)
+    expect(callArg.data.caddyAdminUrl).toMatch(/^https?:\/\/.+:\d+$/);
+    expect(callArg.data.caddyAdminUrl).not.toContain("htpp://");
+    expect(callArg.data.caddyAdminUrl).not.toContain("htpps://");
 
 
-    expect(call.data.caddyAdminUrl).toBe("http://203.0.113.0:2019");
-    expect(call.data.status).toBe("ready");
+    expect(eventBus.emit).toHaveBeenCalledWith(
+      "cluster.status",
+      expect.objectContaining({
+        clusterId: "cluster-1",
+        from: "pending",
+        to: "ready",
+      }),
+    );
   });
 
   it("ne touche pas au cluster si ce n'est pas un nouveau cluster", async () => {
-    // Ici, isNewCluster est undefined (falsy), donc le update ne doit pas être appelé
     await finalizeClusterStep.run(baseInput, {
-      shared: {},
+      shared: { isNewCluster: false },
     } as any);
 
     expect(prisma.cluster.update).not.toHaveBeenCalled();
+    expect(eventBus.emit).not.toHaveBeenCalled();
   });
 });
 

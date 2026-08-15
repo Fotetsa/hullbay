@@ -33,7 +33,7 @@ async function systemAdminUrl(): Promise<string> {
  */
 
 async function ensureListensOn443(adminUrl: string, server: string): Promise<void> {
-    const res = await caddyAdmin(adminUrl, `/config/apps/http/servers/${server}`)
+    const res = await caddyAdmin({ adminUrl, path: `/config/apps/http/servers/${server}` })
     let cfg: { listen?: string[] } = {}
     if (res.ok) {
         try {
@@ -45,7 +45,7 @@ async function ensureListensOn443(adminUrl: string, server: string): Promise<voi
     const listen = new Set(cfg.listen ?? [])
     if (listen.has(":443")) return
     listen.add(":443")
-    await caddyAdmin(adminUrl, `/config/apps/http/servers/${server}/listen`, "PATCH", [...listen])
+    await caddyAdmin({ adminUrl, path: `/config/apps/http/servers/${server}/listen`, method: "PUT", body: [...listen] })
 }
 
 export async function applyDomainToCaddy(domain: string): Promise<void> {
@@ -60,9 +60,9 @@ export async function applyDomainToCaddy(domain: string): Promise<void> {
      * bien remplacer et non duplique).
      */
 
-    await caddyAdmin(adminUrl, `/id/${API_ROUTE_ID}`, "DELETE").catch(() => { })
-    await caddyAdmin(adminUrl, `/id/${WS_ROUTE_ID}`, "DELETE").catch(() => { })
-    await caddyAdmin(adminUrl, `/id/${WEB_ROUTE_ID}`, "DELETE").catch(() => { })
+    await caddyAdmin({adminUrl, path: `/id/${API_ROUTE_ID}`,method:  "DELETE"}).catch(() => { })
+    await caddyAdmin({adminUrl, path: `/id/${WS_ROUTE_ID}`, method:  "DELETE"}).catch(() => { })
+    await caddyAdmin({adminUrl, path: `/id/${WEB_ROUTE_ID}`,method:  "DELETE"}).catch(() => { })
 
     /**
      * Chaque insertion se fait a l'index 0, ce qui repousse les precedente d'un cran
@@ -71,27 +71,29 @@ export async function applyDomainToCaddy(domain: string): Promise<void> {
      * sinon il intercepterait aussi /api/* et /ws* avant qu'elles ne soient evaluees.
      */
 
-    const webRes = await caddyAdmin(adminUrl, `/config/apps/http/servers/${server}/routes/0`, "PUT", {
+    const webRes = await caddyAdmin({
+      adminUrl,
+      path: `/config/apps/http/servers/${server}/routes/0`,
+      method: "PUT",
+      body: {
         "@id": WEB_ROUTE_ID,
         match: [{ host: [domain] }],
-        Handle: [{ handler: "reverse_proxy", upstreams: [{ dial: "web:80" }]}],
-    })
+        handle: [{ handler: "reverse_proxy", upstreams: [{ dial: "web:80" }] }],
+      },
+    });
     if (!webRes.ok) throw new Error(`Caddy: route web échouée (${webRes.status})`)
     
-    const wsRes = await caddyAdmin(adminUrl, `/config/apps/http/servers/${server}/routes/0`, "PUT", {
-        "@id": WS_ROUTE_ID,
-        match: [{ host: [domain], path: ["/ws*"] }],
-        handle: [{ handler: "reverse_proxy", upstreams: [{ dial: "api:4000" }] }],
+    const wsRes = await caddyAdmin({adminUrl, path: `/config/apps/http/servers/${server}/routes/0`, method: "PUT",
+        body: {
+            "@id": WS_ROUTE_ID,
+            match: [{ host: [domain], path: ["/ws*"] }],
+            handle: [{ handler: "reverse_proxy", upstreams: [{ dial: "api:4000" }] }]
+        },
     })
     if (!wsRes.ok) throw new Error(`Caddy: route ws échouée (${wsRes.status})`)
     
-    const apiRes = await caddyAdmin(adminUrl, `/config/apps/http/servers/${server}/routes/0`, "PUT",{
-        "@id": API_ROUTE_ID,
-        match: [{ host: [domain], path: ["/api/*"] }],
-        handle: [
-          { handler: "reverse_proxy", upstreams: [{ dial: "api:4000" }] },
-        ],
-      },
-    );
+    const apiRes = await caddyAdmin({ adminUrl, path: `/config/apps/http/servers/${server}/routes/0`, method: "PUT",
+        body: { "@id": API_ROUTE_ID, match: [{ host: [domain], path: ["/api/*"] }], handle: [{ handler: "reverse_proxy", upstreams: [{ dial: "api:4000" }] }] },
+    });
     if (!apiRes.ok) throw new Error(`Caddy: route api échouée (${apiRes.status})`);
 }

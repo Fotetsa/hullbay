@@ -22,12 +22,13 @@ import { registerUpdatesRoutes } from "./modules/updates/routes";
 import { updaterService } from "./modules/updates/updater";
 import { prisma } from "./lib/prisma";
 import { attachWebSocket } from "./loaders/websocket";
-import { startObserver } from "./modules/observer/service";
+import { startObserver, stopObserver } from "./modules/observer/service";
 import { registerObservabilitySubscribers } from "./modules/observability/service";
 import { registerDeploySubscribers } from "./subscribers/on-deploy-finished";
 import { startDriftJob } from "./jobs/reconcile-drift";
 import { startAutoScaler } from "./jobs/auto-scaler";
-import fastify, { type FastifyInstance} from "fastify";
+import fastify, { type FastifyInstance } from "fastify";
+import { stopTunnelCleanup, closeAllTunnels } from "./lib/ssh-tunnel";
 
 
 
@@ -227,11 +228,30 @@ async function main() {
     }
   }
   app.log.info(`hullbay on http://${HOST}:${PORT} (ws path /ws)`);
+  return app;
 }
 
-if (process.env.NODE_ENV !== "test") { 
-  main().catch((err) => {
-    console.error(err);
-    process.exit(1);
-  });
+async function shutdown(app: FastifyInstance, signal: string): Promise<void> {
+  app.log.info(`[shutdown] signal ${signal} reçu, arrêt propre en cours…`);
+  stopObserver();
+  stopTunnelCleanup();
+  closeAllTunnels();
+  try {
+    await app.close();
+  } catch (err) {
+    app.log.error(`[shutdown] erreur pendant app.close(): ${err}`);
+  }
+  process.exit(0);
+}
+
+if (process.env.NODE_ENV !== "test") {
+  main()
+    .then((app) => {
+      process.on("SIGTERM", () => void shutdown(app, "SIGTERM"));
+      process.on("SIGINT", () => void shutdown(app, "SIGINT"));
+    })
+    .catch((err) => {
+      console.error(err);
+      process.exit(1);
+    });
 }
