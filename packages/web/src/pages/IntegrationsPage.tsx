@@ -9,6 +9,7 @@ import { PageHeader, PageContainer } from "../components/PageHeader"
 import { ListContainer, ListRow } from "../components/ListContainer"
 import { ActionMenu } from "../components/ActionMenu"
 import { EmptyState } from "../components/EmptyState"
+import { useTranslation } from 'react-i18next'
 
 /**
  * Gestion des registres de conteneurs (Docker Hub, GHCR, registres privés).
@@ -16,6 +17,7 @@ import { EmptyState } from "../components/EmptyState"
  * Le token n'est jamais réaffiché (write-only).
  */
 export function IntegrationsPage() {
+  const { t } = useTranslation()
   const { data: regs } = useQuery({ queryKey: ["registry"], queryFn: api.listRegistry })
 
   const [registry, setRegistry] = useState("ghcr.io")
@@ -24,7 +26,7 @@ export function IntegrationsPage() {
 
   const save = useMutationToast({
     mutationFn: () => api.setRegistry({ registry, username, token }),
-    success: "Registre enregistré",
+    success: t('integrations.toast.saveSuccess'),
     invalidate: [["registry"]],
     onSuccess: () => {
       setUsername("")
@@ -34,29 +36,29 @@ export function IntegrationsPage() {
 
   const removeRegistry = useConfirmDelete<{ id: string; registry: string }>({
     mutationFn: (r) => api.deleteRegistry(r.id),
-    success: "Registre retiré",
+    success: t('integrations.toast.removeSuccess'),
     invalidate: [["registry"]],
     confirm: (r) => ({
-      title: "Retirer ce registre ?",
-      description: `Les identifiants pour « ${r.registry} » seront supprimés. Les images privées de ce registre ne pourront plus être tirées au déploiement.`,
+      title: t('integrations.deleteConfirm.title'),
+      description: t('integrations.deleteConfirm.description', { registry: r.registry }),
     }),
   })
 
   return (
     <PageContainer size="2xl">
-      <PageHeader title="Registres de conteneurs" />
+      <PageHeader title={t('integrations.pageTitle')} />
 
       {/* Liste */}
       <div className="mb-6">
         <ListContainer
-          title="Registres"
-          subtitle={regs ? `${regs.length} registre(s)` : undefined}
+          title={t('integrations.list.title')}
+          subtitle={regs ? t('integrations.list.subtitle', { count: regs.length }) : undefined}
           isEmpty={regs?.length === 0}
           empty={
             <EmptyState
               icon={CircleStack}
-              title="Aucun registre"
-              description="Ajoute Docker Hub, GHCR ou un registre privé pour déployer des images privées."
+              title={t('integrations.empty.title')}
+              description={t('integrations.empty.description')}
             />
           }
         >
@@ -72,7 +74,7 @@ export function IntegrationsPage() {
                   {
                     actions: [
                       {
-                        label: "Supprimer",
+                        label: t('integrations.actions.delete'),
                         icon: <Trash />,
                         variant: "danger",
                         onClick: () => removeRegistry({ id: r.id, registry: r.registry }),
@@ -89,38 +91,38 @@ export function IntegrationsPage() {
       {/* Ajout */}
       <Container className="p-6">
         <Heading level="h3" className="mb-3">
-          Ajouter / mettre à jour un registre
+          {t('integrations.form.title')}
         </Heading>
         <div className="flex flex-col gap-3">
           <div>
-            <Label size="small">Registre</Label>
+            <Label size="small">{t('integrations.form.registryLabel')}</Label>
             <Input
               value={registry}
               onChange={(e) => setRegistry(e.target.value)}
-              placeholder="ghcr.io / docker.io / registry.exemple.com"
+              placeholder={t('integrations.form.registryPlaceholder')}
             />
             <Text size="xsmall" className="mt-1 text-ui-fg-muted">
-              Docker Hub = docker.io · GitHub = ghcr.io · ou l'hôte de ton registre privé.
+              {t('integrations.form.registryHint')}
             </Text>
           </div>
           <div>
-            <Label size="small">Utilisateur</Label>
+            <Label size="small">{t('integrations.form.userLabel')}</Label>
             <Input
               value={username}
               onChange={(e) => setUsername(e.target.value)}
-              placeholder="Entrez l'identifiant utilisateur..."
+              placeholder={t('integrations.form.userPlaceholder')}
             />
           </div>
           <div>
             
           </div>
           <div>
-            <Label size="small">Token / mot de passe</Label>
+            <Label size="small">{t('integrations.form.tokenLabel')}</Label>
             <Input
               type="password"
               value={token}
               onChange={(e) => setToken(e.target.value)}
-              placeholder="(jamais réaffiché)"
+              placeholder={t('integrations.form.tokenPlaceholder')}
             />
           </div>
           <Button
@@ -128,7 +130,7 @@ export function IntegrationsPage() {
             isLoading={save.isPending}
             disabled={!registry || !username || !token}
           >
-            <Plus /> Enregistrer
+            <Plus /> {t('integrations.form.saveButton')}
           </Button>
         </div>
       </Container>

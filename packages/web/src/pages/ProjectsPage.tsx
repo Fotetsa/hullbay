@@ -21,8 +21,10 @@ import { PageHeader, PageContainer } from "../components/PageHeader"
 import { ActionMenu } from "../components/ActionMenu"
 import { EmptyState } from "../components/EmptyState"
 import { ModalForm } from "../components/ModalForm"
+import { useTranslation } from "react-i18next"
 
 export function ProjectsPage() {
+  const { t } = useTranslation()
   const navigate = useNavigate()
   const { data: projects, isLoading } = useQuery({
     queryKey: ["projects"],
@@ -41,8 +43,9 @@ export function ProjectsPage() {
   const [editDescription, setEditDescription] = useState("")
 
   const createMut = useMutationToast({
+    // Utilisation de la version avec clusterId et de la traduction
     mutationFn: () => api.createProject({ name, description: description || undefined, clusterId }),
-    success: "Projet créé",
+    success: t('projects.toast.createSuccess'),
     invalidate: [["projects"]],
     onSuccess: () => {
       setCreateOpen(false)
@@ -58,24 +61,24 @@ export function ProjectsPage() {
         name: editName,
         description: editDescription || undefined,
       }),
-    success: "Projet mis à jour",
+    success: t('projects.toast.updateSuccess'),
     invalidate: [["projects"]],
     onSuccess: () => setEditing(null),
   })
 
   const rebuildMut = useMutationToast({
     mutationFn: api.rebuild,
-    success: (r) => `Reconstruit : ${r.projects} projets, ${r.nodes} nœuds`,
+    success: (r) => t('projects.toast.rebuildSuccess', { projects: r.projects, nodes: r.nodes }),
     invalidate: [["projects"]],
   })
 
   const removeProject = useConfirmDelete<Project>({
     mutationFn: (p) => api.deleteProject(p.id),
-    success: "Projet supprimé",
+    success: t('projects.toast.deleteSuccess'),
     invalidate: [["projects"]],
     confirm: (p) => ({
-      title: "Supprimer le projet ?",
-      description: `« ${p.name} » et tous ses nœuds/liens seront supprimés du désiré. Les ressources Docker déjà déployées doivent être détruites séparément depuis le canvas.`,
+      title: t('projects.deleteConfirm.title'),
+      description: t('projects.deleteConfirm.description', { name: p.name }),
     }),
   })
 
@@ -95,7 +98,7 @@ export function ProjectsPage() {
   return (
     <PageContainer>
       <PageHeader
-        title="Projets"
+        title={t('projects.pageTitle')}
         actions={
           <>
             <Button
@@ -104,26 +107,26 @@ export function ProjectsPage() {
               onClick={() => rebuildMut.mutate()}
               isLoading={rebuildMut.isPending}
             >
-              <ArrowPath /> Reconstruire depuis Docker
+              <ArrowPath /> {t('projects.actions.rebuild')}
             </Button>
-            <Button size="small" onClick={() => setCreateOpen(true)}>
-              <Plus /> Nouveau projet
+            <Button size="small" onClick={() => openCreate()}>
+              <Plus /> {t('projects.actions.new')}
             </Button>
           </>
         }
       />
 
       {isLoading ? (
-        <Text>Chargement…</Text>
+        <Text>{t('projects.loading')}</Text>
       ) : projects?.length === 0 ? (
         <Container className="p-0">
           <EmptyState
             icon={SquaresPlus}
-            title="Aucun projet"
-            description="Crée un projet, puis dessine son architecture sur le canvas (conteneurs, réseaux, volumes, passerelles)."
+            title={t('projects.empty.title')}
+            description={t('projects.empty.description')}
             action={
-              <Button size="small" onClick={() => setCreateOpen(true)}>
-                <Plus /> Nouveau projet
+              <Button size="small" onClick={() => openCreate()}>
+                <Plus /> {t('projects.actions.new')}
               </Button>
             }
           />
@@ -150,7 +153,7 @@ export function ProjectsPage() {
                   {
                     actions: [
                       {
-                        label: "Renommer",
+                        label: t('projects.actions.rename'),
                         icon: <PencilSquare />,
                         onClick: () => openEdit(p),
                       },
@@ -159,7 +162,7 @@ export function ProjectsPage() {
                   {
                     actions: [
                       {
-                        label: "Supprimer",
+                        label: t('projects.actions.delete'),
                         icon: <Trash />,
                         variant: "danger",
                         onClick: () => removeProject(p),
@@ -177,25 +180,25 @@ export function ProjectsPage() {
       <FocusModal open={createOpen} onOpenChange={setCreateOpen}>
         <FocusModal.Content>
           <FocusModal.Header>
-            <Heading>Nouveau projet</Heading>
+            <Heading>{t('projects.createModal.title')}</Heading>
           </FocusModal.Header>
           <FocusModal.Body className="overflow-y-auto">
             <ModalForm onSubmit={() => name.trim() && createMut.mutate()}>
               <div>
-                <Label size="small">Nom</Label>
+                <Label size="small">{t('projects.createModal.nameLabel')}</Label>
                 <Input
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  placeholder="Boutique Bozando Prod"
+                  placeholder={t('projects.createModal.namePlaceholder')}
                   autoFocus
                 />
               </div>
               <div>
-                <Label size="small">Description</Label>
+                <Label size="small">{t('projects.createModal.descLabel')}</Label>
                 <Textarea
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
-                  placeholder="À quoi sert ce projet ?"
+                  placeholder={t('projects.createModal.descPlaceholder')}
                 />
               </div>
 
@@ -217,19 +220,15 @@ export function ProjectsPage() {
                 </Select>
               </div>
               <div className="mt-2 flex justify-end gap-2">
-                <Button
-                  variant="secondary"
-                  type="button"
-                  onClick={() => setCreateOpen(false)}
-                >
-                  Annuler
+                <Button variant="secondary" type="button" onClick={() => setCreateOpen(false)}>
+                  {t('projects.actions.cancel')}
                 </Button>
                 <Button
                   type="submit"
                   isLoading={createMut.isPending}
                   disabled={!name.trim() || !clusterId}
                 >
-                  Créer
+                  {t('projects.actions.create')}
                 </Button>
               </div>
             </ModalForm>
@@ -241,43 +240,30 @@ export function ProjectsPage() {
       <FocusModal open={!!editing} onOpenChange={(o) => !o && setEditing(null)}>
         <FocusModal.Content>
           <FocusModal.Header>
-            <Heading>Renommer le projet</Heading>
+            <Heading>{t('projects.editModal.title')}</Heading>
           </FocusModal.Header>
           <FocusModal.Body className="overflow-y-auto">
             <ModalForm onSubmit={() => editName.trim() && updateMut.mutate()}>
               <div>
-                <Label size="small">Nom</Label>
-                <Input
-                  value={editName}
-                  onChange={(e) => setEditName(e.target.value)}
-                  autoFocus
-                />
+                <Label size="small">{t('projects.editModal.nameLabel')}</Label>
+                <Input value={editName} onChange={(e) => setEditName(e.target.value)} autoFocus />
                 <Text size="xsmall" className="mt-1 text-ui-fg-muted">
-                  Le slug technique (préfixe des ressources Docker) ne change
-                  pas.
+                  {t('projects.editModal.slugHint')}
                 </Text>
               </div>
               <div>
-                <Label size="small">Description</Label>
+                <Label size="small">{t('projects.editModal.descLabel')}</Label>
                 <Textarea
                   value={editDescription}
                   onChange={(e) => setEditDescription(e.target.value)}
                 />
               </div>
               <div className="mt-2 flex justify-end gap-2">
-                <Button
-                  variant="secondary"
-                  type="button"
-                  onClick={() => setEditing(null)}
-                >
-                  Annuler
+                <Button variant="secondary" type="button" onClick={() => setEditing(null)}>
+                  {t('projects.actions.cancel')}
                 </Button>
-                <Button
-                  type="submit"
-                  isLoading={updateMut.isPending}
-                  disabled={!editName.trim()}
-                >
-                  Enregistrer
+                <Button type="submit" isLoading={updateMut.isPending} disabled={!editName.trim()}>
+                  {t('projects.actions.save')}
                 </Button>
               </div>
             </ModalForm>
@@ -285,5 +271,5 @@ export function ProjectsPage() {
         </FocusModal.Content>
       </FocusModal>
     </PageContainer>
-  );
+  )
 }
