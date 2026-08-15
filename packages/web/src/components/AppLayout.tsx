@@ -19,6 +19,7 @@ import {
 import { auth } from "../lib/api"
 import { useMe, type Role } from "../lib/useMe"
 import { useUpdatesCheck } from "../lib/useUpdates"
+import { ThemeToggle } from "./ThemeToggle/ThemeToggle"
 
 type NavItem = { to: string; label: string; Icon: ComponentType; min: Role }
 
@@ -159,6 +160,7 @@ export function AppLayout({ onLogout }: { onLogout: () => void }) {
             </Badge>
           </div>
         )}
+        <ThemeToggle />
         <Button
           variant="transparent"
           size="small"
