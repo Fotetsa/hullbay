@@ -1,0 +1,404 @@
+import { describe, it, expect, beforeEach, vi } from "vitest"
+import { PassThrough } from "node:stream"
+import net from "node:net"
+
+const { mockSession, mockConnect, mockFindFirst } = vi.hoisted(() => {
+  const session = {
+    dispose: vi.fn(),
+    forwardOut: vi.fn(async () => new PassThrough()),
+    onClose: vi.fn(),
+    onError: vi.fn(),
+  }
+  return {
+    mockSession: session,
+    mockConnect: vi.fn(async () => session),
+    mockFindFirst: vi.fn(),
+  }
+})
+
+vi.mock("../prisma", () => ({
+  prisma: { server: { findFirst: mockFindFirst } },
+}))
+
+vi.mock("../ssh", () => ({
+  SshSession: { connect: mockConnect },
+}))
+
+vi.mock("../../modules/auth/crypto", () => ({
+  decryptSecret: (payload: string) => payload,
+}))
+
+function manager(name: string) {
+  return {
+    id: "mgr-1",
+    name,
+    role: "manager" as const,
+    status: "ready" as const,
+    host: "10.0.0.5",
+    port: 22,
+    user: "root",
+    privateKeyEnc: "clé-chiffrée",
+    hostKeyFp: "sha256:deadbeef",
+  }
+}
+
+async function connectExpectRefused(port: number, timeoutMs = 1000): Promise<void> {
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    const ok = await new Promise<boolean>((resolve) => {
+      const sock = net.connect({ host: "127.0.0.1", port })
+      sock.once("connect", () => {
+        sock.destroy()
+        resolve(false)
+      })
+      sock.once("error", (err: NodeJS.ErrnoException) => {
+        resolve(err.code === "ECONNREFUSED")
+      })
+    })
+    if (ok) return
+    await new Promise((r) => setTimeout(r, 20))
+  }
+  throw new Error(`le port ${port} accepte encore des connexions`)
+}
+
+describe("ssh-tunnel — cycle de vie", () => {
+  let ensureTunnel: typeof import("../ssh-tunnel").ensureTunnel
+  let closeTunnel: typeof import("../ssh-tunnel").closeTunnel
+
+  beforeEach(async () => {
+    // state module interne (Map tunnels) : module neuf par test
+    vi.resetModules()
+    vi.clearAllMocks()
+    delete process.env.SSH_TUNNEL_IDLE_TIMEOUT_MS
+    delete process.env.SSH_TUNNEL_FORWARD_TIMEOUT_MS
+    const mod = await import("../ssh-tunnel")
+    ensureTunnel = mod.ensureTunnel
+    closeTunnel = mod.closeTunnel
+    mockFindFirst.mockResolvedValue(manager("mgr"))
+  })
+
+  it("ouvre un tunnel et fournit un port local joignable", async () => {
+    const port = await ensureTunnel("cluster-1", 2375)
+
+    expect(port).toBeGreaterThan(0)
+    expect(mockConnect).toHaveBeenCalledTimes(1)
+    expect(mockFindFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { clusterId: "cluster-1", role: "manager", status: "ready" } }),
+    )
+  })
+
+  it("réutilise un tunnel existant (idempotent)", async () => {
+    const first = await ensureTunnel("cluster-1", 2375)
+    const second = await ensureTunnel("cluster-1", 2375)
+
+    expect(second).toBe(first)
+    expect(mockConnect).toHaveBeenCalledTimes(1)
+  })
+
+  it("appels concurrents → une seule session et le même port", async () => {
+    const [first, second] = await Promise.all([
+      ensureTunnel("cluster-1", 2375),
+      ensureTunnel("cluster-1", 2375),
+    ])
+
+    expect(first).toBe(second)
+    expect(mockConnect).toHaveBeenCalledTimes(1)
+  })
+
+  it("course en vol : pending partagé, aucune connexion double", async () => {
+    let release!: (s: unknown) => void
+    const gated = new Promise((resolve) => {
+      release = resolve
+    })
+    vi.mocked(mockConnect).mockImplementationOnce(() => gated as never)
+
+    const a = ensureTunnel("cluster-1", 2375)
+    const b = ensureTunnel("cluster-1", 2375)
+
+    // la session a déjà reçu sa 1ère connexion (gated, en vol) : pas de 2e lancée
+    await Promise.resolve()
+    expect(mockConnect).toHaveBeenCalledTimes(1)
+
+    release(mockSession)
+    const [pa, pb] = await Promise.all([a, b])
+
+    expect(pa).toBe(pb)
+    expect(mockConnect).toHaveBeenCalledTimes(1)
+  })
+
+  it("nettoyage quand la session SSH se ferme (close)", async () => {
+    const port = await ensureTunnel("cluster-1", 2375)
+
+    const closeCb = vi.mocked(mockSession.onClose).mock.calls[0]![0]
+    closeCb()
+
+    expect(mockSession.dispose).toHaveBeenCalledTimes(1)
+    await connectExpectRefused(port)
+
+    // l'entrée est purgée : l'appel suivant ouvre une NOUVELLE session
+    await ensureTunnel("cluster-1", 2375)
+    expect(mockConnect).toHaveBeenCalledTimes(2)
+  })
+
+  it("nettoyage quand la session SSH rencontre une erreur (error)", async () => {
+    const port = await ensureTunnel("cluster-1", 2375)
+
+    const errCb = vi.mocked(mockSession.onError).mock.calls[0]![0]
+    errCb(new Error("réseau coupé"))
+
+    expect(mockSession.dispose).toHaveBeenCalledTimes(1)
+    await connectExpectRefused(port)
+  })
+
+it("nettoyage un seul appel même si close et error se suivent", async () => {
+    await ensureTunnel("cluster-1", 2375)
+
+    const closeCb = vi.mocked(mockSession.onClose).mock.calls[0]![0]
+    const errCb = vi.mocked(mockSession.onError).mock.calls[0]![0]
+    errCb(new Error("boom"))
+    closeCb()
+
+    expect(mockSession.dispose).toHaveBeenCalledTimes(1)
+  })
+
+  it("session morte avant l'écoute → rejet, aucune entrée fantôme", async () => {
+    const promise = ensureTunnel("cluster-1", 2375)
+
+    // laisse connect + listeners se poser (microtasks) AVANT le callback de listen
+    for (let i = 0; i < 10 && mockSession.onError.mock.calls.length === 0; i++) {
+      await Promise.resolve()
+    }
+    expect(mockSession.onError).toHaveBeenCalled()
+
+    const errCb = vi.mocked(mockSession.onError).mock.calls[0]![0]
+    errCb(new Error("connexion coupée"))
+
+    await expect(promise).rejects.toThrow(/coupée|fermée/)
+    expect(mockSession.dispose).toHaveBeenCalledTimes(1)
+
+    // pas d'entrée fantôme : l'appel suivant ouvre une NOUVELLE session
+    await ensureTunnel("cluster-1", 2375)
+    expect(mockConnect).toHaveBeenCalledTimes(2)
+  })
+
+  it("closeTunnel ferme serveur et session, sans erreur en double-appel", async () => {
+    const port = await ensureTunnel("cluster-1", 2375)
+
+    closeTunnel("cluster-1", 2375)
+    expect(mockSession.dispose).toHaveBeenCalled()
+    await connectExpectRefused(port)
+
+    // entrée purgée : l'appel suivant ouvre une NOUVELLE session
+    await ensureTunnel("cluster-1", 2375)
+    expect(mockConnect).toHaveBeenCalledTimes(2)
+
+    // teardown idempotent : un second closeTunnel ne lève rien
+    expect(() => closeTunnel("cluster-1", 2375)).not.toThrow()
+  })
+
+  it("création échouée → clé purgée, un nouvel appel retente (anti-poison)", async () => {
+    vi.mocked(mockConnect).mockRejectedValueOnce(new Error("SSH: connexion refusée"))
+
+    await expect(ensureTunnel("cluster-1", 2375)).rejects.toThrow(/refusée/)
+
+    // pending purgé après l'échec : le prochain appel repart d'une session neuve
+    await ensureTunnel("cluster-1", 2375)
+    expect(mockConnect).toHaveBeenCalledTimes(2)
+  })
+
+  it("closeTunnel pendant la création → fermé une fois monté", async () => {
+    let release!: (s: unknown) => void
+    const gated = new Promise((resolve) => {
+      release = resolve
+    })
+    vi.mocked(mockConnect).mockImplementationOnce(() => gated as never)
+
+    const tunnel = ensureTunnel("cluster-1", 2375)
+    closeTunnel("cluster-1", 2375) // création encore en vol
+
+    release(mockSession)
+    const port = await tunnel
+
+    // tunnel monté puis fermé immédiatement : port refusé, session disposée
+    await connectExpectRefused(port)
+    expect(mockSession.dispose).toHaveBeenCalled()
+  })
+
+  it("aucun manager ready → TunnelError NO_READY_MANAGER (409)", async () => {
+    mockFindFirst.mockResolvedValue(null)
+
+    await expect(ensureTunnel("cluster-1", 2375)).rejects.toMatchObject({
+      name: "TunnelError",
+      code: "NO_READY_MANAGER",
+      statusCode: 409,
+      message: /Aucun manager prêt pour le cluster cluster-1/,
+    })
+    expect(mockConnect).not.toHaveBeenCalled()
+  })
+
+  it("manager sans clé de maintenance → TunnelError MANAGER_NO_KEY (409)", async () => {
+    vi.mocked(mockFindFirst).mockImplementationOnce(async () =>
+      ({ ...manager("mgr"), privateKeyEnc: null }) as any,
+    )
+
+    await expect(ensureTunnel("cluster-1", 2375)).rejects.toMatchObject({
+      name: "TunnelError",
+      code: "MANAGER_NO_KEY",
+      statusCode: 409,
+      message: /sans clé de maintenance/,
+    })
+    expect(mockConnect).not.toHaveBeenCalled()
+  })
+
+  it("connect SSH refusé → TunnelError TUNNEL_CONNECT_FAILED (502)", async () => {
+    vi.mocked(mockConnect).mockRejectedValueOnce(new Error("ECONNREFUSED"))
+
+    await expect(ensureTunnel("cluster-1", 2375)).rejects.toMatchObject({
+      name: "TunnelError",
+      code: "TUNNEL_CONNECT_FAILED",
+      statusCode: 502,
+      message: /ECONNREFUSED/,
+    })
+
+    // clé purgée : un nouvel appel retente une session neuve
+    await ensureTunnel("cluster-1", 2375)
+    expect(mockConnect).toHaveBeenCalledTimes(2)
+  })
+
+  it("connect pendu → TunnelError TUNNEL_CONNECT_TIMEOUT (504) puis clé purgée", async () => {
+    vi.useFakeTimers()
+    try {
+      vi.mocked(mockConnect).mockImplementationOnce(
+        () => new Promise<never>(() => {}) as never,
+      )
+
+      const tunnel = ensureTunnel("cluster-1", 2375)
+      // handler attaché AVANT l'avance des timers, sinon la rejection est
+      // "unhandled" pendant le flush interne de advanceTimersByTimeAsync
+      const assertion = expect(tunnel).rejects.toMatchObject({
+        name: "TunnelError",
+        code: "TUNNEL_CONNECT_TIMEOUT",
+        statusCode: 504,
+        message: /timeout 15000ms/,
+      })
+      await vi.advanceTimersByTimeAsync(15_000)
+      await assertion
+
+      vi.useRealTimers()
+
+      // clé purgée après le timeout : un nouvel appel repart d'une session neuve
+      await ensureTunnel("cluster-1", 2375)
+      expect(mockConnect).toHaveBeenCalledTimes(2)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it("appels concurrents sans manager ready → même TunnelError, aucune connexion", async () => {
+    mockFindFirst.mockResolvedValue(null)
+
+    const [a, b] = await Promise.allSettled([
+      ensureTunnel("cluster-1", 2375),
+      ensureTunnel("cluster-1", 2375),
+    ])
+
+    const ra = a.status === "rejected" ? a.reason : null
+    const rb = b.status === "rejected" ? b.reason : null
+    expect(ra).toMatchObject({ name: "TunnelError", code: "NO_READY_MANAGER", statusCode: 409 })
+    expect(rb).toMatchObject({ name: "TunnelError", code: "NO_READY_MANAGER", statusCode: 409 })
+    expect(mockConnect).not.toHaveBeenCalled()
+  })
+
+  it("closeTunnel pendant une création en échec → aucune rejection orpheline", async () => {
+    mockFindFirst.mockResolvedValue(null)
+
+    const tunnel = ensureTunnel("cluster-1", 2375)
+    closeTunnel("cluster-1", 2375) // création en vol, va échouer (NO_READY_MANAGER)
+
+    await expect(tunnel).rejects.toMatchObject({ code: "NO_READY_MANAGER" })
+
+    // le `.then` orphelin de closeTunnel consomme la rejection : aucun
+    // unhandled rejection (vitest le fait échouer sinon)
+    await new Promise((r) => setTimeout(r, 20))
+  })
+
+  it("stream forwardOut en erreur → socket fermé, pas de crash, tunnel vivant", async () => {
+    const port = await ensureTunnel("cluster-1", 2375)
+
+    const socket = net.connect({ host: "127.0.0.1", port })
+    await new Promise((r) => socket.once("connect", r))
+
+    // attendre que le handler serveur ait appelé forwardOut (mock.results rempli)
+    for (let i = 0; i < 10 && vi.mocked(mockSession.forwardOut).mock.results.length === 0; i++) {
+      await Promise.resolve()
+    }
+    const stream = await vi.mocked(mockSession.forwardOut).mock.results[0]!.value as PassThrough
+    for (let i = 0; i < 10 && stream.listenerCount("error") === 0; i++) await Promise.resolve()
+    expect(stream.listenerCount("error")).toBeGreaterThan(0)
+
+    // 'error' sans handler aurait crashé le process (EventEmitter)
+    stream.emit("error", new Error("canal SSH rompu"))
+    await Promise.race([
+      new Promise((r) => socket.once("close", r)),
+      new Promise((_, rej) => setTimeout(() => rej(new Error("socket jamais fermé")), 2000)),
+    ])
+
+    // seul le socket a été coupé : le tunnel entier reste debout
+    const s2 = net.connect({ host: "127.0.0.1", port })
+    await new Promise((r) => s2.once("connect", r))
+    expect(mockSession.forwardOut).toHaveBeenCalledTimes(2)
+    s2.destroy()
+  })
+
+  it("socket inactif au-delà du idle timeout → fermé", async () => {
+    process.env.SSH_TUNNEL_IDLE_TIMEOUT_MS = "50"
+    vi.resetModules()
+    ensureTunnel = (await import("../ssh-tunnel")).ensureTunnel
+
+    const port = await ensureTunnel("cluster-1", 2375)
+    const socket = net.connect({ host: "127.0.0.1", port })
+    await new Promise((r) => socket.once("connect", r))
+
+    // aucune data échangée → timeout idle → destroy
+    await Promise.race([
+      new Promise((r) => socket.once("close", r)),
+      new Promise((_, rej) => setTimeout(() => rej(new Error("socket jamais fermé")), 2000)),
+    ])
+    expect(mockSession.dispose).not.toHaveBeenCalled() // tunnel entier intact
+  })
+
+  it("forwardOut muet → socket fermé après le délai, sans rejection orpheline", async () => {
+    process.env.SSH_TUNNEL_FORWARD_TIMEOUT_MS = "50"
+    vi.resetModules()
+    ensureTunnel = (await import("../ssh-tunnel")).ensureTunnel
+    vi.mocked(mockSession.forwardOut).mockImplementationOnce(
+      () => new Promise<never>(() => {}) as never,
+    )
+
+    const port = await ensureTunnel("cluster-1", 2375)
+    const socket = net.connect({ host: "127.0.0.1", port })
+    await Promise.race([
+      new Promise((r) => socket.once("close", r)),
+      new Promise((_, rej) => setTimeout(() => rej(new Error("socket jamais fermé")), 2000)),
+    ])
+
+    // timer clearé par le catch : pas d'unhandled rejection (vitest échoue sinon)
+    await new Promise((r) => setTimeout(r, 20))
+  })
+
+  it("teardown survit à un dispose() qui lève", async () => {
+    const port = await ensureTunnel("cluster-1", 2375)
+
+    vi.mocked(mockSession.dispose).mockImplementationOnce(() => {
+      throw new Error("client déjà détruit")
+    })
+
+    const closeCb = vi.mocked(mockSession.onClose).mock.calls[0]![0]
+    expect(() => closeCb()).not.toThrow()
+
+    // entrée purgée malgré le dispose qui a levé : un nouvel appel repart proprement
+    await connectExpectRefused(port)
+    await ensureTunnel("cluster-1", 2375)
+    expect(mockConnect).toHaveBeenCalledTimes(2)
+  })
+})

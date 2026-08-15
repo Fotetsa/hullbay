@@ -5,6 +5,7 @@ import { eventBus } from "../../lib/event-bus";
 import { prisma } from "../../lib/prisma";
 import { ContainerStateTracker, type ContainerState } from "./state-tracker";
 
+
 /**
  * Observer — sens Réel -> Désiré (LECTURE SEULE, aucune correction auto en V1).
  *
@@ -121,10 +122,17 @@ function scheduleReconnect(clusterId: string): void {
 async function startObserverForCluster(clusterId: string): Promise<void> {
   if (!activeClusters.has(clusterId)) return;
 
-  const engine = await DockerEngineService.forCluster(clusterId);
+  let engine: DockerEngineService;
+  try {
+    engine = await DockerEngineService.forCluster(clusterId);
+  } catch {
+    scheduleRetry(clusterId);
+    return;
+  }
   void syncInitialState(engine);
 
   const rawDocker = await getDockerForCluster(clusterId);
+
 
   rawDocker.getEvents(
     { filters: { label: [`${LabelKeys.managed}=true`], type: ["container"] } },
@@ -177,6 +185,14 @@ async function startObserverForCluster(clusterId: string): Promise<void> {
       });
     },
   );
+}
+
+/** Réarme l'observer d'un cluster avec backoff exponentiel borné. */
+function scheduleRetry(clusterId: string) {
+  const retryIndex = retryIndexByCluster.get(clusterId) ?? 0;
+  const delay = retryDelays[Math.min(retryIndex, retryDelays.length - 1)];
+  retryIndexByCluster.set(clusterId, retryIndex + 1);
+  setTimeout(() => startObserverForCluster(clusterId), delay);
 }
 
 /**

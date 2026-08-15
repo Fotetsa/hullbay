@@ -137,6 +137,26 @@ The system-update module (`src/modules/updates`) must keep **coverage above
 80%** (statements/lines). New branches in `updater.ts`, `github.ts` or the
 routes must come with unit tests.
 
+#### Mocking conventions (Prisma)
+
+Prisma accessors have a precise semantic. Respect it in the source code and
+mirror it exactly in the tests:
+
+- `findUnique` / `findFirst` — absence is a **legitimate case**; they return
+  `null` and the code must handle it (lookups, optional reads).
+- `findUniqueOrThrow` / `findFirstOrThrow` — absence is an **error**; they
+  throw and the code relies on it (guards, authorization lookups).
+
+Rules for unit tests that mock `lib/prisma`:
+
+- A mock must expose **exactly** the accessor the code under test calls.
+  No dead mocks (methods the exercised path never reaches), no missing mocks
+  (methods the exercised path calls but the mock omits).
+- When a module is mocked entirely (service, client), mock methods inside it
+  are not needed at the Prisma level.
+- When a guard relies on `findUniqueOrThrow`, the mock exposes it and a test
+  asserts the error branch (e.g. `409`).
+
 ### Web E2E (Playwright)
 
 The updates UI is covered by end-to-end specs that **stub the API** via

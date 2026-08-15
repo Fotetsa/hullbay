@@ -139,7 +139,7 @@ const swarmJoinStep: Step<ProvisionInput> = {
   },
 }
 
-const deploySocketProxyStep: Step<ProvisionInput> = {
+export const deploySocketProxyStep: Step<ProvisionInput> = {
   name: "deploy-socket-proxy",
   run: async (input, ctx) => {
     const s = ctx.shared as ProvShared;
@@ -179,10 +179,8 @@ const deploySocketProxyStep: Step<ProvisionInput> = {
     //log(input.serverId, "socket-proxy démarré.");
     log(
       input.serverId,
-      `SÉCURITÉ CRITIQUE : le port 2375 (Docker API) est exposé sur ${input.host}. ` +
-        `Restreins-le maintenant à l'IP de ce serveur hullbay. Sur un VPS classique : ` +
-        `ssh ${input.user}@${input.host} "ufw allow from <IP_HULLBAY> to any port 2375 proto tcp && ufw allow 22 && ufw --force enable". ` +
-        `Tant que ce n'est pas fait, n'importe qui avec cette IP a un contrôle total du serveur.`,
+      `docker-socket-proxy démarré : port 2375 bindé sur 127.0.0.1 uniquement. ` +
+        `Pas d'exposition publique, accès via tunnel SSH — aucune règle pare-feu requise.`,
     );
   },
   compensate: async (_input, ctx) => {
@@ -191,7 +189,7 @@ const deploySocketProxyStep: Step<ProvisionInput> = {
   },
 };
 
-const deployCaddyStep: Step<ProvisionInput> = {
+export const deployCaddyStep: Step<ProvisionInput> = {
   name: "deploy-caddy",
   run: async (input, ctx) => {
     const s = ctx.shared as ProvShared;
@@ -234,10 +232,8 @@ const deployCaddyStep: Step<ProvisionInput> = {
     log(input.serverId, "Caddy démarré.");
     log(
       input.serverId,
-      `SÉCURITÉ CRITIQUE : le port 2019 (Docker API) est exposé sur ${input.host}. ` +
-        `Restreins-le maintenant à l'IP de ce serveur hullbay. Sur un VPS classique : ` +
-        `ssh ${input.user}@${input.host} "ufw allow from <IP_HULLBAY> to any port 2375 proto tcp && ufw allow 22 && ufw --force enable". ` +
-        `Tant que ce n'est pas fait, n'importe qui avec cette IP a un contrôle total du serveur.`,
+      `Admin Caddy publié sur 127.0.0.1 de l'hôte uniquement (réseau bridge interne isolé). ` +
+        `Pas d'exposition publique, accès via tunnel SSH — aucune règle pare-feu requise.`,
     );
   },
   compensate: async (_input, ctx) => {
@@ -407,7 +403,3 @@ export async function provisionServerWorkflow(input: ProvisionInput): Promise<vo
     ;(shared as ProvShared).session?.dispose()
   }
 }
-
-
-
-

@@ -10,11 +10,10 @@ import { prisma } from "./prisma";
  * eviter la duplication du comportement stricte et identique de l'original.
  */
 
-//const CADDY_ADMIN = process.env.CADDY_ADMIN_URL || "http://localhost:2019";
-
 /** URL admin Caddy du cluster SYSTÈME (celui d'hullbay lui-même). Centralisé
  * pour que tout appelant système (settings/caddy-domain.ts, futurs modules)
- * passe par le même chemin, sans risque d'oubli. */
+ * passe par le même chemin, sans risque d'oubli. 
+ */
 export async function getSystemAdminUrl(): Promise<string> {
   return (await getDefaultCluster()).caddyAdminUrl
 }
@@ -61,7 +60,7 @@ export function caddyAdmin({
   method = "GET",
   body }:
   CaddyAdminRequest): Promise<AdminResponse> {
-  const url = new URL(`${adminUrl}${path}`);
+  const url = new URL(path, adminUrl);
   const isHttps = url.protocol === "https:";
   const requester = isHttps ? httpsRequest : httpRequest;
   const payload = body !== undefined ? JSON.stringify(body) : undefined;
@@ -82,7 +81,7 @@ export function caddyAdmin({
       },
       (res) => {
         let responseBody = "";
-        res.on("data", (c) => (body += c));
+        res.on("data", (c) => (responseBody += c));
         res.on("end", () =>
           resolve({
             ok: (res.statusCode ?? 0) < 400,

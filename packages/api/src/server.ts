@@ -28,6 +28,7 @@ import { registerDeploySubscribers } from "./subscribers/on-deploy-finished";
 import { startDriftJob } from "./jobs/reconcile-drift";
 import { startAutoScaler } from "./jobs/auto-scaler";
 import fastify, { type FastifyInstance } from "fastify";
+import { stopTunnelCleanup, closeAllTunnels } from "./lib/ssh-tunnel";
 
 
 
@@ -233,6 +234,8 @@ async function main() {
 async function shutdown(app: FastifyInstance, signal: string): Promise<void> {
   app.log.info(`[shutdown] signal ${signal} reçu, arrêt propre en cours…`);
   stopObserver();
+  stopTunnelCleanup();
+  closeAllTunnels();
   try {
     await app.close();
   } catch (err) {

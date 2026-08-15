@@ -34,6 +34,7 @@ export interface SshConnectOptions {
 
 export class SshSession {
   private client: Client
+  private disposed = false
   private constructor(client: Client) {
     this.client = client
   }
@@ -110,7 +111,26 @@ export class SshSession {
     if (res.code !== 0) throw new Error(`authorized_keys: ${res.stderr}`)
   }
 
+  /**
+   * Inscrit un callback déclenché quand la connexion SSH se ferme
+   * (réseau coupé, serveur distant arrêté, session terminée).
+   */
+  onClose(cb: () => void): void {
+    this.client.on("close", cb)
+  }
+
+  /**
+   * Inscrit un callback déclenché sur erreur de connexion SSH.
+   * L'erreur est souvent suivie d'un "close" ; le callback permet de
+   * nettoyer au plus tôt sans attendre la fermeture.
+   */
+  onError(cb: (err: Error) => void): void {
+    this.client.on("error", (e) => cb(new Error(`SSH: ${e.message}`)))
+  }
+
   dispose(): void {
+    if (this.disposed) return
+    this.disposed = true
     this.client.end()
   }
 }

@@ -39,3 +39,5 @@ yarn-error.log*
 # Caddy runtime data
 caddy_data/
 caddy_config/
+test-results/
+playwright-report/

@@ -34,9 +34,6 @@ vi.mock("../../auth/service", () => ({
 vi.mock("../../../lib/prisma", () => ({
   prisma: {
     cluster: {
-      deleteMany: vi.fn(),
-      create: vi.fn(),
-      findFirstOrThrow: vi.fn(),
       findMany: vi.fn(),
     },
   },
@@ -67,20 +64,6 @@ describe("POST /api/rebuild-from-docker", () => {
   beforeEach(async () => {
     vi.clearAllMocks();
 
-    vi.mocked(prisma.cluster.deleteMany).mockResolvedValue({ count: 1 } as any);
-
-    const mockCluster = {
-      id: "mock-cluster-id",
-      name: "Test Cluster",
-      dockerHost: "local",
-      caddyAdminUrl: "http://localhost:2019",
-      isDefault: true,
-    };
-
-    vi.mocked(prisma.cluster.create).mockResolvedValue(mockCluster as any);
-    vi.mocked(prisma.cluster.findFirstOrThrow).mockResolvedValue(
-      mockCluster as any,
-    );
     vi.mocked(prisma.cluster.findMany).mockResolvedValue([
       { id: "mock-cluster-id" },
     ] as any);
