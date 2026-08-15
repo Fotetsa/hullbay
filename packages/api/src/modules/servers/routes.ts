@@ -5,6 +5,8 @@ import { provisionServerWorkflow } from "../../workflows/provision-server"
 import { DockerEngineService } from "../docker-engine/service"
 import { requireRole, currentUser } from "../auth/rbac"
 import { eventBus } from "../../lib/event-bus"
+import { runWithConcurrency, CLUSTER_CONCURRENCY } from "../../lib/concurrency"
+import { TunnelError } from "../../lib/ssh-tunnel"
 import { prisma } from "../../lib/prisma";
 
 
@@ -39,20 +41,30 @@ export async function registerServersRoutes(app: FastifyInstance) {
       let totalNodes = 0;
       let checkedAny = false;
       const managersAgg = { total: 0, reachable: 0, quorumOk: true };
-      for (const clusterId of clusterIds) {
-        try {
+      const { items, totalMs } = await runWithConcurrency(
+        clusterIds,
+        CLUSTER_CONCURRENCY,
+        async (clusterId) => {
           const engine = await DockerEngineService.forCluster(clusterId);
-          const nodes = await engine.listNodes();
-          const managers = await engine.managerHealth();
-          totalNodes += nodes.length;
-          managersAgg.total += managers.total;
-          managersAgg.reachable += managers.reachable;
-          managersAgg.quorumOk = managersAgg.quorumOk && managers.quorumOk;
+          return {
+            nodes: await engine.listNodes(),
+            managers: await engine.managerHealth(),
+          };
+        },
+      );
+      for (const it of items) {
+        if (it.status === "fulfilled") {
+          totalNodes += it.value.nodes.length;
+          managersAgg.total += it.value.managers.total;
+          managersAgg.reachable += it.value.managers.reachable;
+          managersAgg.quorumOk = managersAgg.quorumOk && it.value.managers.quorumOk;
           checkedAny = true;
-        } catch {
+        } else {
           // Cluster inaccessible : on ignore, on ne bloque pas la liste.
+          app.log.warn(`[servers] cluster ${clusterIds[it.index]} injoignable: ${String(it.reason)}`);
         }
       }
+      app.log.info(`[servers] health ${clusterIds.length} clusters en ${totalMs.toFixed(0)}ms (concurrency=${CLUSTER_CONCURRENCY})`);
       return {
         servers,
         swarmNodes: totalNodes,
@@ -287,8 +299,9 @@ export async function registerServersRoutes(app: FastifyInstance) {
         const engine = await DockerEngineService.forCluster(server.clusterId);
         await engine.setNodeRole(server.swarmNodeId, body.role);
       } catch (err) {
+        const status = err instanceof TunnelError ? err.statusCode : 500;
         return reply
-          .code(500)
+          .code(status)
           .send({ error: err instanceof Error ? err.message : String(err) });
       }
       const body = setRoleBody.parse(req.body);

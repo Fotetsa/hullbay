@@ -18,7 +18,6 @@ const { mockPrisma, mockEventBus, mockDocker, mockGithub, mockSpawn } =
         count: vi.fn(),
         update: vi.fn(),
       },
-      cluster: { findFirstOrThrow: vi.fn() },
     },
     mockEventBus: { emit: vi.fn() },
     mockDocker: {
@@ -109,7 +108,6 @@ describe("UpdaterService", () => {
       updatedAt: now,
     })
     mockPrisma.systemUpdate.findFirst.mockResolvedValue(null)
-    mockPrisma.cluster.findFirstOrThrow.mockResolvedValue({ id: "default-cluster-id" })
     mockDocker.currentSystemTag.mockResolvedValue("1.2.2") // Mock par défaut pour current()
     mockPrisma.systemUpdate.create.mockImplementation(async (args: { data: Record<string, unknown> }) => ({
       id: "update-1",
