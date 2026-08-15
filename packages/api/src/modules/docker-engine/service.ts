@@ -368,6 +368,25 @@ export class DockerEngineService {
   }
 
   /**
+   * Rattache un CONTENEUR (ex. le Caddy du cluster) à un réseau overlay.
+   * Nécessaire pour la résolution DNS Swarm : Caddy ne peut joindre le service
+   * cible par son nom (`boz_<slug>_<svc>`) que s'il partage un overlay du projet.
+   * Idempotent — « already connected/exists » est toléré.
+   */
+  async connectContainerToNetwork(containerName: string, networkName: string): Promise<void> {
+    try {
+      await this.docker.getNetwork(networkName).connect({ Container: containerName })
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      if (/already (connected|exists)/i.test(msg)) {
+        console.warn(`connectContainerToNetwork: ${containerName} déjà sur ${networkName} : ${msg}`)
+        return
+      }
+      throw err
+    }
+  }
+
+  /**
    * Garantit l'existence du réseau overlay SYSTÈME partagé `boz_system`.
    * Caddy (stack système) ET tout service exposé via une passerelle y sont
    * rattachés, pour que Caddy résolve `boz_<slug>_<svc>` par le DNS Swarm sur
@@ -463,6 +482,25 @@ export class DockerEngineService {
   // ── Services (cœur Swarm) ───────────────────────────────────────────────────
 
   /**
+   * Traduit la `restartPolicy` du nœud (config + UI, cf. node-config.ts) en
+   * `Condition` Swarm. `always`/`unless-stopped` → `any` (relance toujours, y
+   * compris exit 0), `on-failure` → `on-failure`, `no` → `none` (one-shot :
+   * nécessaire pour hello-world, sinon boucle infinie sur exit 0).
+   */
+  private static restartCondition(
+    policy: ContainerConfig["restartPolicy"]
+  ): "any" | "none" | "on-failure" {
+    switch (policy) {
+      case "on-failure":
+        return "on-failure"
+      case "no":
+        return "none"
+      default:
+        return "any"
+    }
+  }
+
+  /**
    * Construit la spec d'un service Swarm depuis la config conteneur. Partagé
    * entre create et update (garantit la cohérence).
    */
@@ -519,7 +557,7 @@ export class DockerEngineService {
         },
         Networks: networkNames.map((n) => ({ Target: n })),
         Resources: { Limits: limits },
-        RestartPolicy: { Condition: "any" as const },
+        RestartPolicy: { Condition: DockerEngineService.restartCondition(config.restartPolicy) },
       },
       Mode: { Replicated: { Replicas: config.replicas } },
       UpdateConfig: {

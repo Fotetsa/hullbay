@@ -81,6 +81,27 @@ describe("POST /api/projects", () => {
     expect(response.json()).toEqual(mockProject);
   });
 
+  it("devrait transmettre clusterId au service (sélecteur de cluster effectif)", async () => {
+    vi.mocked(projectsService.createProject).mockResolvedValue({
+      id: "proj-1",
+      name: "Project1",
+      clusterId: "cluster-lab-1",
+    } as any);
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/projects",
+      headers: { authorization: `Bearer ${mockOperatorToken}` },
+      payload: { name: "Project1", clusterId: "cluster-lab-1" },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(projectsService.createProject).toHaveBeenCalledWith({
+      name: "Project1",
+      clusterId: "cluster-lab-1",
+    });
+  });
+
   it("devrait retourner 400 si le nom est vide", async () => {
     const response = await app.inject({
       method: "POST",
