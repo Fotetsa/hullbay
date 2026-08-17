@@ -22,6 +22,10 @@ const queryClient = new QueryClient({
   },
 })
 
+if (typeof window !== "undefined") {
+  import("./i18n/config").then(({ initI18n }) => initI18n());
+}
+
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <ErrorBoundary>

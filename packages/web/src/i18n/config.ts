@@ -11,19 +11,22 @@ const resources = {
 
 const LANGUAGE_KEY = "user-language";
 
-// Récupérer la langue de l'utilisateur à partir du localStorage
-const userLanguage = localStorage.getItem(LANGUAGE_KEY) || 'en';
+export function initI18n() {
+  const userLanguage =
+    typeof window !== "undefined" && window.localStorage
+      ? window.localStorage.getItem(LANGUAGE_KEY) || "en"
+      : "en";
 
-
-i18n
-  .use(initReactI18next)
-  .init({
-    resources,
-    lng: userLanguage,
-    fallbackLng: 'fr',
-    interpolation: {
-      escapeValue: false, 
-    }
-  });
+  return i18n
+    .use(initReactI18next)
+    .init({
+      resources,
+      lng: userLanguage,
+      fallbackLng: 'fr',
+      interpolation: {
+        escapeValue: false, 
+      }
+    });
+}
 
 export default i18n;
