@@ -24,7 +24,10 @@ export function MeProvider({ children }: { children: ReactNode }) {
     queryFn: api.me,
     staleTime: 15_000,
     retry: false,
-    refetchOnMount: false,
+    // Re-fetch à chaque montage : mfaEnabled peut changer en cours de session
+    // (enrôlement via /activate-mfa ou le challenge de login) sans que le
+    // cache ne le voit — un "me" périmé fait boucler l'app sur /activate-mfa.
+    refetchOnMount: "always",
     refetchOnWindowFocus: false,
   })
 

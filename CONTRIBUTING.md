@@ -81,9 +81,14 @@ The web app runs on port 5273 and calls the API on port 4000. The first launch o
 
 ### Verify the development gateway
 
-Gateway nodes use the Caddy admin API on port 2019. For local development, ensure that the endpoint is reachable:
+The API drives Caddy through its admin API (`http://localhost:2019` in dev — see
+`CADDY_ADMIN_URL` in `packages/api/.env`). Before exercising any gateway or
+domain-setup flow locally, ensure the overlay network and a reachable Caddy
+admin exist:
 
 ```bash
+docker network create -d overlay --attachable boz_system || true   # already created by install.sh
+
 docker run -d --name boz-caddy-dev \
   --network boz_system \
   -p 2019:2019 -p 80:80 \
@@ -98,7 +103,61 @@ Then verify the admin API:
 curl -s -o /dev/null -w "%{http_code}\n" http://localhost:2019/config/
 ```
 
-The expected result is 200.
+The expected result is 200. If the save-domain step fails with
+`getaddrinfo EAI_AGAIN caddy`, the API tries to reach a hostname that does not
+resolve from its own network — start the Caddy container above (and the dev API,
+not the Swarm-stack API) before retrying.
+
+### Production / Swarm deployment
+
+Production runs as a **Swarm stack** (`docker stack deploy`). The stack **must**
+contain a Caddy service the API can reach by DNS, otherwise every domain or
+gateway operation fails with `getaddrinfo EAI_AGAIN caddy`.
+
+Required wiring (mirrors `docker-compose.prod.yml`):
+
+1. **Caddy service in the stack**, on the same overlay networks as the API
+   (the `default` stack network plus the `boz_system` overlay created by
+   `install.sh`), publishing `80` and `443`, mounting `./Caddyfile` and the
+   `caddy_data` / `caddy_config` volumes. Its `deploy` block must set a restart
+   policy (the API will boot-fail DNS lookups while Caddy is down).
+2. **API environment**: set `CADDY_ADMIN_URL` to the Caddy admin endpoint that
+   resolves from the API container. The API **always prefers this env over the
+   persisted cluster value** (`getSystemAdminUrl` in
+   `packages/api/src/lib/caddy-admin.ts`) — the DB row is only a fallback.
+   Typical values: `http://caddy:2019` (Caddy declared in the stack compose
+   file, see `docker-compose.prod.yml`), or `http://<stack>_caddy:2019` when
+   the Caddy service is created ad-hoc with `docker service create`.
+3. **DNS naming (Swarm gotcha)**: services declared **in the stack compose
+   file** resolve by BOTH their compose name (`caddy`, `api`, `web`) and their
+   swarm name (`<stack>_caddy`…). Services added ad-hoc via `docker service
+   create` resolve **only** by their swarm name. The repo `Caddyfile` dials
+   `api:4000` / `web:80`, which works as long as Caddy is part of the stack; a
+   Caddy added ad-hoc must target the swarm names (`hullbaytest_api`, …). Keep
+   `admin 0.0.0.0:2019` in the global block — the admin API is reachable from
+   the API container and never mapped to the host.
+
+```caddyfile
+# Caddy déclaré dans le fichier stack (noms compose résolvables)
+{
+    admin 0.0.0.0:2019
+}
+:80 {
+    handle /api/* { reverse_proxy api:4000 }
+    handle /ws*   { reverse_proxy api:4000 }
+    handle        { reverse_proxy web:80 }
+}
+```
+
+Verification after deploying the stack:
+
+```bash
+# from the API container: "caddy" must resolve to an IP (not RESOLVE_FAIL)
+docker exec <api-container> getent hosts caddy
+
+# the admin config API must answer from the API container
+docker exec <api-container> sh -c 'wget -qO- http://caddy:2019/config/apps/http/servers || true'
+```
 
 ## Monorepo structure
 
@@ -123,7 +182,57 @@ Run the following commands before submitting changes:
 npm run typecheck
 npm run build --workspace @hullbay/api
 npm run build --workspace @hullbay/web
+npm run i18n:validate --workspace @hullbay/web
 ```
+
+### Internationalization (i18n)
+
+hullbay supports French and English through **react-i18next**. All user-facing text must be translated.
+
+#### File structure
+
+```text
+packages/web/src/i18n/
+├── config.ts              # i18next configuration with language detection
+└── locales/
+    ├── en.json            # English translations
+    └── fr.json            # French translations (must match en.json keys)
+```
+
+#### Adding new translations
+
+1. **Add keys to both `en.json` and `fr.json`** in the same hierarchical position
+2. **Use the `useTranslation` hook** in components:
+   ```typescript
+   import { useTranslation } from 'react-i18next'
+   
+   function MyComponent() {
+     const { t } = useTranslation()
+     return <Button>{t('mySection.myKey')}</Button>
+   }
+   ```
+3. **Validate synchronization** before committing:
+   ```bash
+   npm run i18n:validate --workspace @hullbay/web
+   ```
+
+#### Key naming conventions
+
+- Use **dot notation** for nested keys: `section.subsection.key`
+- Group by **feature or page**: `auth.login.emailLabel`, `projects.toast.createSuccess`
+- Use **camelCase** for key names: `emailLabel`, not `email_label`
+- For interpolation, use double braces: `"{{count}} items"`
+
+#### Language detection
+
+The app automatically detects the browser language on first visit, then persists the user's choice in `localStorage` under the key `user-language`. Users can change the language in Settings.
+
+#### Common pitfalls
+
+- Hardcoded strings in JSX: `<Text>Projects</Text>`
+- Translated: `<Text>{t('nav.projects')}</Text>`
+- Mismatched keys between en.json and fr.json
+- Run `npm run i18n:validate` to catch synchronization issues
 
 ### API tests and coverage
 
