@@ -12,9 +12,14 @@ import { prisma } from "./prisma";
 
 /** URL admin Caddy du cluster SYSTÈME (celui d'hullbay lui-même). Centralisé
  * pour que tout appelant système (settings/caddy-domain.ts, futurs modules)
- * passe par le même chemin, sans risque d'oubli. 
+ * passe par le même chemin, sans risque d'oubli.
+ *
+ * Priorité à l'env CADDY_ADMIN_URL : la valeur persistée du cluster par défaut
+ * peut pointer un hôte non résolvable depuis le contexte courant (ex. `caddy`
+ * en compose swarm vs `localhost` en dev) — l'env décrit le contexte réel.
  */
 export async function getSystemAdminUrl(): Promise<string> {
+  if (process.env.CADDY_ADMIN_URL) return process.env.CADDY_ADMIN_URL
   return (await getDefaultCluster()).caddyAdminUrl
 }
 
