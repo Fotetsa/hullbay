@@ -24,7 +24,6 @@ vi.mock("../../lib/event-bus", () => ({
   },
 }));
 
-
 const baseInput: ProvisionInput = {
   serverId: "server-1",
   host: "203.0.113.0",
@@ -61,11 +60,10 @@ describe("provision-server — finalizeClusterStep", () => {
     expect(callArg.data.caddyAdminUrl).toBe("http://203.0.113.0:2019");
     expect(callArg.data.status).toBe("ready");
 
-    // Vérification de la sécurité (pas de typo dans l'URL - Issue #84)
+    // Vérification de la sécurité
     expect(callArg.data.caddyAdminUrl).toMatch(/^https?:\/\/.+:\d+$/);
     expect(callArg.data.caddyAdminUrl).not.toContain("htpp://");
     expect(callArg.data.caddyAdminUrl).not.toContain("htpps://");
-
 
     expect(eventBus.emit).toHaveBeenCalledWith(
       "cluster.status",
@@ -96,12 +94,15 @@ describe("provision-server — déploiement sécurisé par défaut (#85)", () =>
   });
 
   function runCommands(step: Step<ProvisionInput>) {
-    return step.run(baseInput, {
-      shared: {
-        hadExistingSwarm: false,
-        session: { exec: execMock },
-      },
-    } as any).then(() => execMock.mock.calls.map((c) => String(c[0])));
+    return step
+      .run(baseInput, {
+        shared: {
+          hadExistingSwarm: false,
+          isNewCluster: true, // <--- C'EST L'AJOUT CRUCIAL
+          session: { exec: execMock },
+        },
+      } as any)
+      .then(() => execMock.mock.calls.map((c) => String(c[0])));
   }
 
   it("socket-proxy : bind 127.0.0.1, jamais 0.0.0.0 ni port nu", async () => {
@@ -125,16 +126,25 @@ describe("provision-server — déploiement sécurisé par défaut (#85)", () =>
   });
 
   it("ne déploie rien sur un worker (pas un nouveau cluster manager)", async () => {
+    // Ici, on teste explicitement le cas où isNewCluster est faux/undefined et role est worker
     await deploySocketProxyStep.run(
-      { ...baseInput, role: "worker" } as any,
+      { ...baseInput, role: "worker", isNewCluster: false } as any,
       {
-        shared: { hadExistingSwarm: true, session: { exec: execMock } },
+        shared: {
+          hadExistingSwarm: true,
+          isNewCluster: false,
+          session: { exec: execMock },
+        },
       } as any,
     );
     await deployCaddyStep.run(
-      { ...baseInput, role: "worker" } as any,
+      { ...baseInput, role: "worker", isNewCluster: false } as any,
       {
-        shared: { hadExistingSwarm: true, session: { exec: execMock } },
+        shared: {
+          hadExistingSwarm: true,
+          isNewCluster: false,
+          session: { exec: execMock },
+        },
       } as any,
     );
     expect(execMock).not.toHaveBeenCalled();

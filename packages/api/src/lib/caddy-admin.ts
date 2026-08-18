@@ -1,6 +1,6 @@
 import { request as httpRequest } from "node:http";
 import { request as httpsRequest } from "node:https";
-import { getDefaultCluster } from "../modules/docker-engine/client";
+import { clusterService } from "../modules/clusters/service";
 import { ensureTunnel } from "./ssh-tunnel";
 import { prisma } from "./prisma";
 
@@ -12,19 +12,26 @@ import { prisma } from "./prisma";
 
 /** URL admin Caddy du cluster SYSTÈME (celui d'hullbay lui-même). Centralisé
  * pour que tout appelant système (settings/caddy-domain.ts, futurs modules)
- * passe par le même chemin, sans risque d'oubli. 
+ * passe par le même chemin, sans risque d'oubli.
+ *
+ * Priorité à l'env CADDY_ADMIN_URL : la valeur persistée du cluster par défaut
+ * peut pointer un hôte non résolvable depuis le contexte courant (ex. `caddy`
+ * en compose swarm vs `localhost` en dev) — l'env décrit le contexte réel.
  */
 export async function getSystemAdminUrl(): Promise<string> {
-  return (await getDefaultCluster()).caddyAdminUrl
+  if (process.env.CADDY_ADMIN_URL) return process.env.CADDY_ADMIN_URL
+  return (await clusterService.getDefault()).caddyAdminUrl
 }
 
+
 export async function getAdminUrlForCluster(clusterId: string): Promise<string> {
-  const cluster = await prisma.cluster.findUniqueOrThrow({ where: { id: clusterId } })
-  if (cluster.isDefault) return cluster.caddyAdminUrl
-  const remote = new URL(cluster.caddyAdminUrl)
-  const remotePort = Number(remote.port || 2019)
-  const localPort = await ensureTunnel(clusterId, remotePort)
-  return `http://127.0.0.1:${localPort}`
+  const cluster = await clusterService.getOrThrow(clusterId);
+  if (!cluster) throw new Error(`Cluster ${clusterId} introuvable`);
+  if (cluster.isDefault) return cluster.caddyAdminUrl;
+  const remote = new URL(cluster.caddyAdminUrl);
+  const remotePort = Number(remote.port || 2019);
+  const localPort = await ensureTunnel(clusterId, remotePort);
+  return `http://127.0.0.1:${localPort}`;
 }
 
 /** Forme partielle de la config http renvoyée par l'admin Caddy. */

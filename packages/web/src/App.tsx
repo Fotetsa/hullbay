@@ -19,6 +19,7 @@ import { IntegrationsPage } from "./pages/IntegrationsPage"
 import { HealthPage } from "./pages/HealthPage"
 import { SecretsPage } from "./pages/SecretsPage"
 import { UpdatesPage } from "./pages/UpdatesPage"
+import { ClusterDetailPage } from "./pages/ClusterDetailPage";
 
 /**
  * Routing par URL (react-router) :
@@ -36,7 +37,6 @@ export function App() {
 
   return (
     <MeProvider>
-      
       <DomainGate onUnauthenticated={() => setAuthed(false)}>
         <Routes>
           <Route path="/login" element={<Navigate to="/" replace />} />
@@ -58,11 +58,12 @@ export function App() {
           </Route>
 
           <Route path="*" element={<Navigate to="/" replace />} />
+
+          <Route path="/clusters/:clusterId" element={<ClusterDetailPage />} />
         </Routes>
       </DomainGate>
-        
     </MeProvider>
-  )
+  );
 }
 
 function DomainGate({ children, onUnauthenticated }: { children: ReactNode; onUnauthenticated: () => void }) {
@@ -114,19 +115,25 @@ function DomainGate({ children, onUnauthenticated }: { children: ReactNode; onUn
   }
 
   if (domainError) {
-    if (isAuthError(domainErrorObj)) {
+    const domainErr = domainErrorObj as { status?: number; code?: string } | null
+    const mfaPending = domainErr?.code === "mfa_not_enabled"
+    // 403 mfa_not_enabled ≠ session morte : l'utilisateur doit simplement passer
+    // par la MFA. On ne déconnecte PAS, on laisse la MFA-gate ci-dessous rediriger.
+    if (!mfaPending && isAuthError(domainErr)) {
       auth.clear()
       onUnauthenticated()
       return <Navigate to="/login" replace />
     }
-    return (
-      <div className="flex h-full items-center justify-center bg-ui-bg-subtle">
-        <div className="text-center">
-          <p className="mb-2 text-ui-fg-base">Impossible de charger la configuration du domaine.</p>
-          <p className="text-ui-fg-subtle">Vérifie la connexion au backend et réessaie.</p>
+    if (!mfaPending) {
+      return (
+        <div className="flex h-full items-center justify-center bg-ui-bg-subtle">
+          <div className="text-center">
+            <p className="mb-2 text-ui-fg-base">Impossible de charger la configuration du domaine.</p>
+            <p className="text-ui-fg-subtle">Vérifie la connexion au backend et réessaie.</p>
+          </div>
         </div>
-      </div>
-    )
+      )
+    }
   }
 
   const hasDomain = Boolean(data?.domain)

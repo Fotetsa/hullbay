@@ -1,4 +1,5 @@
 import { generateKeyPairSync } from "node:crypto"
+import sshpk from "sshpk"
 import { encryptSecret, decryptSecret } from "../modules/auth/crypto"
 
 /**
@@ -17,16 +18,33 @@ export function generateToolKeyPair(): ToolKeyPair {
     publicKeyEncoding: { type: "spki", format: "pem" },
     privateKeyEncoding: { type: "pkcs8", format: "pem" },
   })
-  // ssh2 accepte la clé privée PEM (pkcs8) directement pour l'auth.
+  let opensshPrivateKey: string
+
+  try {
+    // ssh2 accepte la clé privée PEM (pkcs8) directement pour l'auth.
+    // La librairie ssh2 ne sait pas parser le PKCS8 PEM natif de node:crypto
+    // pour ed25519.
+    // openssh-key-v1 via sshpk, seule responsable de la sérialisation.
+    const parsed = sshpk.parsePrivateKey(privateKey, "pem");
+    opensshPrivateKey = parsed.toString("openssh");
+  } catch (err) {
+    throw new Error(
+      `Échec de conversion de la clé-outil ed25519 vers le format openssh (sshpk): ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    );
+  }
+
+  const normalized = opensshPrivateKey.trim() + "\n"
   return {
     publicKey: spkiToOpenSsh(publicKey),
-    privateKeyEnc: encryptSecret(privateKey),
-  }
+    privateKeyEnc: encryptSecret(normalized),
+  };
 }
 
 /** Déchiffre la clé privée-outil pour s'en servir avec ssh2. */
 export function decryptToolPrivateKey(privateKeyEnc: string): string {
-  return decryptSecret(privateKeyEnc)
+  return decryptSecret(privateKeyEnc).trim()
 }
 
 /**

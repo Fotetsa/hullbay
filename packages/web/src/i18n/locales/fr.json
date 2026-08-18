@@ -30,7 +30,7 @@
     "subtitle": "Console d'infrastructure",
     "login": {
       "emailLabel": "Email",
-      "emailPlaceholder": "owner@bozando.com",
+      "placeholder": "owner@bozando.com",
       "passwordLabel": "Mot de passe",
       "submitButton": "Se connecter"
     },
@@ -66,8 +66,17 @@
     "secrets": "Secrets",
     "users": "Utilisateurs",
     "settings": "Paramètres",
+    "updates": "Mises à jour",
     "logout": "Déconnexion",
-    "ownerBadge": "Owner"
+    "ownerBadge": "Owner",
+    "versionUnknown": "Version inconnue",
+    "channelStable": "Stable",
+    "channelBeta": "Beta",
+    "updateAvailable": "Nouveau",
+    "closeMenu": "Fermer le menu",
+    "openMenu": "Ouvrir le menu",
+    "skipToContent": "Aller au contenu",
+    "mainNavigation": "Navigation principale"
   },
   "projects": {
     "pageTitle": "Projets",
@@ -110,14 +119,22 @@
     }
   },
   "health": {
-    "title": "Santé du cluster",
+    "pageTitle": "Santé du cluster",
     "refresh": "Rafraîchir",
+    "noCluster": "Aucun cluster enregistré. Ajoute un serveur pour créer ton premier cluster.",
+    "swarmInactive": "Swarm inactif sur ce cluster. Lance `docker swarm init` sur son manager pour activer services, replicas et observabilité.",
+    "drift": {
+      "title": "Drift détecté",
+      "description": "{{count}} projet(s) divergent du désiré. Redéploie le projet concerné pour réconcilier.",
+      "badgeLabel": "{{count}} action(s)"
+    },
     "nodes": {
       "title": "Nœuds ({{count}})",
       "host": "Hôte",
       "role": "Rôle",
       "state": "État",
-      "availability": "Dispo."
+      "availability": "Dispo.",
+      "leader": "leader"
     },
     "services": {
       "title": "Services ({{count}})",
@@ -126,12 +143,37 @@
       "nodes": "Nœuds",
       "avgCpu": "CPU moy.",
       "memory": "Mémoire",
-      "empty": "Aucun service géré."
+      "empty": "Aucun service géré.",
+      "loading": "Chargement…",
+      "notAvailable": "n/d"
     },
     "orphaned": {
       "title": "Ressources orphelines",
       "description": "Ressources gérées (bozando.managed) dont le projet n'existe plus. Le système (bozando.system) n'est jamais touché.",
-      "analyzeButton": "Analyser"
+      "analyzeButton": "Analyser",
+      "deleteButton": "Supprimer {{count}} orpheline(s)",
+      "noOrphans": "Aucune ressource orpheline",
+      "itemLabel": "{{kind}} · {{name}} — {{reason}}"
+    },
+    "serviceDetail": {
+      "title": "Service",
+      "loading": "Chargement…",
+      "metrics": {
+        "replicas": "Replicas",
+        "sampledTasks": "Tasks échantillonnées",
+        "avgCpu": "CPU moyen",
+        "memory": "Mémoire"
+      },
+      "placement": {
+        "title": "Placement des tasks",
+        "empty": "Aucune task en cours.",
+        "node": "Nœud",
+        "state": "État",
+        "desired": "Désiré"
+      }
+    },
+    "cluster": {
+      "inactive": "inactif"
     }
   },
   "auditLog": {
@@ -249,7 +291,11 @@
     "domainLabel": "Domaine public",
     "domainPlaceholder": "ops.exemple.com",
     "submitButton": "Enregistrer le domaine",
-    "successMessage": "Domaine prêt à être envoyé au backend."
+    "saving": "Enregistrement…",
+    "invalidDomain": "Format de domaine invalide. Exemple : ops.exemple.com",
+    "saveFailed": "Échec de l'enregistrement du domaine",
+    "mfaRequired": "MFA non activée — active la MFA avant de configurer le domaine.",
+    "successMessage": "Domaine enregistré. Redirection…"
   },
   "users": {
     "pageTitle": "Utilisateurs",
@@ -303,6 +349,11 @@
       "emailLabel": "Email",
       "roleLabel": "Rôle"
     },
+    "language": {
+      "title": "Langue",
+      "selectLabel": "Langue de l'interface",
+      "hint": "Les changements sont appliqués immédiatement."
+    },
     "password": {
       "title": "Mot de passe",
       "currentLabel": "Mot de passe actuel",
@@ -318,4 +369,3 @@
     }
   }
 }
-
