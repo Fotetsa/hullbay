@@ -1,6 +1,6 @@
 import { request as httpRequest } from "node:http";
 import { request as httpsRequest } from "node:https";
-import { getDefaultCluster } from "../modules/docker-engine/client";
+import { clusterService } from "../modules/clusters/service";
 import { ensureTunnel } from "./ssh-tunnel";
 import { prisma } from "./prisma";
 
@@ -20,16 +20,18 @@ import { prisma } from "./prisma";
  */
 export async function getSystemAdminUrl(): Promise<string> {
   if (process.env.CADDY_ADMIN_URL) return process.env.CADDY_ADMIN_URL
-  return (await getDefaultCluster()).caddyAdminUrl
+  return (await clusterService.getDefault()).caddyAdminUrl
 }
 
+
 export async function getAdminUrlForCluster(clusterId: string): Promise<string> {
-  const cluster = await prisma.cluster.findUniqueOrThrow({ where: { id: clusterId } })
-  if (cluster.isDefault) return cluster.caddyAdminUrl
-  const remote = new URL(cluster.caddyAdminUrl)
-  const remotePort = Number(remote.port || 2019)
-  const localPort = await ensureTunnel(clusterId, remotePort)
-  return `http://127.0.0.1:${localPort}`
+  const cluster = await clusterService.getOrThrow(clusterId);
+  if (!cluster) throw new Error(`Cluster ${clusterId} introuvable`);
+  if (cluster.isDefault) return cluster.caddyAdminUrl;
+  const remote = new URL(cluster.caddyAdminUrl);
+  const remotePort = Number(remote.port || 2019);
+  const localPort = await ensureTunnel(clusterId, remotePort);
+  return `http://127.0.0.1:${localPort}`;
 }
 
 /** Forme partielle de la config http renvoyée par l'admin Caddy. */

@@ -6,7 +6,7 @@ import {
   type NodeType,
   type ProjectGraph,
 } from "@hullbay/shared"
-import { getDefaultCluster } from "../docker-engine/client"
+import { clusterService } from "../clusters/service"
 
 /** Dérive un slug Docker-valide depuis un nom libre (sans accents, minuscules, tirets). */
 function slugify(name: string): string {
@@ -48,7 +48,7 @@ export class ProjectsService {
    */
   async createProject(input: { name: string; description?: string; clusterId?: string }) {
     const slug = `${slugify(input.name) || "projet"}-${randomBytes(2).toString("hex")}`
-    const targetClusterId = input.clusterId ?? (await getDefaultCluster()).id
+    const targetClusterId = input.clusterId ?? (await clusterService.getDefault()).id
     return prisma.project.create({
       data: { name: input.name, slug, description: input.description, clusterId: targetClusterId },
     })

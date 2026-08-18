@@ -19,6 +19,7 @@ import { IntegrationsPage } from "./pages/IntegrationsPage"
 import { HealthPage } from "./pages/HealthPage"
 import { SecretsPage } from "./pages/SecretsPage"
 import { UpdatesPage } from "./pages/UpdatesPage"
+import { ClusterDetailPage } from "./pages/ClusterDetailPage";
 
 /**
  * Routing par URL (react-router) :
@@ -36,7 +37,6 @@ export function App() {
 
   return (
     <MeProvider>
-      
       <DomainGate onUnauthenticated={() => setAuthed(false)}>
         <Routes>
           <Route path="/login" element={<Navigate to="/" replace />} />
@@ -58,11 +58,12 @@ export function App() {
           </Route>
 
           <Route path="*" element={<Navigate to="/" replace />} />
+
+          <Route path="/clusters/:clusterId" element={<ClusterDetailPage />} />
         </Routes>
       </DomainGate>
-        
     </MeProvider>
-  )
+  );
 }
 
 function DomainGate({ children, onUnauthenticated }: { children: ReactNode; onUnauthenticated: () => void }) {

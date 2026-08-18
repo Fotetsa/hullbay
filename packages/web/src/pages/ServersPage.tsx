@@ -22,6 +22,7 @@ import { useProvisionLog } from "../lib/useProvisionLog"
 import { PageHeader, PageContainer } from "../components/PageHeader"
 import { ActionMenu } from "../components/ActionMenu"
 import { ModalForm } from "../components/ModalForm"
+import { useNavigate } from "react-router-dom";
 
 const STATUS_COLOR: Record<string, "green" | "orange" | "red" | "grey"> = {
   ready: "green",
@@ -31,7 +32,10 @@ const STATUS_COLOR: Record<string, "green" | "orange" | "red" | "grey"> = {
   down: "red",
 }
 
+
 export function ServersPage() {
+  const navigate = useNavigate();
+  
   const { data } = useQuery({ queryKey: ["servers"], queryFn: api.listServers })
   const { data: clusters } = useQuery({ queryKey: ["clusters"], queryFn: api.listClusters})
   const [open, setOpen] = useState(false)
@@ -147,9 +151,15 @@ export function ServersPage() {
       <div className="flex flex-col gap-6">
         {[...serversByCluster.entries()].map(([clusterId, servers]) => (
           <div key={clusterId}>
-            <Heading level="h3" className="mb-2 text-ui-fg-subtle">
-              {clusterNameById.get(clusterId) ?? clusterId}
-            </Heading>
+            <button
+              type="button"
+              onClick={() => navigate(`/clusters/${clusterId}`)}
+              className="mb-2 text-left hover:underline"
+            >
+              <Heading level="h3" className="text-ui-fg-subtle">
+                {clusterNameById.get(clusterId) ?? clusterId}
+              </Heading>
+            </button>
             <div className="flex flex-col gap-3">
               {servers.map((srv) => (
                 <Container
@@ -401,11 +411,7 @@ export function ServersPage() {
                 <Button
                   type="submit"
                   isLoading={provision.isPending}
-                  disabled={
-                    !name ||
-                    !host ||
-                    (credType === "key" ? !privateKey : !password)
-                  }
+                  disabled={!canSubmit}
                 >
                   Provisionner
                 </Button>

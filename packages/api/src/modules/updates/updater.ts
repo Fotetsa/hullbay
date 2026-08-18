@@ -5,7 +5,7 @@ import { prisma } from "../../lib/prisma";
 import { eventBus } from "../../lib/event-bus";
 import { githubReleasesService, type Channel } from "./github";
 import { DockerEngineService } from "../docker-engine/service";
-import { getDefaultCluster } from "../docker-engine/client";
+import { clusterService } from "../clusters/service";
 
 /**
  * UpdaterService — orchestration des mises à jour de l'instance self-hosted.
@@ -43,7 +43,7 @@ export class UpdaterService {
 
   /** Résout dynamiquement l'engine Docker du cluster par défaut. */
   private async getDocker() {
-    const cluster = await getDefaultCluster();
+    const cluster = await clusterService.getDefault();
     return DockerEngineService.forCluster(cluster.id);
   }
 

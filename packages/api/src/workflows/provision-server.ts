@@ -6,7 +6,7 @@ import { invalidateDockerClient } from "../modules/docker-engine/client"
 import { registryService } from "../modules/registry/service"
 import { serversService } from "../modules/servers/service"
 import { eventBus } from "../lib/event-bus"
-import { prisma } from "../lib/prisma" 
+import { clusterService } from "../modules/clusters/service"
 
 /**
  * Provisionne un serveur en ONE-SHOT SSH puis le fait rejoindre le Swarm.
@@ -116,13 +116,15 @@ const swarmJoinStep: Step<ProvisionInput> = {
         throw new Error(`swarm init: ${res.stderr}`)
       }
 
-      
-    } else {
+    } else if (input.role === "manager" && swarmExists && s.isNewCluster) { 
+      log(input.serverId, "Swarm déjà actif sur ce serveur réutilisé comme nouveau cluster.")
+    }else{
       // Worker, OU manager additionnel (HA quorum) : on JOINT le cluster existant
       // avec le token correspondant au rôle demandé.
       const joinRole = input.role === "manager" ? "manager" : "worker"
       log(input.serverId, `Récupération du token de cluster (${joinRole})…`)
-      const { token, managerAddr } = await s.engine!.getSwarmJoinInfo(joinRole)
+      const engine = await getEngineLazy(input, s)
+      const { token, managerAddr } = await engine.getSwarmJoinInfo(joinRole)
       log(input.serverId, `Jonction au Swarm (${joinRole})…`)
       const res = await s.session!.exec(
         `docker swarm join --token ${shellQuote(token)} ${shellQuote(managerAddr)}`
@@ -146,9 +148,9 @@ export const deploySocketProxyStep: Step<ProvisionInput> = {
     const s = ctx.shared as ProvShared;
     // Seulement pour le 1er manager d'un NOUVEAU cluster — un worker ou un
     // manager additionnel (HA) rejoint un cluster qui a déjà son proxy.
-    const swarmWasFreshlyInitialized =
-      input.role === "manager" && !s.hadExistingSwarm;
-    if (!swarmWasFreshlyInitialized) return;
+    const isFirstManagerOfNewCluster =
+      input.role === "manager" && s.isNewCluster;
+    if (!isFirstManagerOfNewCluster) return;
 
     log(input.serverId, "Déploiement du docker-socket-proxy…");
 
@@ -194,9 +196,9 @@ export const deployCaddyStep: Step<ProvisionInput> = {
   name: "deploy-caddy",
   run: async (input, ctx) => {
     const s = ctx.shared as ProvShared;
-    const swarmWasFreshlyInitialized =
-      input.role === "manager" && !s.hadExistingSwarm;
-    if (!swarmWasFreshlyInitialized) return;
+    const isFirstManagerOfNewCluster =
+      input.role === "manager" && s.isNewCluster;
+    if (!isFirstManagerOfNewCluster) return;
 
     log(input.serverId, "Déploiement de Caddy (cluster)…");
 
@@ -246,34 +248,16 @@ export const deployCaddyStep: Step<ProvisionInput> = {
 export const finalizeClusterStep: Step<ProvisionInput> = {
   name: "finalize-cluster",
   run: async (input, ctx) => {
-    const s = ctx.shared as ProvShared
+    const s = ctx.shared as ProvShared;
     if (s.isNewCluster) {
-      await prisma.cluster.update({
-        where: { id: input.clusterId },
-        data: {
-          dockerHost: `tcp://${input.host}:2375`,
-          caddyAdminUrl: `http://${input.host}:2019`,
-          status: "ready",
-        },
-      });
-
-      // Le dockerHost du cluster vient d'être fixé : purge le client dockerode
-      // en cache, sinon les prochaines opérations visent encore l'ancienne cible.
-      invalidateDockerClient(input.clusterId);
-
-      await eventBus.emit("cluster.status", {
-        clusterId: input.clusterId,
-        from: "pending",
-        to: "ready",
-        timestamp: new Date().toISOString(),
-      });
-
-      console.log(
-        `[cluster] Status transition: pending → ready (cluster: ${input.clusterId})`,
+      await clusterService.markReady(
+        input.clusterId,
+        `tcp://${input.host}:2375`,
+        `http://${input.host}:2019`,
       );
     }
   },
-}
+};
 
 const registryLoginStep: Step<ProvisionInput> = {
   name: "registry-login",
@@ -376,31 +360,15 @@ export async function provisionServerWorkflow(input: ProvisionInput): Promise<vo
       await serversService.update(input.serverId, {
         status: "error",
         lastError: result.error ?? "échec provisioning",
-      })
+      });
       if (input.isNewCluster) {
-        await prisma.cluster
-          .update({
-            where: { id: input.clusterId },
-            data: { status: "failed" },
-          })
-          .catch(() => {});
-
-        await eventBus.emit("cluster.status", {
-          clusterId: input.clusterId,
-          from: "pending",
-          to: "failed",
-          timestamp: new Date().toISOString(),
-        });
-
-        console.log(
-          `[cluster] Status transition: pending → failed (cluster: ${input.clusterId})`,
-        );
+        await clusterService.markFailed(input.clusterId); // 🆕 remplace le bloc prisma+eventBus+console.log
       }
       await eventBus.emit("provision.step", {
         serverId: input.serverId,
         message: `Échec : ${result.error}`,
-      })
-      throw new Error(result.error || "provisioning échoué")
+      });
+      throw new Error(result.error || "provisioning échoué");
     }
     await eventBus.emit("server.provisioned", {
       serverId: input.serverId,
