@@ -11,7 +11,8 @@
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "e2e": "playwright test",
-    "e2e:install": "playwright install chromium"
+    "e2e:install": "playwright install chromium",
+    "i18n:validate": "node scripts/validate-i18n.cjs"
   },
   "dependencies": {
     "@hullbay/shared": "*",
@@ -20,6 +21,7 @@
     "@tanstack/react-query": "^5.59.0",
     "@xyflow/react": "^12.3.5",
     "i18next": "^26.3.6",
+    "i18next-browser-languagedetector": "^8.2.1",
     "qrcode.react": "^4.2.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",

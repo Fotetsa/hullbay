@@ -5,6 +5,7 @@ import { api } from "../lib/api"
 import { useMutationToast } from "../lib/useMutationToast"
 import { PageHeader, PageContainer } from "../components/PageHeader"
 import { useTranslation } from "react-i18next"
+import { LanguageSwitch } from "../components/LanguageSwitch"
 
 /**
  * Page Paramètres utilisateur : profil + activation de la MFA (TOTP).
@@ -54,6 +55,22 @@ export function SettingsPage() {
             <Label size="small">{t('settings.account.roleLabel')}</Label>
             <Text className="capitalize">{me?.role ?? "…"}</Text>
           </div>
+        </div>
+      </Container>
+
+      {/* Langue */}
+      <Container className="mb-4 p-6">
+        <Heading level="h3" className="mb-3">
+          {t('settings.language.title')}
+        </Heading>
+        <div className="flex flex-col gap-2">
+          <Label size="small">{t('settings.language.selectLabel')}</Label>
+          <div className="w-48">
+            <LanguageSwitch />
+          </div>
+          <Text size="xsmall" className="text-ui-fg-muted">
+            {t('settings.language.hint')}
+          </Text>
         </div>
       </Container>
 

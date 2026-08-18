@@ -66,8 +66,17 @@
     "secrets": "Secrets",
     "users": "Users",
     "settings": "Settings",
+    "updates": "Updates",
     "logout": "Logout",
-    "ownerBadge": "Owner"
+    "ownerBadge": "Owner",
+    "versionUnknown": "Unknown version",
+    "channelStable": "Stable",
+    "channelBeta": "Beta",
+    "updateAvailable": "New",
+    "closeMenu": "Close menu",
+    "openMenu": "Open menu",
+    "skipToContent": "Skip to content",
+    "mainNavigation": "Main navigation"
   },
   "projects": {
     "pageTitle": "Projects",
@@ -107,6 +116,64 @@
       "nameLabel": "Name",
       "slugHint": "The technical slug (Docker resource prefix) cannot be changed.",
       "descLabel": "Description"
+    }
+  },
+  "health": {
+    "pageTitle": "Cluster Health",
+    "refresh": "Refresh",
+    "noCluster": "No cluster registered. Add a server to create your first cluster.",
+    "swarmInactive": "Swarm inactive on this cluster. Run `docker swarm init` on its manager to enable services, replicas and observability.",
+    "drift": {
+      "title": "Drift detected",
+      "description": "{{count}} project(s) diverge from desired state. Redeploy the affected project to reconcile.",
+      "badgeLabel": "{{count}} action(s)"
+    },
+    "nodes": {
+      "title": "Nodes ({{count}})",
+      "host": "Host",
+      "role": "Role",
+      "state": "State",
+      "availability": "Avail.",
+      "leader": "leader"
+    },
+    "services": {
+      "title": "Services ({{count}})",
+      "service": "Service",
+      "replicas": "Replicas",
+      "nodes": "Nodes",
+      "avgCpu": "Avg CPU",
+      "memory": "Memory",
+      "empty": "No managed services.",
+      "loading": "Loading…",
+      "notAvailable": "n/a"
+    },
+    "orphaned": {
+      "title": "Orphaned resources",
+      "description": "Managed resources (bozando.managed) whose project no longer exists. The system (bozando.system) is never touched.",
+      "analyzeButton": "Analyze",
+      "deleteButton": "Delete {{count}} orphan(s)",
+      "noOrphans": "No orphaned resources",
+      "itemLabel": "{{kind}} · {{name}} — {{reason}}"
+    },
+    "serviceDetail": {
+      "title": "Service",
+      "loading": "Loading…",
+      "metrics": {
+        "replicas": "Replicas",
+        "sampledTasks": "Sampled tasks",
+        "avgCpu": "Average CPU",
+        "memory": "Memory"
+      },
+      "placement": {
+        "title": "Task placement",
+        "empty": "No running tasks.",
+        "node": "Node",
+        "state": "State",
+        "desired": "Desired"
+      }
+    },
+    "cluster": {
+      "inactive": "inactive"
     }
   },
   "auditLog": {
@@ -222,7 +289,11 @@
     "domainLabel": "Public domain",
     "domainPlaceholder": "ops.example.com",
     "submitButton": "Save domain",
-    "successMessage": "Domain ready to be sent to the backend."
+    "saving": "Saving…",
+    "invalidDomain": "Invalid domain format. Example: ops.example.com",
+    "saveFailed": "Failed to save the domain",
+    "mfaRequired": "MFA not enabled — enable MFA before configuring the domain.",
+    "successMessage": "Domain saved. Redirecting…"
   },
   "users": {
     "pageTitle": "Users",
@@ -270,19 +341,29 @@
     }
   },
   "settings": {
-    "title": "Settings",
+    "pageTitle": "Settings",
     "account": {
       "title": "Account",
       "emailLabel": "Email",
       "roleLabel": "Role"
+    },
+    "language": {
+      "title": "Language",
+      "selectLabel": "Interface language",
+      "hint": "Changes are applied immediately."
     },
     "password": {
       "title": "Password",
       "currentLabel": "Current password",
       "newLabel": "New password",
       "newPlaceholder": "At least 8 characters",
+      "tooShortError": "At least 8 characters.",
       "confirmLabel": "Confirm new password",
+      "mismatchError": "Passwords do not match.",
       "submitButton": "Change password"
+    },
+    "toast": {
+      "passwordChanged": "Password changed"
     }
   }
 }

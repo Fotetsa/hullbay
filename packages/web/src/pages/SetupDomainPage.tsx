@@ -1,63 +1,116 @@
 import { useState } from "react"
-import { Button, Container, Heading, Input, Label, Text } from "@medusajs/ui"
+import { useNavigate } from "react-router-dom"
+import { Button, Container, Heading, Input, Label, Text, toast } from "@medusajs/ui"
+import { useMutation } from "@tanstack/react-query"
+import { api } from "../lib/api"
 import { useMe } from "../lib/useMe"
+import { isValidDomain } from "../lib/validation"
 import { useTranslation } from "react-i18next"
-import { ThemeToggle } from "../components/ThemeToggle/ThemeToggle";
 
 export function SetupDomainPage() {
+  const navigate = useNavigate()
   const { t } = useTranslation()
   const { isLoading } = useMe()
   const [domain, setDomain] = useState("")
-  const [saved, setSaved] = useState(false)
+  const [domainError, setDomainError] = useState<string | null>(null)
+
+  const setDomainMutation = useMutation({
+    mutationFn: (value: string) => api.setDomain(value),
+    onSuccess: (data) => {
+      toast.success(t("setupDomain.successMessage"))
+      // Dev : pas de domaine public résolvable et pas de changement d'origine
+      // (le token localStorage est scoped à l'origine) — on reste dans l'app.
+      // Le domaine est quand même persisté côté backend.
+      if (import.meta.env.DEV) {
+        navigate("/", { replace: true })
+        return
+      }
+      if (data.url && typeof window !== "undefined") {
+        window.location.href = data.url
+      } else {
+        navigate("/", { replace: true })
+      }
+    },
+    onError: (error: Error & { code?: string }) => {
+      if (error.code === "mfa_not_enabled") {
+        toast.error(t("setupDomain.mfaRequired"))
+        navigate("/activate-mfa")
+        return
+      }
+      toast.error(t("setupDomain.saveFailed"), {
+        description: error.message,
+      })
+    },
+  })
 
   if (isLoading) {
     return (
       <div className="flex h-full items-center justify-center bg-ui-bg-subtle">
-        <Text className="text-ui-fg-subtle">{t('setupDomain.loading')}</Text>
+        <Text className="text-ui-fg-subtle">{t("setupDomain.loading")}</Text>
       </div>
     )
   }
 
-  const canSubmit = domain.trim().length > 0
+  const handleDomainChange = (value: string) => {
+    setDomain(value)
+    setDomainError(null)
+    if (value.trim().length > 0 && !isValidDomain(value)) {
+      setDomainError(t("setupDomain.invalidDomain"))
+    }
+  }
+
+  const isPending = setDomainMutation.isPending
+  const canSubmit = domain.trim().length > 0 && isValidDomain(domain) && !isPending
+
+  const handleSubmit = async () => {
+    const trimmedDomain = domain.trim()
+    if (!isValidDomain(trimmedDomain)) {
+      setDomainError(t("setupDomain.invalidDomain"))
+      return
+    }
+    setDomainError(null)
+    await setDomainMutation.mutateAsync(trimmedDomain)
+  }
 
   return (
-    <div className="relative flex h-full items-center justify-center bg-ui-bg-subtle px-4 py-8">
-      <div className="absolute right-4 top-4">
-        <ThemeToggle />
-      </div>
+    <div className="flex h-full items-center justify-center bg-ui-bg-subtle px-4 py-8">
       <Container className="w-full max-w-md p-6">
         <Heading level="h1" className="mb-3">
-          {t('setupDomain.title')}
+          {t("setupDomain.title")}
         </Heading>
         <Text className="text-ui-fg-subtle mb-6">
-          {t('setupDomain.description')}
+          {t("setupDomain.description")}
         </Text>
 
-        <div className="flex flex-col gap-4">
+        <form
+          className="flex flex-col gap-4"
+          onSubmit={(e) => {
+            e.preventDefault()
+            void handleSubmit()
+          }}
+        >
           <div>
-            <Label size="small">{t('setupDomain.domainLabel')}</Label>
+            <Label size="small">{t("setupDomain.domainLabel")}</Label>
             <Input
               value={domain}
-              onChange={(e) => {
-                setDomain(e.target.value)
-                setSaved(false)
-              }}
-              placeholder={t('setupDomain.domainPlaceholder')}
+              onChange={(e) => handleDomainChange(e.target.value)}
+              placeholder={t("setupDomain.domainPlaceholder")}
             />
+            {domainError && (
+              <Text size="small" className="text-ui-fg-error mt-1">
+                {domainError}
+              </Text>
+            )}
           </div>
           <Button
-            onClick={() => setSaved(true)}
+            type="submit"
             disabled={!canSubmit}
+            isLoading={isPending}
             className="self-start"
           >
-            {t('setupDomain.submitButton')}
+            {isPending ? t("setupDomain.saving") : t("setupDomain.submitButton")}
           </Button>
-          {saved && (
-            <Text size="small" className="text-ui-fg-success">
-              {t('setupDomain.successMessage')}
-            </Text>
-          )}
-        </div>
+        </form>
       </Container>
     </div>
   )

@@ -15,6 +15,7 @@ import { ArrowPath, Bolt, ChartBar, Spinner, Trash } from "@medusajs/icons"
 import { api, type ServiceHealth, type ServicePlacement, type PruneCandidate, ClusterHealth } from "../lib/api"
 import { useMutationToast } from "../lib/useMutationToast"
 import { PageHeader, PageContainer } from "../components/PageHeader"
+import { useTranslation } from "react-i18next"
 
 /**
  * Page Santé — rend visible l'état NATIF de Swarm (nœuds + métriques par service)
@@ -22,6 +23,7 @@ import { PageHeader, PageContainer } from "../components/PageHeader"
  * Auto-rafraîchie (les métriques sont des échantillons instantanés).
  */
 export function HealthPage() {
+  const { t } = useTranslation()
   const qc = useQueryClient()
   const { data, isLoading, refetch: refetchHealth } = useQuery({
     queryKey: ["health"],
@@ -49,7 +51,7 @@ export function HealthPage() {
   const preview = useMutationToast({
     mutationFn: api.prunePreview,
     onSuccess: (r) => {
-      if (r.candidates.length === 0) toast.success("Aucune ressource orpheline")
+      if (r.candidates.length === 0) toast.success(t('health.orphaned.noOrphans'))
       setCandidates(r.candidates)
     },
   })
@@ -63,7 +65,7 @@ export function HealthPage() {
    return (
      <PageContainer size="5xl">
        <PageHeader
-         title="Santé du cluster"
+         title={t('health.pageTitle')}
          actions={
            <Button
              variant="secondary"
@@ -73,7 +75,7 @@ export function HealthPage() {
                refetchDrift();
              }}
            >
-             <ArrowPath /> Rafraîchir
+             <ArrowPath /> {t('health.refresh')}
            </Button>
          }
        />
@@ -85,8 +87,7 @@ export function HealthPage() {
        ) : clusters.length === 0 ? (
          <Container className="p-6">
            <Text className="text-ui-fg-subtle">
-             Aucun cluster enregistré. Ajoute un serveur pour créer ton premier
-             cluster.
+             {t('health.noCluster')}
            </Text>
          </Container>
        ) : (
@@ -108,7 +109,7 @@ export function HealthPage() {
                    {c.clusterName}
                    {!c.swarmActive && (
                      <Badge size="2xsmall" color="red" className="ml-2">
-                       inactif
+                       {t('health.cluster.inactive')}
                      </Badge>
                    )}
                  </Button>
@@ -119,8 +120,7 @@ export function HealthPage() {
            {!health?.swarmActive ? (
              <Container className="p-6">
                <Text className="text-ui-fg-subtle">
-                 Swarm inactif sur ce cluster. Lance `docker swarm init` sur son
-                 manager pour activer services, replicas et observabilité.
+                 {t('health.swarmInactive')}
                </Text>
              </Container>
            ) : (
@@ -129,16 +129,15 @@ export function HealthPage() {
                {drift && drift.drift.length > 0 && (
                  <Container className="border-ui-border-error p-4">
                    <Heading level="h3" className="mb-2 text-ui-fg-error">
-                     Drift détecté
+                     {t('health.drift.title')}
                    </Heading>
                    <Text size="small" className="text-ui-fg-subtle">
-                     {drift.drift.length} projet(s) divergent du désiré.
-                     Redéploie le projet concerné pour réconcilier.
+                     {t('health.drift.description', { count: drift.drift.length })}
                    </Text>
                    <div className="mt-2 flex flex-wrap gap-2">
                      {drift.drift.map((d) => (
                        <Badge key={d.projectId} color="red" size="2xsmall">
-                         {d.projectId.slice(0, 8)} · {d.count} action(s)
+                         {d.projectId.slice(0, 8)} · {t('health.drift.badgeLabel', { count: d.count })}
                        </Badge>
                      ))}
                    </div>
@@ -148,16 +147,16 @@ export function HealthPage() {
                {/* Nœuds Swarm */}
                <Container className="p-4">
                  <Heading level="h3" className="mb-3 flex items-center gap-2">
-                   Nœuds ({health.nodes.length})
+                   {t('health.nodes.title', { count: health.nodes.length })}
                  </Heading>
                  <div className="overflow-x-auto">
                    <Table>
                      <Table.Header>
                        <Table.Row>
-                         <Table.HeaderCell>Hôte</Table.HeaderCell>
-                         <Table.HeaderCell>Rôle</Table.HeaderCell>
-                         <Table.HeaderCell>État</Table.HeaderCell>
-                         <Table.HeaderCell>Dispo.</Table.HeaderCell>
+                         <Table.HeaderCell>{t('health.nodes.host')}</Table.HeaderCell>
+                         <Table.HeaderCell>{t('health.nodes.role')}</Table.HeaderCell>
+                         <Table.HeaderCell>{t('health.nodes.state')}</Table.HeaderCell>
+                         <Table.HeaderCell>{t('health.nodes.availability')}</Table.HeaderCell>
                        </Table.Row>
                      </Table.Header>
                      <Table.Body>
@@ -171,7 +170,7 @@ export function HealthPage() {
                                  className="ml-2"
                                  color="blue"
                                >
-                                 leader
+                                 {t('health.nodes.leader')}
                                </Badge>
                              )}
                            </Table.Cell>
@@ -194,17 +193,17 @@ export function HealthPage() {
                {/* Services */}
                <Container className="p-4">
                  <Heading level="h3" className="mb-3 flex items-center gap-2">
-                   <ChartBar /> Services ({health.services.length})
+                   <ChartBar /> {t('health.services.title', { count: health.services.length })}
                  </Heading>
                  <div className="overflow-x-auto">
                    <Table>
                      <Table.Header>
                        <Table.Row>
-                         <Table.HeaderCell>Service</Table.HeaderCell>
-                         <Table.HeaderCell>Replicas</Table.HeaderCell>
-                         <Table.HeaderCell>Nœuds</Table.HeaderCell>
-                         <Table.HeaderCell>CPU moy.</Table.HeaderCell>
-                         <Table.HeaderCell>Mémoire</Table.HeaderCell>
+                         <Table.HeaderCell>{t('health.services.service')}</Table.HeaderCell>
+                         <Table.HeaderCell>{t('health.services.replicas')}</Table.HeaderCell>
+                         <Table.HeaderCell>{t('health.services.nodes')}</Table.HeaderCell>
+                         <Table.HeaderCell>{t('health.services.avgCpu')}</Table.HeaderCell>
+                         <Table.HeaderCell>{t('health.services.memory')}</Table.HeaderCell>
                        </Table.Row>
                      </Table.Header>
                      <Table.Body>
@@ -220,7 +219,7 @@ export function HealthPage() {
                  </div>
                  {health.services.length === 0 && (
                    <Text className="mt-2 text-ui-fg-subtle">
-                     Aucun service géré.
+                     {t('health.services.empty')}
                    </Text>
                  )}
                </Container>
@@ -228,11 +227,10 @@ export function HealthPage() {
                {/* Prune orphelins */}
                <Container className="p-4">
                  <Heading level="h3" className="mb-2">
-                   Ressources orphelines
+                   {t('health.orphaned.title')}
                  </Heading>
                  <Text size="small" className="text-ui-fg-subtle">
-                   Ressources gérées (bozando.managed) dont le projet n'existe
-                   plus. Le système (bozando.system) n'est jamais touché.
+                   {t('health.orphaned.description')}
                  </Text>
                  <div className="mt-3 flex gap-2">
                    <Button
@@ -241,7 +239,7 @@ export function HealthPage() {
                      onClick={() => preview.mutate()}
                      isLoading={preview.isPending}
                    >
-                     Analyser
+                     {t('health.orphaned.analyzeButton')}
                    </Button>
                    {candidates.length > 0 && (
                      <Button
@@ -250,7 +248,7 @@ export function HealthPage() {
                        onClick={() => apply.mutate()}
                        isLoading={apply.isPending}
                      >
-                       <Trash /> Supprimer {candidates.length} orpheline(s)
+                       <Trash /> {t('health.orphaned.deleteButton', { count: candidates.length })}
                      </Button>
                    )}
                  </div>
@@ -288,6 +286,7 @@ function ServiceDetailDrawer({
   service: ServiceHealth | null
   onClose: () => void
 }) {
+  const { t } = useTranslation()
   const { data } = useQuery({
     queryKey: ["service-metrics", service?.serviceId],
     queryFn: () => api.serviceMetrics(service!.serviceId),
@@ -304,36 +303,36 @@ function ServiceDetailDrawer({
     <Drawer open={!!service} onOpenChange={(o) => !o && onClose()}>
       <Drawer.Content>
         <Drawer.Header>
-          <Drawer.Title>{s?.name ?? "Service"}</Drawer.Title>
+          <Drawer.Title>{s?.name ?? t('health.serviceDetail.title')}</Drawer.Title>
         </Drawer.Header>
         <Drawer.Body className="flex flex-col gap-4 overflow-y-auto">
           {!s ? (
-            <Text className="text-ui-fg-subtle">Chargement…</Text>
+            <Text className="text-ui-fg-subtle">{t('health.serviceDetail.loading')}</Text>
           ) : (
             <>
               <div className="grid grid-cols-2 gap-3">
-                <Metric label="Replicas" value={`${s.runningReplicas}/${s.desiredReplicas}`} />
-                <Metric label="Tasks échantillonnées" value={String(s.sampledTasks)} />
-                <Metric label="CPU moyen" value={s.sampledTasks ? `${s.avgCpuPct}%` : "n/d"} />
-                <Metric label="Mémoire" value={memMb ? `${memMb} Mo` : "—"} />
+                <Metric label={t('health.serviceDetail.metrics.replicas')} value={`${s.runningReplicas}/${s.desiredReplicas}`} />
+                <Metric label={t('health.serviceDetail.metrics.sampledTasks')} value={String(s.sampledTasks)} />
+                <Metric label={t('health.serviceDetail.metrics.avgCpu')} value={s.sampledTasks ? `${s.avgCpuPct}%` : t('health.services.notAvailable')} />
+                <Metric label={t('health.serviceDetail.metrics.memory')} value={memMb ? `${memMb} Mo` : "—"} />
               </div>
 
               <div>
                 <Heading level="h3" className="mb-2">
-                  Placement des tasks
+                  {t('health.serviceDetail.placement.title')}
                 </Heading>
                 {placements.length === 0 ? (
                   <Text size="small" className="text-ui-fg-subtle">
-                    Aucune task en cours.
+                    {t('health.serviceDetail.placement.empty')}
                   </Text>
                 ) : (
                   <div className="overflow-x-auto">
                     <Table>
                       <Table.Header>
                         <Table.Row>
-                          <Table.HeaderCell>Nœud</Table.HeaderCell>
-                          <Table.HeaderCell>État</Table.HeaderCell>
-                          <Table.HeaderCell>Désiré</Table.HeaderCell>
+                          <Table.HeaderCell>{t('health.serviceDetail.placement.node')}</Table.HeaderCell>
+                          <Table.HeaderCell>{t('health.serviceDetail.placement.state')}</Table.HeaderCell>
+                          <Table.HeaderCell>{t('health.serviceDetail.placement.desired')}</Table.HeaderCell>
                         </Table.Row>
                       </Table.Header>
                       <Table.Body>
@@ -387,6 +386,7 @@ function Metric({ label, value }: { label: string; value: string }) {
 }
 
 function ServiceRow({ s, onSelect }: { s: ServiceHealth; onSelect: () => void }) {
+  const { t } = useTranslation()
   const healthy = s.runningReplicas >= s.desiredReplicas && s.desiredReplicas > 0
   const memMb = s.totalMemBytes ? Math.round(s.totalMemBytes / (1024 * 1024)) : 0
   return (
@@ -408,7 +408,7 @@ function ServiceRow({ s, onSelect }: { s: ServiceHealth; onSelect: () => void })
           </span>
         ) : (
           <Text size="small" className="text-ui-fg-muted">
-            n/d
+            {t('health.services.notAvailable')}
           </Text>
         )}
       </Table.Cell>

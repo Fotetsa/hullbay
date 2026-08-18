@@ -20,22 +20,24 @@ import { auth } from "../lib/api"
 import { useMe, type Role } from "../lib/useMe"
 import { useUpdatesCheck } from "../lib/useUpdates"
 import { ThemeToggle } from "./ThemeToggle/ThemeToggle"
+import { useTranslation } from "react-i18next"
+import { LanguageSwitch } from "./LanguageSwitch"
 
-type NavItem = { to: string; label: string; Icon: ComponentType; min: Role }
+type NavItem = { to: string; labelKey: string; Icon: ComponentType; min: Role }
 
 // `min` = rôle minimum requis pour voir l'entrée (aligné sur les requireRole du
 // backend). Un viewer ne voit pas Serveurs/Registres/Secrets/Utilisateurs ; le
 // journal d'audit est operator+.
 const NAV: NavItem[] = [
-  { to: "/", label: "Projets", Icon: SquaresPlus, min: "viewer" },
-  { to: "/health", label: "Santé", Icon: ChartBar, min: "viewer" },
-  { to: "/audit", label: "Journal", Icon: DocumentText, min: "operator" },
-  { to: "/servers", label: "Serveurs", Icon: ServerStack, min: "owner" },
-  { to: "/registries", label: "Registres", Icon: CircleStack, min: "owner" },
-  { to: "/secrets", label: "Secrets", Icon: Key, min: "operator" },
-  { to: "/users", label: "Utilisateurs", Icon: Users, min: "owner" },
-  { to: "/updates", label: "Mises à jour", Icon: ArrowPath, min: "owner" },
-  { to: "/settings", label: "Paramètres", Icon: CogSixTooth, min: "viewer" },
+  { to: "/", labelKey: "nav.projects", Icon: SquaresPlus, min: "viewer" },
+  { to: "/health", labelKey: "nav.health", Icon: ChartBar, min: "viewer" },
+  { to: "/audit", labelKey: "nav.logs", Icon: DocumentText, min: "operator" },
+  { to: "/servers", labelKey: "nav.servers", Icon: ServerStack, min: "owner" },
+  { to: "/registries", labelKey: "nav.registries", Icon: CircleStack, min: "owner" },
+  { to: "/secrets", labelKey: "nav.secrets", Icon: Key, min: "operator" },
+  { to: "/users", labelKey: "nav.users", Icon: Users, min: "owner" },
+  { to: "/updates", labelKey: "nav.updates", Icon: ArrowPath, min: "owner" },
+  { to: "/settings", labelKey: "nav.settings", Icon: CogSixTooth, min: "viewer" },
 ]
 
 /**
@@ -48,6 +50,7 @@ const NAV: NavItem[] = [
 // MeProvider est monté plus haut (App.tsx) pour couvrir aussi le canvas plein écran ;
 // ici on consomme simplement le contexte.
 export function AppLayout({ onLogout }: { onLogout: () => void }) {
+  const { t } = useTranslation()
   const navigate = useNavigate()
   const [mobileOpen, setMobileOpen] = useState(false)
   const { me, can } = useMe()
@@ -103,7 +106,7 @@ export function AppLayout({ onLogout }: { onLogout: () => void }) {
           variant="transparent"
           size="small"
           className="md:hidden"
-          aria-label="Fermer le menu"
+          aria-label={t('nav.closeMenu')}
           onClick={() => setMobileOpen(false)}
         >
           <XMark />
@@ -111,16 +114,16 @@ export function AppLayout({ onLogout }: { onLogout: () => void }) {
       </div>
       <div className="flex items-center gap-2 px-4 pt-1">
         <Text size="small" className="text-ui-fg-muted">
-          {currentVersion === "unknown" ? "Version inconnue" : `${currentVersion}`}
+          {currentVersion === "unknown" ? t('nav.versionUnknown') : `${currentVersion}`}
         </Text>
         <Badge color={updateChannel === "beta" ? "purple" : "green"} size="2xsmall">
-          {updateChannel === "beta" ? "Beta" : "Stable"}
+          {updateChannel === "beta" ? t('nav.channelBeta') : t('nav.channelStable')}
         </Badge>
       </div>
 
       <div className="mx-3 mt-3 border-t border-ui-border-base" />
-      <nav className="flex flex-1 flex-col gap-1 px-2 pt-4" aria-label="Navigation principale">
-        {visibleNav.map(({ to, label, Icon }) => (
+      <nav className="flex flex-1 flex-col gap-1 px-2 pt-4" aria-label={t('nav.mainNavigation')}>
+        {visibleNav.map(({ to, labelKey, Icon }) => (
           <NavLink
             key={to}
             to={to}
@@ -137,12 +140,12 @@ export function AppLayout({ onLogout }: { onLogout: () => void }) {
           >
             <Icon />
             <Text size="small" weight="plus">
-              {label}
+              {t(labelKey)}
             </Text>
             {to === "/updates" && updateAvailable && isKnownVersion && (
               <Badge color="blue" size="2xsmall" className="ml-auto animate-pulse capitalize motion-reduce:animate-none">
                 <Sparkles />
-                Nouveau
+                {t('nav.updateAvailable')}
               </Badge>
             )}
           </NavLink>
@@ -159,8 +162,13 @@ export function AppLayout({ onLogout }: { onLogout: () => void }) {
               {me.role}
             </Badge>
           </div>
-        )}
+      
         <ThemeToggle />
+        
+        {/* Sélecteur de langue */}
+        <div className="px-2 py-1">
+          <LanguageSwitch />
+        </div>
         <Button
           variant="transparent"
           size="small"
@@ -168,7 +176,7 @@ export function AppLayout({ onLogout }: { onLogout: () => void }) {
           onClick={logout}
         >
           <ArrowRightOnRectangle />
-          Déconnexion
+          {t('nav.logout')}
         </Button>
       </div>
     </div>
@@ -181,7 +189,7 @@ export function AppLayout({ onLogout }: { onLogout: () => void }) {
         href="#main-content"
         className="sr-only focus:not-sr-only focus:absolute focus:left-2 focus:top-2 focus:z-50 focus:rounded-md focus:bg-ui-bg-base focus:px-3 focus:py-2 focus:shadow-elevation-flyout"
       >
-        Aller au contenu
+        {t('nav.skipToContent')}
       </a>
 
       {/* Sidebar fixe (desktop) */}
@@ -195,7 +203,7 @@ export function AppLayout({ onLogout }: { onLogout: () => void }) {
           className="fixed inset-0 z-40 md:hidden"
           role="dialog"
           aria-modal="true"
-          aria-label="Menu de navigation"
+          aria-label={t('nav.mainNavigation')}
           onKeyDown={onSidebarKeyDown}
         >
           <div
@@ -214,7 +222,7 @@ export function AppLayout({ onLogout }: { onLogout: () => void }) {
           <IconButton
             variant="transparent"
             size="small"
-            aria-label="Ouvrir le menu"
+            aria-label={t('nav.openMenu')}
             onClick={() => setMobileOpen(true)}
           >
             <BarsThree />
