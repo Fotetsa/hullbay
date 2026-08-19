@@ -163,8 +163,8 @@ export function AppLayout({ onLogout }: { onLogout: () => void }) {
             </Badge>
           </div>
       
+        )}
         <ThemeToggle />
-        
         {/* Sélecteur de langue */}
         <div className="px-2 py-1">
           <LanguageSwitch />

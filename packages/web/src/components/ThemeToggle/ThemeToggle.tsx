@@ -33,7 +33,7 @@ export function ThemeToggle() {
       <div className="flex items-center gap-2">
         {isDark ? <Moon /> : <Sun />}
 
-        <span className="text-sm text-ui-fg-subtle">
+        <span className="text-sm text-ui-fg-base">
           {isDark ? "Mode sombre" : "Mode clair"}
         </span>
       </div>
