@@ -29,6 +29,8 @@ import { startDriftJob } from "./jobs/reconcile-drift";
 import { startAutoScaler } from "./jobs/auto-scaler";
 import fastify, { type FastifyInstance } from "fastify";
 import { stopTunnelCleanup, closeAllTunnels } from "./lib/ssh-tunnel";
+import { registerClustersRoutes } from "./modules/clusters/routes";
+import { registerClusterSubscribers } from "./modules/clusters/subscribers";
 
 
 
@@ -155,6 +157,7 @@ app.setErrorHandler((error: FastifyError, request, reply) => {
     await registerSecretsRoutes(app);
     await registerSettingsRoutes(app);
     await registerUpdatesRoutes(app);
+    await registerClustersRoutes(app);
   }
 
   if (!skipSideEffects) {
@@ -178,6 +181,7 @@ app.setErrorHandler((error: FastifyError, request, reply) => {
     // Subscribers métier (audit + suivi drift) + jobs périodiques.
     registerDeploySubscribers();
     registerObservabilitySubscribers();
+    registerClusterSubscribers();
     startDriftJob();
     startAutoScaler();
   }

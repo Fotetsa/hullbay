@@ -29,6 +29,7 @@
     "otplib": "^13.0.0",
     "socket.io": "^4.8.1",
     "ssh2": "^1.16.0",
+    "sshpk": "^1.18.0",
     "tldts": "^7.4.9",
     "zod": "^3.23.8"
   },
@@ -37,6 +38,7 @@
     "@types/jsonwebtoken": "^9.0.7",
     "@types/node": "^22.9.0",
     "@types/ssh2": "^1.15.1",
+    "@types/sshpk": "^1.17.5",
     "@vitest/coverage-v8": "^4.1.9",
     "esbuild": "^0.24.0",
     "prisma": "^5.22.0",

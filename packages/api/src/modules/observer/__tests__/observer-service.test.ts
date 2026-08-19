@@ -1,4 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { prisma } from "../../../lib/prisma";
+import { eventBus } from "../../../lib/event-bus";
+import { handleContainerEvent, resetTrackerForTests } from "../service";
 
 const mockEngine = {
   findServiceIdByNodeId: vi.fn(),
@@ -26,10 +29,6 @@ vi.mock("../../../modules/docker-engine/service", () => ({
     listManagedContainers = vi.fn().mockResolvedValue([]);
   },
 }));
-
-import { prisma } from "../../../lib/prisma";
-import { eventBus } from "../../../lib/event-bus";
-import { handleContainerEvent, resetTrackerForTests } from "../service";
 
 function containerEvent(dockerId: string, nodeId: string, action: string) {
   return {

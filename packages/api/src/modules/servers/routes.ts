@@ -7,7 +7,8 @@ import { requireRole, currentUser } from "../auth/rbac"
 import { eventBus } from "../../lib/event-bus"
 import { runWithConcurrency, CLUSTER_CONCURRENCY } from "../../lib/concurrency"
 import { TunnelError } from "../../lib/ssh-tunnel"
-import { prisma } from "../../lib/prisma";
+import { clusterService } from "../clusters/service"
+import { prisma } from "../../lib/prisma"
 
 
 /**
@@ -120,31 +121,34 @@ export async function registerServersRoutes(app: FastifyInstance) {
       let clusterId: string;
       let role: "manager" | "worker";
       if (body.clusterId) {
+        const target = await clusterService.get(body.clusterId);
+        if (!target)
+          return reply.code(404).send({ error: "cluster introuvable" });
+        if (target.status !== "ready") {
+          return reply
+            .code(409)
+            .send({
+              error: `cluster "${target.name}" pas encore prêt (statut: ${target.status})`,
+            });
+        }
         clusterId = body.clusterId;
         role = body.role ?? "worker";
       } else {
-        const cluster = await prisma.cluster.create({
-          data: {
-            name: body.newClusterName!,
-            dockerHost: "",
-            caddyAdminUrl: "",
-            status: "pending",
-          },
-        });
-
+        // Nettoyage auto : un cluster portant le même nom peut subsister en
+        // status "failed" (provisioning échoué + suppression du serveur via l'UI).
+        // La contrainte @unique sur Cluster.name ferait sinon échouer la recréation
+        // en 500 (P2002). Un cluster "ready" n'est JAMAIS supprimé ici.
+        const existing = await prisma.cluster.findFirst({
+          where: { name: body.newClusterName!, status: "failed" },
+        })
+        if (existing) {
+          await prisma.cluster.delete({ where: { id: existing.id } })
+        }
+        const cluster = await clusterService.createPending(
+          body.newClusterName!,
+        );
         clusterId = cluster.id;
         role = "manager";
-      }
-
-      if (body.clusterId) {
-        const target = await prisma.cluster.findUniqueOrThrow({
-          where: { id: body.clusterId },
-        });
-        if (target.status !== "ready") {
-          return reply.code(409).send({
-            error: `cluster "${target.name}" pas encore prêt (statut: ${target.status})`,
-          });
-        }
       }
       const server = await serversService.create({
         name,
@@ -179,63 +183,6 @@ export async function registerServersRoutes(app: FastifyInstance) {
       return reply
         .code(202)
         .send({ id: server.id, role, status: "provisioning" });
-    },
-  );
-  // Affichage de la liste des clusters existant.
-  app.get(
-    "/api/clusters",
-    {
-      ...owner,
-      schema: {
-        tags: ["servers"],
-        summary: "Lister les clusters (owne uniquement)",
-        security: [{ bearerAuth: [] }],
-      },
-    },
-    async () => {
-      return prisma.cluster.findMany({
-        select: { id: true, name: true, isDefault: true, status: true },
-        orderBy: { createdAt: "asc" },
-      });
-    },
-  );
-
-  // Nettoyage d'un cluster resté "failed" (échec de provisioning avant finalisation).
-  // Volontairement restreint aux clusters failed uniquement : jamais de suppression
-  // d'un cluster pending (encore en cours) ni ready (en usage réel). La suppression
-  // cascade vers Server (onDelete: Cascade dans le schéma) -- les serveurs orphelins
-  // de ce provisioning raté (status "error") disparaissent avec lui, c'est voulu :
-  // ils n'appartiennent qu'à ce cluster qui n'a jamais existé "pour de vrai".
-  app.delete(
-    "/api/clusters/:id",
-    {
-      ...owner,
-      schema: {
-        tags: ["servers"],
-        summary: "Supprimer un cluster resté en échec (owner uniquement)",
-        security: [{ bearerAuth: [] }],
-      },
-    },
-    async (req, reply) => {
-      const { id } = req.params as { id: string };
-      const cluster = await prisma.cluster.findUnique({ where: { id } });
-      if (!cluster)
-        return reply.code(404).send({ error: "cluster introuvable" });
-      if (cluster.status !== "failed") {
-        return reply.code(409).send({
-          error: `seul un cluster au statut "failed" peut être supprimé (statut actuel: ${cluster.status})`,
-        });
-      }
-      const removedServers = await prisma.server.count({
-        where: { clusterId: id },
-      });
-      await prisma.cluster.delete({ where: { id } });
-      await eventBus.emit("cluster.removed", {
-        clusterId: id,
-        userId: currentUser(req)?.sub,
-        removedServers,
-      });
-      return { ok: true, removedServers };
     },
   );
 

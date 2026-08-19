@@ -4,7 +4,7 @@ import { registerUpdatesRoutes } from "../routes";
 import { registerAuthGuard } from "../../auth/routes";
 import { authService } from "../../auth/service";
 
-const { mockUpdaterService } = vi.hoisted(() => ({
+const { mockUpdaterService, mockClusterService } = vi.hoisted(() => ({
   mockUpdaterService: {
     check: vi.fn(),
     current: vi.fn(),
@@ -13,6 +13,19 @@ const { mockUpdaterService } = vi.hoisted(() => ({
     apply: vi.fn(),
     rollback: vi.fn(),
     setChannel: vi.fn(),
+  },
+  mockClusterService: {
+    get: vi.fn(),
+    getOrThrow: vi.fn(),
+    getDefault: vi.fn(async () => ({
+      id: "default-cluster",
+      name: "Default",
+      isDefault: true,
+      dockerHost: "tcp://socket-proxy:2375",
+      caddyAdminUrl: "http://caddy:2019",
+      status: "ready",
+    })),
+    list: vi.fn(),
   },
 }));
 

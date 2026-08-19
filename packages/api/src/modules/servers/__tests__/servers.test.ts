@@ -1,27 +1,44 @@
-import { describe, it, expect, beforeAll, afterAll, beforeEach, vi, } from "vitest";
+import {
+  describe,
+  it,
+  expect,
+  beforeAll,
+  afterAll,
+  beforeEach,
+  vi,
+} from "vitest";
 import { buildTestApp } from "../../../__tests__/helpers/build-test-app";
 import { registerServersRoutes } from "../routes";
 import { registerAuthGuard } from "../../auth/routes";
 import { authService } from "../../auth/service";
+import { registerClustersRoutes } from "../../clusters/routes";
 
 
-const { mockServersService, mockDockerMethods } = vi.hoisted(() => ({
-  mockServersService: {
-    list: vi.fn(),
-    create: vi.fn(),
-    get: vi.fn(),
-    remove: vi.fn(),
-    update: vi.fn(),
-    hasManager: vi.fn(),
-  },
-  mockDockerMethods: {
-    listNodes: vi.fn(),
-    managerHealth: vi.fn(),
-    drainNode: vi.fn(),
-    removeNode: vi.fn(),
-    setNodeRole: vi.fn(),
-  },
-}));
+const { mockServersService, mockDockerMethods, mockClusterService } =
+  vi.hoisted(() => ({
+    mockServersService: {
+      list: vi.fn(),
+      create: vi.fn(),
+      get: vi.fn(),
+      remove: vi.fn(),
+      update: vi.fn(),
+      hasManager: vi.fn(),
+    },
+    mockDockerMethods: {
+      listNodes: vi.fn(),
+      managerHealth: vi.fn(),
+      drainNode: vi.fn(),
+      removeNode: vi.fn(),
+      setNodeRole: vi.fn(),
+    },
+    mockClusterService: {
+      get: vi.fn(),
+      getOrThrow: vi.fn(),
+      remove: vi.fn(),
+      createPending: vi.fn(),
+      getDefault: vi.fn(),
+    },
+  }));
 
 vi.mock("../service", () => ({ serversService: mockServersService }));
 
@@ -39,7 +56,6 @@ vi.mock("../../../workflows/provision-server", () => ({
   provisionServerWorkflow: vi.fn(),
 }));
 
-
 vi.mock("../../../lib/event-bus", () => ({
   eventBus: { emit: vi.fn() },
 }));
@@ -48,19 +64,9 @@ vi.mock("../../auth/service", () => ({
   authService: { verifyToken: vi.fn() },
 }));
 
-import { prisma } from "../../../lib/prisma";
 
-vi.mock("../../../lib/prisma", () => ({
-  prisma: {
-    cluster: {
-      findUnique: vi.fn(),
-      findUniqueOrThrow: vi.fn(),
-      delete: vi.fn(),
-    },
-    server: {
-      count: vi.fn(),
-    },
-  },
+vi.mock("../../clusters/service", () => ({
+  clusterService: mockClusterService,
 }));
 
 const mockOwnerToken = "mock_owner_token";
@@ -76,6 +82,7 @@ describe("GET /api/servers", () => {
     app = await buildTestApp({
       routes: async (app) => {
         registerAuthGuard(app);
+        await registerClustersRoutes(app);
         await registerServersRoutes(app);
       },
     });
@@ -88,15 +95,14 @@ describe("GET /api/servers", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(authService.verifyToken).mockImplementation((token: string) => {
-      if (token === mockOwnerToken) return { sub: "owner-id", role: "owner", mfaEnabled: true };
+      if (token === mockOwnerToken)
+        return { sub: "owner-id", role: "owner", mfaEnabled: true };
       if (token === mockOperatorToken)
         return { sub: "operator-id", role: "operator", mfaEnabled: true };
       if (token === mockViewerToken)
         return { sub: "viewer-id", role: "viewer", mfaEnabled: true };
-
       if (token === mockNoMfaToken)
         return { sub: "no-mfa-id", role: "operator", mfaEnabled: false };
-      
       throw new Error("Token invalide");
     });
   });
@@ -186,11 +192,7 @@ describe("GET /api/servers", () => {
   });
 
   it("devrait retourner 401 sans token", async () => {
-    const response = await app.inject({
-      method: "GET",
-      url: "/api/servers",
-    });
-
+    const response = await app.inject({ method: "GET", url: "/api/servers" });
     expect(response.statusCode).toBe(401);
   });
 
@@ -200,7 +202,6 @@ describe("GET /api/servers", () => {
       url: "/api/servers",
       headers: { authorization: `Bearer ${mockInvalidToken}` },
     });
-
     expect(response.statusCode).toBe(401);
   });
 
@@ -210,7 +211,6 @@ describe("GET /api/servers", () => {
       url: "/api/servers",
       headers: { authorization: `Bearer ${mockOperatorToken}` },
     });
-
     expect(response.statusCode).toBe(403);
   });
 
@@ -220,18 +220,12 @@ describe("GET /api/servers", () => {
       url: "/api/servers",
       headers: { authorization: `Bearer ${mockViewerToken}` },
     });
-
     expect(response.statusCode).toBe(403);
   });
 
   describe("DELETE /api/clusters/:id", () => {
     it("devrait supprimer un cluster failed", async () => {
-      vi.mocked(prisma.cluster.findUnique).mockResolvedValue({
-        id: "c1",
-        status: "failed",
-      } as any);
-      vi.mocked(prisma.server.count).mockResolvedValue(1);
-      vi.mocked(prisma.cluster.delete).mockResolvedValue({} as any);
+      mockClusterService.remove.mockResolvedValue(undefined);
 
       const response = await app.inject({
         method: "DELETE",
@@ -240,14 +234,13 @@ describe("GET /api/servers", () => {
       });
 
       expect(response.statusCode).toBe(200);
-      expect(response.json()).toEqual({ ok: true, removedServers: 1 });
+      expect(response.json()).toEqual({ ok: true });
     });
 
     it("devrait refuser de supprimer un cluster ready (409)", async () => {
-      vi.mocked(prisma.cluster.findUnique).mockResolvedValue({
-        id: "c1",
-        status: "ready",
-      } as any);
+      const err = new Error("impossible de supprimer un cluster opérationnel");
+      (err as any).statusCode = 409;
+      mockClusterService.remove.mockRejectedValue(err);
 
       const response = await app.inject({
         method: "DELETE",
@@ -256,11 +249,12 @@ describe("GET /api/servers", () => {
       });
 
       expect(response.statusCode).toBe(409);
-      expect(prisma.cluster.delete).not.toHaveBeenCalled();
     });
 
     it("devrait retourner 404 si le cluster n'existe pas", async () => {
-      vi.mocked(prisma.cluster.findUnique).mockResolvedValue(null);
+      const err = new Error("cluster introuvable");
+      (err as any).statusCode = 404;
+      mockClusterService.remove.mockRejectedValue(err);
 
       const response = await app.inject({
         method: "DELETE",
@@ -274,11 +268,11 @@ describe("GET /api/servers", () => {
 
   describe("POST /api/servers", () => {
     it("devrait refuser de provisionner sur un cluster pas prêt (409)", async () => {
-      vi.mocked(prisma.cluster.findUniqueOrThrow).mockResolvedValue({
+      mockClusterService.get.mockResolvedValue({
         id: "c1",
         name: "Cluster lent",
         status: "pending",
-      } as any);
+      });
 
       const response = await app.inject({
         method: "POST",
@@ -299,5 +293,3 @@ describe("GET /api/servers", () => {
     });
   });
 });
-
-

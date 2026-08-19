@@ -5,6 +5,7 @@ import { DockerEngineService } from "../docker-engine/service"
 import { rebuildFromDocker } from "./rebuild"
 import { deployProjectWorkflow, DeployError } from "../../workflows/deploy-project"
 import { TunnelError } from "../../lib/ssh-tunnel"
+import { invalidateDockerClient } from "../docker-engine/client"
 import { eventBus } from "../../lib/event-bus"
 import { prisma } from "../../lib/prisma"
 import { requireRole, currentUser } from "../auth/rbac"
@@ -73,7 +74,24 @@ export async function registerReconcilerRoutes(app: FastifyInstance) {
       await eventBus.emit("deploy.started", { projectId: id, userId });
       try {
         // Workflow avec steps + compensation (rollback si échec partiel).
-        const log = await deployProjectWorkflow({ graph, createdBy: userId });
+        // Retry unique en cas d'erreur tunnel (ECONNREFUSED / EPIPE / socket hang up) :
+        // le tunnel SSH peut être mort depuis le dernier usage → on purge le
+        // cache Docker ET le tunnel, puis on réessaie une fois avec un tunnel frais.
+        let log: string[];
+        try {
+          log = await deployProjectWorkflow({ graph, createdBy: userId });
+        } catch (firstErr) {
+          const msg = firstErr instanceof Error ? firstErr.message : String(firstErr);
+          const isTunnelRetryable =
+            msg.includes("ECONNREFUSED") ||
+            msg.includes("EPIPE") ||
+            msg.includes("socket hang up") ||
+            firstErr instanceof TunnelError;
+          if (!isTunnelRetryable) throw firstErr;
+          console.log(`[deploy] 1er essai échoué (${msg}) — retry avec tunnel frais…`);
+          invalidateDockerClient(graph.clusterId);
+          log = await deployProjectWorkflow({ graph, createdBy: userId });
+        }
         await projectsService.updateProject(id, { status: "deployed" });
         await eventBus.emit("deploy.finished", {
           projectId: id,

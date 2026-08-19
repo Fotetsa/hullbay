@@ -5,6 +5,26 @@ import { registerAuthGuard } from "../../auth/routes";
 import { authService } from "../../auth/service";
 import { ObservabilityService, systemHealth } from "../service";
 
+const { mockClusterService } = vi.hoisted(() => ({
+  mockClusterService: {
+    get: vi.fn(),
+    getOrThrow: vi.fn(),
+    getDefault: vi.fn(async () => ({
+      id: "default-cluster",
+      name: "Default",
+      isDefault: true,
+      dockerHost: "tcp://socket-proxy:2375",
+      caddyAdminUrl: "http://caddy:2019",
+      status: "ready",
+    })),
+    list: vi.fn(),
+  },
+}));
+
+vi.mock("../../clusters/service", () => ({
+  clusterService: mockClusterService,
+}));
+
 vi.mock("../service", () => ({
   ObservabilityService: { forCluster: vi.fn() },
   systemHealth: vi.fn(),
