@@ -90,12 +90,20 @@ export class ExposureService {
     const server = await resolveServerName(adminUrl)
     // tls:false (domaine interne/test) -> exclure du HTTPS auto ; tls:true -> HTTPS auto.
     await this.setHttpsSkip(adminUrl, server, config.domain, config.tls === false)
-    // INSÈRE EN TÊTE (index 0), PAS en fin de liste. Le serveur de l'ops-panel se
+    // INSÈRE EN TÊTE, PAS en fin de liste. Le serveur de l'ops-panel se
     // termine par une route catch-all (le SPA web, `reverse_proxy web:80`, sans
     // matcher) qui intercepte TOUTES les requêtes. Une route passerelle ajoutée
     // APRÈS ne serait jamais atteinte (le catch-all matche d'abord) -> 502 « lookup
-    // web ». On l'insère donc avant le catch-all via le sous-chemin .../routes/0.
-    const res = await caddyAdmin({ adminUrl, path: `/config/apps/http/servers/${server}/routes/0`, method: "PUT", body: route })
+    // web ». On la place donc avant le catch-all. PUT sur `routes/0` échoue quand
+    // le tableau est vide (Caddy ne peut pas insérer à un index inexistant) : on
+    // lit les routes existantes, on prepend la nouvelle et on PUT le tableau complet.
+    let existingRoutes: unknown[] = []
+    const readRes = await caddyAdmin({ adminUrl, path: `/config/apps/http/servers/${server}` })
+    if (readRes.ok) {
+      try { existingRoutes = JSON.parse(readRes.body).routes ?? [] } catch { /* routes illisibles : on repart de zéro */ }
+    }
+    const updatedRoutes = [route, ...existingRoutes]
+    const res = await caddyAdmin({ adminUrl, path: `/config/apps/http/servers/${server}/routes`, method: "PUT", body: updatedRoutes })
     if (!res.ok) {
       throw new Error(`Caddy upsert route ${id} a échoué (${res.status})`)
     }

@@ -1,5 +1,5 @@
 import Docker from "dockerode"
-import { ensureTunnel } from "../../lib/ssh-tunnel"
+import { ensureTunnel, closeTunnel } from "../../lib/ssh-tunnel"
 import { clusterService } from "../clusters/service"
 
 /**
@@ -124,13 +124,15 @@ export async function getDockerForCluster(clusterId: string): Promise<Docker> {
 }
 
 /**
- * Purge le client dockerode d'un cluster du cache. À appeler quand le
- * dockerHost d'un cluster change (fin de provision) pour ne pas continuer
- * à viser l'ancienne cible (tunnel ou socket).
+ * Purge le client dockerode d'un cluster du cache ET ferme le tunnel SSH
+ * associé. À appeler quand le dockerHost d'un cluster change (fin de provision)
+ * ou quand le tunnel est suspecté mort (ECONNREFUSED) : le prochain appel
+ * recrée une session SSH toute neuve avec un port local neuf.
  */
 export function invalidateDockerClient(clusterId: string): void {
   registry.delete(clusterId)
   pendingClients.delete(clusterId)
+  closeTunnel(clusterId, 2375)
 }
 
 export interface DockerPingResult {

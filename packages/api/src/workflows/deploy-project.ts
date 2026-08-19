@@ -19,6 +19,7 @@ import {
 } from "../modules/docker-engine/service"
 import { exposureService } from "../modules/exposure/service"
 import { TunnelError } from "../lib/ssh-tunnel"
+import { invalidateDockerClient } from "../modules/docker-engine/client"
 import { ReconcilerService } from "../modules/reconciler/service"
 import { registryService } from "../modules/registry/service"
 import { prisma } from "../lib/prisma"
@@ -336,7 +337,7 @@ const gatewaysStep: Step<DeployInput> = {
         continue;
       }
       const upstreamHost = resourceName(slug, target.name);
-      // ⚠️ NOTE : exposureService parle au Caddy du serveur SYSTÈME (hullbay lui-même),
+      // NOTE : exposureService parle au Caddy du serveur SYSTÈME (hullbay lui-même),
       // pas au cluster du projet. Si le projet est sur un cluster DISTANT, cette route
       // ne pourra pas fonctionner tel quel (Caddy système ne peut pas résoudre un
       // conteneur d'un autre Swarm par son nom). Point à creuser à part, pas bloquant
@@ -413,6 +414,11 @@ function networkNamesFor(graph: ProjectGraph, node: Node, slug: string): string[
 // ── Exécution ────────────────────────────────────────────────────────────────
 
 export async function deployProjectWorkflow(input: DeployInput) {
+  // Purge le client Docker mis en cache pour ce cluster : force la création
+  // d'un tunnel SSH frais avec un port local neuf (évite ECONNREFUSED si le
+  // tunnel précédent a été refermé entre deux appels).
+  invalidateDockerClient(input.graph.clusterId)
+
   const engine = await DockerEngineService.forCluster(
     input.graph.clusterId,
     async (image) => {
