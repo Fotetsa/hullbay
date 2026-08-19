@@ -19,6 +19,7 @@ import {
 import { auth } from "../lib/api"
 import { useMe, type Role } from "../lib/useMe"
 import { useUpdatesCheck } from "../lib/useUpdates"
+import { ThemeToggle } from "./ThemeToggle/ThemeToggle"
 import { useTranslation } from "react-i18next"
 import { LanguageSwitch } from "./LanguageSwitch"
 
@@ -161,13 +162,13 @@ export function AppLayout({ onLogout }: { onLogout: () => void }) {
               {me.role}
             </Badge>
           </div>
+      
         )}
-        
+        <ThemeToggle />
         {/* Sélecteur de langue */}
         <div className="px-2 py-1">
           <LanguageSwitch />
         </div>
-        
         <Button
           variant="transparent"
           size="small"

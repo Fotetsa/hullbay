@@ -8,6 +8,7 @@ import "./index.css"
 import { App } from "./App"
 import { ErrorBoundary } from "./components/ErrorBoundary"
 import './i18n/config'
+import { applyTheme, getInitialTheme } from "./lib/theme"
 
 // Defaults bornés : sans ça les erreurs réseau retentaient en boucle et chaque
 // focus de fenêtre déclenchait un refetch. retry:1 + staleTime court = un outil
@@ -21,7 +22,7 @@ const queryClient = new QueryClient({
     },
   },
 })
-
+applyTheme(getInitialTheme())
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <ErrorBoundary>
