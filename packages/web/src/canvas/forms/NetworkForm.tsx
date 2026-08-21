@@ -23,7 +23,7 @@ export function NetworkForm({
           <Select.Trigger>
             <Select.Value />
           </Select.Trigger>
-          <Select.Content>
+          <Select.Content className="z-[60]">
             <Select.Item value="overlay">overlay</Select.Item>
             <Select.Item value="bridge">bridge</Select.Item>
           </Select.Content>

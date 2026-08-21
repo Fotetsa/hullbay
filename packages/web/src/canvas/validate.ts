@@ -1,4 +1,5 @@
-import type { ProjectGraph, Node, Edge } from "@hullbay/shared"
+import { parseNodeConfig } from "@hullbay/shared/node-config"
+import type { DatabaseConfig, ProjectGraph, Node, Edge } from "@hullbay/shared"
 
 /**
  * Validation de cohérence du graphe AVANT déploiement (référence : Azure "Review +
@@ -83,6 +84,40 @@ export function validateGraph(graph: ProjectGraph): ValidationIssue[] {
         severity: "warning",
         nodeId: v.id,
         message: `Volume « ${v.name} » n'est monté sur aucun conteneur.`,
+      })
+    }
+  }
+
+  // ── Bases de données : le schéma partagé fait foi (même validation que le
+  //    backend). parseNodeConfig lève si la config viole la spec  → erreur
+  //    bloquante avant déploiement. Avertissement : HA sans consensus explicite.
+  const databases = nodes.filter((n) => n.type === "database")
+  const CONSENSUS_ENGINES: DatabaseConfig["engine"][] = ["postgres", "redis"]
+  for (const d of databases) {
+    try {
+      parseNodeConfig("database", d.config)
+    } catch (e) {
+      const first = (e as { issues?: { path?: (string | number)[]; message?: string }[] })
+        ?.issues?.[0]
+      const detail = first
+        ? `${(first.path ?? []).join(".") || "config"} : ${first.message}`
+        : "configuration invalide"
+      issues.push({
+        severity: "error",
+        nodeId: d.id,
+        message: `« ${d.name} » : ${detail} (voir formulaire, onglet Base de données).`,
+      })
+    }
+    const cfg = (d.config as Partial<DatabaseConfig>) ?? {}
+    if (
+      cfg.mode === "ha" &&
+      CONSENSUS_ENGINES.includes(cfg.engine ?? "postgres") &&
+      cfg.topology?.consensusReplicas === undefined
+    ) {
+      issues.push({
+        severity: "warning",
+        nodeId: d.id,
+        message: `« ${d.name} » : HA sans consensus explicite — la coordination (etcd/Sentinel) sera auto (défaut du moteur, majorité garantie). Pense à la fixer si tu veux un tirage précis.`,
       })
     }
   }

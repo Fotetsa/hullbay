@@ -89,6 +89,22 @@ export function EdgeInspector({
               <Switch checked={readOnly} onCheckedChange={setReadOnly} />
             </div>
           </div>
+        ) : edge.kind === "database" ? (
+          // Lien applicatif → base managée : le déploiement injecte l'env DATABASE_*
+          // dans le conteneur dépendant + monte le secret du provider. Rien à éditer ici.
+          <div className="flex flex-col gap-2">
+            <Text size="small" className="text-ui-fg-muted">
+              Ce lien connecte le conteneur à la base de données. Au déploiement,
+              le conteneur reçoit : les variables <span className="font-mono">DATABASE_*</span>{" "}
+              (hôte, port, base, utilisateur), le chemin{" "}
+              <span className="font-mono">DATABASE_CREDENTIALS_FILE</span> vers le mot de passe
+              (secret Docker référencé par la base), et l'accès réseau au writer/reader.
+            </Text>
+            <Text size="xsmall" className="text-ui-fg-muted">
+              Le mot de passe n'est jamais injecté en clair : il reste un secret Docker
+              monté en fichier dans le conteneur.
+            </Text>
+          </div>
         ) : (
           <Text size="small" className="text-ui-fg-muted">
             Pas de configuration additionnelle pour un lien {edge.kind}.

@@ -1,4 +1,4 @@
-import { CubeSolid, ServerStack, CircleStack, GlobeEurope } from "@medusajs/icons"
+import { CubeSolid, ServerStack, CircleStack, GlobeEurope, CircleStackSolid } from "@medusajs/icons"
 import type { IconProps } from "@medusajs/icons/dist/types"
 import type { NodeType } from "@hullbay/shared"
 
@@ -9,6 +9,7 @@ import type { NodeType } from "@hullbay/shared"
  *  - network   : une pile de serveurs reliés
  *  - volume    : une pile disque (stockage)
  *  - gateway   : un globe (exposition internet)
+ *  - database  : une pile disque pleine (base de données managée)
  */
 export const NODE_META: Record<
   NodeType,
@@ -18,4 +19,5 @@ export const NODE_META: Record<
   network: { label: "Réseau", hint: "Relie des conteneurs", Icon: ServerStack },
   volume: { label: "Volume", hint: "Stockage persistant", Icon: CircleStack },
   gateway: { label: "Passerelle", hint: "Exposition internet", Icon: GlobeEurope },
+  database: { label: "Base de données", hint: "Base managée", Icon: CircleStackSolid },
 }

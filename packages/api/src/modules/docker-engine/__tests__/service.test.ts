@@ -107,6 +107,65 @@ describe("DockerEngineService.buildServiceSpec — restartPolicy du nœud → Co
   })
 })
 
+describe("DockerEngineService.buildServiceSpec — placement Swarm (Constraints + Spread, S5-P4)", () => {
+  const baseConfig = (over: Partial<ContainerConfig> = {}): ContainerConfig => ({
+    image: "nginx",
+    tag: "latest",
+    env: {},
+    secrets: [],
+    ports: [],
+    restartPolicy: "unless-stopped",
+    replicas: 1,
+    updateParallelism: 1,
+    updateDelaySec: 5,
+    ...over,
+  })
+
+  async function specFor(config: ContainerConfig) {
+    const createService = vi.fn(async (spec: unknown) => ({ id: "svc-x", ...(spec as object) }))
+    const docker = {
+      createService,
+      listSecrets: vi.fn(async () => []),
+      listServices: vi.fn(async () => []),
+    }
+    const svc = new DockerEngineService(docker as never)
+    await svc.createService("s", config, {})
+    return createService.mock.calls[0]?.[0] as {
+      TaskTemplate: {
+        Placement?: {
+          Constraints?: string[]
+          Preferences?: { Spread?: string; SpreadDescriptor?: string }[]
+        }
+      }
+    }
+  }
+
+  it("constraints + spreadOver mappés sur TaskTemplate.Placement", async () => {
+    const spec = await specFor(
+      baseConfig({
+        placement: { constraints: ["node.role==worker"], spreadOver: ["node.id"] },
+      }),
+    )
+    expect(spec.TaskTemplate.Placement?.Constraints).toEqual(["node.role==worker"])
+    expect(spec.TaskTemplate.Placement?.Preferences).toEqual([
+      { Spread: { SpreadDescriptor: "node.id" } },
+    ])
+  })
+
+  it("spreadOver vide → Preferences vide, Constraints présent", async () => {
+    const spec = await specFor(
+      baseConfig({ placement: { constraints: ["node.role==manager"], spreadOver: [] } }),
+    )
+    expect(spec.TaskTemplate.Placement?.Constraints).toEqual(["node.role==manager"])
+    expect(spec.TaskTemplate.Placement?.Preferences).toEqual([])
+  })
+
+  it("placement absent → AUCUNE clé Placement (pas de pollution des specs existants)", async () => {
+    const spec = await specFor(baseConfig())
+    expect("Placement" in spec.TaskTemplate).toBe(false)
+  })
+})
+
 describe("DockerEngineService.connectContainerToNetwork (P5)", () => {
   function makeService(connectImpl: () => Promise<unknown>) {
     const connect = vi.fn(connectImpl)

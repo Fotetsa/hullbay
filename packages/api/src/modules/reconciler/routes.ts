@@ -11,6 +11,9 @@ import { prisma } from "../../lib/prisma"
 import { requireRole, currentUser } from "../auth/rbac"
 import { pruneOrphans } from "../../jobs/prune-orphans"
 import { runWithConcurrency, CLUSTER_CONCURRENCY } from "../../lib/concurrency"
+import { expandDatabaseGraph, databaseNodePreview } from "../database"
+import { DatabaseValidationError } from "../database/validation"
+import type { ExpandedProjectGraph } from "../database"
 
 const operator = { preHandler: requireRole("operator") }
 const owner = { preHandler: requireRole("owner") }
@@ -46,7 +49,65 @@ export async function registerReconcilerRoutes(app: FastifyInstance) {
       if (!graph) return reply.code(404).send({ error: "project not found" });
       const engine = await DockerEngineService.forCluster(graph.clusterId)
       const reconciler = await new ReconcilerService(engine)
-      return reconciler.plan(graph);
+      // Expansion en lecture seule (moteurs non implémentés ignorés) : le diff
+      // doit refléter les MEMBRES générés, sinon /plan serait vide pour la DB.
+      let expanded: ExpandedProjectGraph
+      try {
+        expanded = expandDatabaseGraph(graph, { strict: false })
+      } catch (e) {
+        const msg = e instanceof DatabaseValidationError ? e.issues.join(" · ") : String(e)
+        return reply.code(400).send({ error: msg })
+      }
+      return reconciler.plan(expanded.graph);
+    },
+  );
+
+  // Aperçu des ressources générées pour un nœud database (S5-09/10) : liste des
+  // membres/consensus/endpoints + endpoints writer/reader, en lecture seule pour
+  // l'inspecteur UI. Pure — aucune action Docker.
+  // `?draft=` (base64-JSON) : aperçu de la config EN COURS d'édition (non sauvée) —
+  // l'inspecteur prévisualise ce que le deploy générera avant d'enregistrer.
+  app.get(
+    "/api/projects/:id/nodes/:nodeId/preview",
+    {
+      schema: {
+        tags: ["reconciler"],
+        summary: "Aperçu des ressources générées d'un nœud database (config sauvée ou brouillon)",
+        security: [{ bearerAuth: [] }],
+      },
+    },
+    async (req, reply) => {
+      const { id, nodeId } = req.params as { id: string; nodeId: string }
+      let graph = await projectsService.getProjectGraph(id)
+      if (!graph) return reply.code(404).send({ error: "project not found" })
+      const draft = (req.query as { draft?: string } | undefined)?.draft
+      if (typeof draft === "string" && draft.length > 0) {
+        try {
+          const draftConfig = JSON.parse(Buffer.from(draft, "base64").toString("utf8"))
+          graph = {
+            ...graph,
+            nodes: graph.nodes.map((n) =>
+              n.id === nodeId ? { ...n, config: draftConfig } : n,
+            ),
+          }
+        } catch {
+          return reply.code(400).send({ error: "brouillon de config invalide" })
+        }
+      }
+      let preview
+      try {
+        preview = databaseNodePreview(graph, nodeId)
+      } catch (e) {
+        const msg = e instanceof DatabaseValidationError ? e.issues.join(" · ") : String(e)
+        // Secret du mot de passe pas encore choisi : état de travail NORMAL d'un
+        // nœud neuf — retour doux (pas une erreur), l'UI affiche un invit.
+        if (msg.includes("passwordSecretRef")) {
+          return { resources: [], connections: [], missingPasswordSecret: true }
+        }
+        return reply.code(400).send({ error: msg })
+      }
+      if (!preview) return reply.code(404).send({ error: "database node not found" })
+      return preview
     },
   );
 
@@ -139,7 +200,34 @@ export async function registerReconcilerRoutes(app: FastifyInstance) {
       if (!graph) return reply.code(404).send({ error: "project not found" });
       const engine = await DockerEngineService.forCluster(graph.clusterId)
       const reconciler = new ReconcilerService(engine)
-      const log = await reconciler.destroy(graph);
+      // Destruction des ressources générées (membres inclus) ; les volumes de
+      // données sont RETENUS par reconciler.destroy (label bozando.database.data).
+      // Une config DB corrompue ne doit JAMAIS rendre le projet indestructible :
+      // fallback sur le graphe brut (nœud database ≠ conteneur → ignoré par destroy).
+      let expanded: ExpandedProjectGraph | null = null
+      try {
+        expanded = expandDatabaseGraph(graph, { strict: false })
+      } catch (err) {
+        req.log?.warn?.(`expansion ignorée au destroy (grappe brute utilisée) : ${err instanceof Error ? err.message : err}`)
+      }
+      const graphToDestroy = expanded?.graph ?? graph
+      // Rétention LIVE : le destroy distingue les volumes de données PRÉSENTS dans
+      // le graphe (décision de config AUSSI quand retain=false, car Docker ne met
+      // pas à jour les labels d'un volume existant) des orphelins (garde par label).
+      const retainedVolumeNames = new Set<string>()
+      const managedDataVolumeNames = new Set<string>()
+      for (const [nodeId, own] of expanded?.ownership ?? []) {
+        if (own.role !== "volume" || !own.data) continue
+        const volNode = graphToDestroy.nodes.find((n) => n.id === nodeId)
+        if (!volNode) continue
+        const dockerName = `boz_${graphToDestroy.slug}_${volNode.name}`
+        if (own.parentConfig.retainDataOnDelete) retainedVolumeNames.add(dockerName)
+        managedDataVolumeNames.add(dockerName)
+      }
+      const log = await reconciler.destroy(graphToDestroy, {
+        retainedVolumeNames,
+        managedDataVolumeNames,
+      });
       await projectsService.updateProject(id, { status: "draft" });
       // Réinitialise l'état runtime observé.
       await prisma.node.updateMany({
