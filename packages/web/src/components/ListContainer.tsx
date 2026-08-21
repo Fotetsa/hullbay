@@ -37,7 +37,7 @@ export function ListContainer({
       </div>
       {isEmpty ? (
         <div className="px-6 py-8">
-          <Text className="text-ui-fg-subtle">{empty}</Text>
+          {empty}
         </div>
       ) : (
         children

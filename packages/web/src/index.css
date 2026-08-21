@@ -8,7 +8,10 @@ body,
   height: 100%;
   margin: 0;
 }
-
+body {
+  color: var(--fg-base);
+  background-color: var(--bg-base);
+}
 /*
  * Accessibilité : anneau de focus clavier visible et cohérent sur les éléments
  * interactifs custom (les composants Medusa UI gèrent déjà le leur). On ne montre
