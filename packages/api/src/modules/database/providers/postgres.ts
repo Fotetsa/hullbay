@@ -301,7 +301,7 @@ function haproxyReaderConfig(config: DatabaseConfig, ctx: ExpansionContext): str
  * Le mot de passe n'est jamais dans la cmd : PGPASSWORD lu depuis le fichier
  * secret monté (/run/secrets/<ref>).
  */
-function patroniMemberCmd(config: DatabaseConfig, ctx: ExpansionContext): string {
+function patroniMemberCmd(config: DatabaseConfig, ctx: ExpansionContext, restapiSecret: string): string {
   const superuser = config.credentials.username
   const database = config.credentials.database
   const pwFile = `/run/secrets/${config.credentials.passwordSecretRef!}`
@@ -309,6 +309,11 @@ function patroniMemberCmd(config: DatabaseConfig, ctx: ExpansionContext): string
     "set -eu",
     'ENTRY="/opt/bitnami/scripts/patroni/entrypoint.sh"',
     'RUN="/opt/bitnami/scripts/patroni/run.sh"',
+    // Basic-auth REST Patroni : la valeur vit dans le config-secret monté
+    // (/run/secrets/<restapiSecret>), jamais dans l'env du service. On l'exporte
+    // ici, dans le conteneur, AVANT de lancer l'entrypoint — Patroni la lit comme
+    // toute autre env var (aucune variante *_FILE n'est garantie pour celle-ci).
+    `export PATRONI_RESTAPI_PASSWORD="\$(cat '/run/secrets/${restapiSecret}')"`,
     'if [ -x "$ENTRY" ] && [ -x "$RUN" ]; then',
     '  "$ENTRY" "$RUN" &',
     "else",
@@ -348,6 +353,7 @@ function patroniMember(
   host: string,
   name: string,
   replicationSecret: string,
+  restapiSecret: string,
 ): GeneratedResource {
   // `version` du contrat (jamais "latest") : bitnami/patroni choisit la version
   // de PostgreSQL via POSTGRESQL_VERSION ; sans elle, l'image épinglée Patroni
@@ -362,7 +368,7 @@ function patroniMember(
     config: {
       image: PATRONI_IMAGE.image,
       tag: PATRONI_IMAGE.tag,
-      cmd: ["sh", "-c", patroniMemberCmd(config, ctx)],
+      cmd: ["sh", "-c", patroniMemberCmd(config, ctx, restapiSecret)],
       env: {
         POSTGRESQL_VERSION: version,
         PATRONI_SCOPE: slugify(ctx.parentNode.name),
@@ -370,14 +376,14 @@ function patroniMember(
         PATRONI_NAME: name,
         PATRONI_RESTAPI_LISTEN: "0.0.0.0:8008",
         PATRONI_RESTAPI_CONNECT_ADDRESS: `${host}:8008`,
-        // BYPASS documenté de l'invariant "jamais dans l'env" (derivedInternalSecret
-        // lignes ~76-82) : Patroni n'expose PAS de variante *_FILE pour la basic-auth
-        // REST (PATRONI_RESTAPI_USERNAME/PASSWORD seulement). Valeur INTERNE dérivée
-        // (24 hex), jamais le mot de passe utilisateur. Ne protège QUE les endpoints
-        // "unsafe" (POST /failover, …) — GET /health, /primary, /replica restent
-        // sans auth → healthcheck curl + checks HAProxy inchangés.
+        // Basic-auth REST : la VALEUR n'est JAMAIS dans l'env du service. Elle est
+        // matérialisée en config-secret généré (catalog-patroni-restapi-<hash8>,
+        // via generatedSecrets, monté en fichier /run/secrets/) puis injectée par
+        // le cmd-wrapper (patroniMemberCmd) — le seul endroit où elle existe est
+        // l'intérieur du conteneur. Ne protège QUE les endpoints "unsafe"
+        // (POST /failover, …) — GET /health, /primary, /replica restent sans auth
+        // → healthcheck curl + checks HAProxy inchangés.
         PATRONI_RESTAPI_USERNAME: "patroni",
-        PATRONI_RESTAPI_PASSWORD: derivedInternalSecret(ctx, "patroni-restapi"),
         PATRONI_POSTGRESQL_LISTEN: "0.0.0.0:5432",
         PATRONI_POSTGRESQL_CONNECT_ADDRESS: `${host}:5432`,
         PATRONI_POSTGRESQL_DATA_DIR: DATA_MOUNT_PATH,
@@ -390,6 +396,7 @@ function patroniMember(
       secrets: [
         { secretName: config.credentials.passwordSecretRef! },
         { secretName: replicationSecret },
+        { secretName: restapiSecret },
       ],
       resources: config.resources ?? POSTGRES_DEFAULT_RESOURCES,
       healthcheck: patroniHealthcheck(),
@@ -629,6 +636,11 @@ function expandPostgresHa(
   const replicationValue = derivedInternalSecret(ctx, "patroni-replication")
   const replicationSecret = `${name}-replication-${hash8(replicationValue)}`
   generatedSecrets.push({ name: replicationSecret, data: replicationValue })
+  // Secret interne basic-auth REST (POST /failover…) — même politique : config-secret
+  // généré monté en fichier, valeur injectée par le cmd-wrapper, jamais en env.
+  const restapiValue = derivedInternalSecret(ctx, "patroni-restapi")
+  const restapiSecret = `${name}-patroni-restapi-${hash8(restapiValue)}`
+  generatedSecrets.push({ name: restapiSecret, data: restapiValue })
 
   const network: GeneratedResource = {
     kind: "network",
@@ -652,6 +664,7 @@ function expandPostgresHa(
       `boz_${ctx.projectSlug}_${name}-${i + 1}`,
       `${name}-${i + 1}`,
       replicationSecret,
+      restapiSecret,
     )
     const volumeId = `db::${ctx.parentNodeId}::volume::${i}`
     resources.push(member)

@@ -149,12 +149,17 @@ describe("expandPostgres HA (S4 §12-13)", () => {
     // REST API : basic-auth internes (dérivées, jamais utilisateur) — n'exposent
     // que les endpoints "unsafe" (POST /failover) ; GET /health restent libres.
     expect(env.PATRONI_RESTAPI_USERNAME).toBe("patroni")
-    expect(env.PATRONI_RESTAPI_PASSWORD).toMatch(/^[0-9a-f]{24}$/)
+    // La VALEUR restapi n'est plus dans l'env du service : jamais en clair.
+    expect(env.PATRONI_RESTAPI_PASSWORD).toBeUndefined()
+    // … mais montée en config-secret généré et injectée par le cmd-wrapper.
+    const restapiSecret = exp.generatedSecrets.find((s) => s.name.startsWith("catalog-patroni-restapi-"))!
+    expect(restapiSecret.data).toMatch(/^[0-9a-f]{24}$/)
+    expect(member!.config.secrets!.map((s) => s.secretName)).toContain(restapiSecret.name)
     // Le secret réplication (sa VALEUR) ne peut apparaître que via _FILE : jamais
     // d'URL, de mot de passe ou de valeur dérivée en clair dans l'env.
     expect(env.PATRONI_ETCD_HOSTS).toMatch(/^boz_proj-a_catalog-etcd-1:2379,boz_proj-a_catalog-etcd-2:2379,boz_proj-a_catalog-etcd-3:2379$/)
     // cmd wrapper membre : gate recovery + kill -0 + logs d'échec, sans la valeur
-    // du secret réplication.
+    // des secrets réplication/restapi (uniquement le cat du fichier monté).
     const mc = member!.config.cmd!.join(" ")
     expect(mc).toMatch(/^sh -c set -eu/)
     expect(mc).toContain("/opt/bitnami/scripts/patroni/entrypoint.sh")
@@ -163,8 +168,10 @@ describe("expandPostgres HA (S4 §12-13)", () => {
     expect(mc).toContain('kill -0 "$PATRONI_PID"')
     expect(mc).toContain("ÉCHEC création base 'catalog_db'")
     expect(mc).toContain("/run/secrets/db_catalog_secret")
+    expect(mc).toContain(`export PATRONI_RESTAPI_PASSWORD="$(cat '/run/secrets/${restapiSecret.name}')"`)
     const rep = exp.generatedSecrets.find((s) => s.name.startsWith("catalog-replication-"))!
     expect(mc).not.toContain(rep.data)
+    expect(mc).not.toContain(restapiSecret.data)
     // etcd : wrapper (existing si datadir OU cluster vivant, new sinon), pas de
     // `new`/`existing` en dur et pas de méta-token.
     const [etcd] = byRole(exp, "consensus")
@@ -184,9 +191,11 @@ describe("expandPostgres HA (S4 §12-13)", () => {
     const exp = expandPostgres(cfg({}), ctx)
     const [member] = byRole(exp, "member")
     const replicationSecret = member!.config.secrets!.find((s) => s.secretName.startsWith("catalog-replication-"))!.secretName
+    const restapiSecret = member!.config.secrets!.find((s) => s.secretName.startsWith("catalog-patroni-restapi-"))!.secretName
     expect(member!.config.secrets).toEqual([
       { secretName: "db_catalog_secret" },
       { secretName: replicationSecret },
+      { secretName: restapiSecret },
     ])
     const gen = exp.generatedSecrets.find((s) => s.name === replicationSecret)!
     expect(gen.data).toMatch(/^[0-9a-f]{24}$/)
@@ -194,9 +203,27 @@ describe("expandPostgres HA (S4 §12-13)", () => {
     const again = expandPostgres(cfg({}), ctx)
     const gen2 = again.generatedSecrets.find((s) => s.name === replicationSecret)!
     expect(gen2.data).toBe(gen.data)
-    // Le même secret est référencé par les trois membres — UNE seule entrée générée.
+    // Les secrets générés (replication + restapi) sont référencés par les trois
+    // membres — UNE seule entrée chacun dans generatedSecrets.
     const refs = byRole(exp, "member").map((m) => m.config.secrets!.filter((s) => s.secretName !== "db_catalog_secret"))
-    expect(new Set(refs.flat().map((s) => s.secretName)).size).toBe(1)
+    const shared = refs.flat().map((s) => s.secretName)
+    expect(new Set(shared).size).toBe(2)
+  })
+
+  it("S5-13: audit — aucune valeur de secret généré en env, cmd, nom ni ownership", () => {
+    const exp = expandPostgres(cfg({}), ctx)
+    const secretValues = exp.generatedSecrets.map((s) => s.data)
+    expect(secretValues.length).toBeGreaterThan(0)
+    for (const r of containers(exp)) {
+      const envBlob = JSON.stringify(r.config.env ?? {})
+      const cmdBlob = (r.config.cmd ?? []).join(" ")
+      const nameBlob = `${r.name} ${r.role} ${r.nodeId}`
+      for (const v of secretValues) {
+        expect(envBlob, `env du ${r.name} contient une valeur secrète`).not.toContain(v)
+        expect(cmdBlob, `cmd du ${r.name} contient une valeur secrète`).not.toContain(v)
+        expect(nameBlob, `nom du ${r.name} contient une valeur secrète`).not.toContain(v)
+      }
+    }
   })
 
   it("config-secrets HAProxy : nom versionné par hash8 du contenu, contenu attendu", () => {
