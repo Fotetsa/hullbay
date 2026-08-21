@@ -237,26 +237,32 @@ export async function handleContainerEvent(
 
   if (!nodeId || !state || !dockerId) return;
 
+  // ATTRIBUTION AU PARENT : les resources GÉNÉRÉES par l'expansion
+  // database portent un nodeId synthétique non persisté + bozando.database.parent.
+  // L'état réel est attribué au NŒUD PARENT (le seul existant en base / canvas).
+  const parent = attrs[LabelKeys.dbParent];
+  const targetId = parent || nodeId;
+
   // Agrégation par conteneur réel : emit/écritures UNIQUEMENT si l'état résolu
   // du nœud change (anti-flapping rolling update / replicas).
-  const changed = tracker.apply(dockerId, nodeId, state);
+  const changed = tracker.apply(dockerId, targetId, state);
   if (changed) {
     // Met à jour le reflet runtime (NON source de vérité).
     await prisma.node
-      .update({ where: { id: nodeId }, data: { actualState: state } })
+      .update({ where: { id: targetId }, data: { actualState: state } })
       .catch(() => {
         // nœud inconnu en base (ex: avant rebuild) — on émet quand même l'event live
       });
 
     await eventBus.emit("node.state", {
       projectId,
-      nodeId,
+      nodeId: targetId,
       state,
       dockerStatus: `container:${action}`,
     });
   }
 
-  scheduleReplicaRecount(nodeId, projectId, engine);
+  scheduleReplicaRecount(targetId, projectId, engine, Boolean(parent));
 }
 
 /**
@@ -275,6 +281,7 @@ function scheduleReplicaRecount(
   nodeId: string,
   projectId: string | undefined,
   engine: DockerEngineService,
+  aggregate = false,
 ): void {
   const existing = pendingRecount.get(nodeId);
   if (existing) clearTimeout(existing);
@@ -282,7 +289,7 @@ function scheduleReplicaRecount(
     nodeId,
     setTimeout(() => {
       pendingRecount.delete(nodeId);
-      void recountReplicas(nodeId, projectId, engine);
+      void recountReplicas(nodeId, projectId, engine, aggregate);
     }, REPLICA_DEBOUNCE_MS),
   );
 }
@@ -291,8 +298,25 @@ async function recountReplicas(
   nodeId: string,
   projectId: string | undefined,
   engine: DockerEngineService,
+  aggregate = false,
 ): Promise<void> {
   try {
+    // Nœud database : SOMME des replicas running de tous ses services générés
+    // (membres + consensus + endpoints) — le "stack" du canvas reflète l'ensemble.
+    if (aggregate) {
+      const serviceIds = await engine.listServiceIdsByDatabaseParent(nodeId);
+      let running = 0;
+      for (const sid of serviceIds) {
+        const metrics = await engine.getServiceMetrics(sid);
+        running += metrics.runningReplicas;
+      }
+      await eventBus.emit("node.replicas", {
+        projectId,
+        nodeId,
+        runningReplicas: running,
+      });
+      return;
+    }
     const serviceId = await engine.findServiceIdByNodeId(nodeId);
     if (!serviceId) {
       // Service disparu (destroy) : 0 replica live.
@@ -343,17 +367,21 @@ async function syncInitialState(engine: DockerEngineService): Promise<void> {
     const dockerId = c.Id;
     if (!nodeId || !state || !dockerId) continue;
 
+    // Mêmes règles d'attribution au parent que pour les events (`handleContainerEvent`).
+    const parent = labels[LabelKeys.dbParent];
+    const targetId = parent || nodeId;
+
     // Le même nodeId peut apparaître plusieurs fois (replicas) : le tracker
     // déduplique et renvoie uniquement un changement réel d'état résolu.
-    const changed = tracker.apply(dockerId, nodeId, state as ContainerState);
+    const changed = tracker.apply(dockerId, targetId, state as ContainerState);
     if (changed) {
       await prisma.node
-        .update({ where: { id: nodeId }, data: { actualState: state } })
+        .update({ where: { id: targetId }, data: { actualState: state } })
         .catch(() => {});
 
       await eventBus.emit("node.state", {
         projectId,
-        nodeId,
+        nodeId: targetId,
         state,
         dockerStatus: `container:snapshot:${state}`,
       });
@@ -361,6 +389,6 @@ async function syncInitialState(engine: DockerEngineService): Promise<void> {
 
     // Plusieurs conteneurs (replicas) peuvent partager le même nodeId : le debounce
     // de scheduleReplicaRecount déduplique déjà les appels redondants par nœud.
-    scheduleReplicaRecount(nodeId, projectId, engine);
+    scheduleReplicaRecount(targetId, projectId, engine, Boolean(parent));
   }
 }

@@ -113,8 +113,8 @@ export function caddyAdmin({
  * serveur qui écoute sur le port public (80/443), avec repli sur le 1er serveur.
  */
 export async function resolveServerName(adminUrl: string): Promise<string> {
-  const res = await caddyAdmin({ adminUrl, path: `/config/apps/http/servers` });
-  if (!res.ok) {
+  let res = await caddyAdmin({ adminUrl, path: `/config/apps/http/servers` });
+  if (!res.ok && res.status !== 404) {
     throw new Error(`Caddy: lecture des serveurs impossible (${res.status})`);
   }
   let servers: CaddyServers = {};
@@ -123,11 +123,21 @@ export async function resolveServerName(adminUrl: string): Promise<string> {
   } catch {
     servers = {};
   }
-  const names = Object.keys(servers ?? {});
+  let names = Object.keys(servers ?? {});
   if (names.length === 0) {
-    throw new Error(
-      "Caddy: aucun serveur HTTP configuré",
-    );
+    // Caddy sans serveur HTTP (config minimale `admin` seul) : la lecture des
+    // serveurs renvoie 404, ou un objet vide. On auto-crée `srv0` sur :80 pour
+    // pouvoir insérer des routes (gateways/exposure) sur un serveur existant.
+    const init = await caddyAdmin({
+      adminUrl,
+      path: `/config/apps/http/servers/srv0`,
+      method: "PUT",
+      body: { listen: [":80"] },
+    });
+    if (!init.ok) {
+      throw new Error(`Caddy: impossible de créer srv0 (${init.status})`);
+    }
+    names = ["srv0"];
   }
   // Préfère le serveur qui publie le trafic public (port 80 ou 443).
   const onPublicPort = names.find((n) =>

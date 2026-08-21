@@ -11,6 +11,7 @@ import { buildTestApp } from "../../../__tests__/helpers/build-test-app";
 import { registerSecretsRoutes } from "../routes";
 import { registerAuthGuard } from "../../auth/routes";
 import { authService } from "../../auth/service";
+import { eventBus } from "../../../lib/event-bus";
 
 // Le moteur Docker est résolu PAR CLUSTER via DockerEngineService.forCluster(),
 // pas par un constructeur simple comme avant -- on mocke donc la méthode
@@ -225,6 +226,30 @@ describe("Routes /api/clusters/:clusterId/secrets", () => {
       });
       expect(response.statusCode).toBe(403);
       expect(mockEngine.upsertSecret).not.toHaveBeenCalled();
+    });
+
+    it("S10-05: l'audit (eventBus) ne contient JAMAIS la valeur du secret", async () => {
+      mockEngine.upsertSecret.mockResolvedValue(undefined);
+
+      const response = await app.inject({
+        method: "POST",
+        url: `/api/clusters/${mockClusterId}/secrets`,
+        headers: { authorization: `Bearer ${mockOperatorToken}` },
+        payload: { name: "db_password", value: "s3cr3t-V@leur-réelle" },
+      });
+      expect(response.statusCode).toBe(200);
+
+      // Aucun événement émis ne porte la valeur — seulement nom/cluster/user.
+      expect(eventBus.emit).toHaveBeenCalledWith("secret.set", {
+        userId: "operator-id",
+        clusterId: mockClusterId,
+        name: "db_password",
+      });
+      const allEmits = JSON.stringify(vi.mocked(eventBus.emit).mock.calls);
+      expect(allEmits).not.toContain("s3cr3t-V@leur-réelle");
+
+      // La réponse HTTP non plus.
+      expect(response.body).not.toContain("s3cr3t-V@leur-réelle");
     });
   });
 

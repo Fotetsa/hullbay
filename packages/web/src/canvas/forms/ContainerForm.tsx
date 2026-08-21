@@ -114,7 +114,7 @@ export function ContainerForm({
           <Select.Trigger>
             <Select.Value />
           </Select.Trigger>
-          <Select.Content>
+          <Select.Content className="z-[60]">
             <Select.Item value="__auto">
               Auto (déduit du tag : {effectivePullPolicy({ tag: config.tag ?? "latest" })})
             </Select.Item>
@@ -140,7 +140,7 @@ export function ContainerForm({
           <Select.Trigger>
             <Select.Value />
           </Select.Trigger>
-          <Select.Content>
+          <Select.Content className="z-[60]">
             {["no", "on-failure", "always", "unless-stopped"].map((p) => (
               <Select.Item key={p} value={p}>
                 {p}

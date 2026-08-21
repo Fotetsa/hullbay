@@ -1,5 +1,4 @@
-import { Label } from '@medusajs/ui';
-import { LabelKeys } from "@hullbay/shared"
+import { LabelKeys, isRetainedDataVolume } from "@hullbay/shared"
 import { prisma } from "../lib/prisma"
 import { DockerEngineService } from "../modules/docker-engine/service"
 import { eventBus } from "../lib/event-bus"
@@ -43,15 +42,25 @@ async function knownProjectIds(): Promise<Set<string>> {
   return new Set(rows.map((r) => r.id))
 }
 
-export async function pruneOrphans(apply = false): Promise<PruneResult> {
-  const known = await knownProjectIds();
-  const clusters = await prisma.cluster.findMany({ select: { id: true } });
+/** Dépendances injectables pour les tests unitaires (prune reste réel en prod). */
+export interface PruneDeps {
+  knownProjectIds?: () => Promise<Set<string>>
+  clusterIds?: () => Promise<string[]>
+  engineForCluster?: (clusterId: string) => Promise<DockerEngineService>
+}
+
+export async function pruneOrphans(apply = false, deps: PruneDeps = {}): Promise<PruneResult> {
+  const known = await (deps.knownProjectIds ?? knownProjectIds)();
+  const clusters = await (deps.clusterIds ?? (async () => {
+    const rows = await prisma.cluster.findMany({ select: { id: true } });
+    return rows.map((r) => r.id);
+  }))();
 
   const { items, totalMs } = await runWithConcurrency(
-    clusters.map((c) => c.id),
+    clusters,
     CLUSTER_CONCURRENCY,
     async (clusterId) => {
-      const engine = await DockerEngineService.forCluster(clusterId);
+      const engine = await (deps.engineForCluster ?? DockerEngineService.forCluster)(clusterId);
       const [services, networks, volumes] = await Promise.all([
         engine.listManagedServices(),
         engine.listManagedNetworks(),
@@ -67,7 +76,7 @@ export async function pruneOrphans(apply = false): Promise<PruneResult> {
 
   for (const it of items) {
     if (it.status === "rejected") {
-      const clusterId = clusters[it.index]!.id;
+      const clusterId = clusters[it.index]!;
       errors.push({
         id: clusterId,
         error: `cluster injoignable : ${it.reason instanceof Error ? it.reason.message : String(it.reason)}`,
@@ -84,6 +93,10 @@ export async function pruneOrphans(apply = false): Promise<PruneResult> {
     ) => {
       if (labels[LabelKeys.system] === "true") return;
       if (labels[LabelKeys.managed] !== "true") return;
+      // RÉTENTION : un volume de données (bozando.database.data=true)
+      // n'est jamais orphelin-supprimable — même projet supprimé, les données
+      // survivent sans politique explicite.
+      if (isRetainedDataVolume(labels)) return;
       const projectId = labels[LabelKeys.projectId];
       if (!projectId)
         candidates.push({ kind, id, name, clusterId, reason: "sans projectId" });

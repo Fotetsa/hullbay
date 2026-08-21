@@ -1,4 +1,14 @@
-import type { Project, ProjectGraph, NodeType, Node } from "@hullbay/shared";
+import type { Project, ProjectGraph, NodeType, Node, DatabaseConfig } from "@hullbay/shared";
+
+/**
+ * base64 UTF-8-safe d'un brouillon de config (query GET). `btoa` brut jette une
+ * DOMException sur les caractères non-Latin1 (emoji/CJK dans les noms) — on passe
+ * par TextEncoder pour encoder la string en UTF-8 avant le base64.
+ */
+function draftToBase64(draft: unknown): string {
+  const bytes = new TextEncoder().encode(JSON.stringify(draft));
+  return btoa(String.fromCharCode(...bytes));
+}
 
 /**
  * Client API de l'ops-panel. Le token JWT est conservé en localStorage et envoyé
@@ -238,6 +248,13 @@ export const api = {
 
   // Moteur
   plan: (id: string) => req<ReconcilePlan>(`/api/projects/${id}/plan`),
+  /** Aperçu lecture seule des ressources générées d'un nœud database (S5-09/10).
+   *  `draft` : config EN COURS d'édition (non sauvée) — prévisualise avant save. */
+  databaseNodePreview: (projectId: string, nodeId: string, draft?: Partial<DatabaseConfig>) =>
+    req<DatabaseNodePreview>(
+      `/api/projects/${projectId}/nodes/${nodeId}/preview` +
+        (draft ? `?draft=${encodeURIComponent(draftToBase64(draft))}` : ""),
+    ),
   deploy: (id: string) =>
     req<{ ok: boolean; log: string[] }>(`/api/projects/${id}/deploy`, {
       method: "POST",
@@ -417,6 +434,20 @@ export type DiffAction =
   | { kind: "remove"; dockerId: string; name: string; type: string };
 
 export type ReconcilePlan = { actions: DiffAction[] };
+
+/** Aperçu des ressources générées d'un nœud database (S5-09/10). */
+export type DatabaseNodePreview = {
+  resources: { name: string; kind: "container" | "network" | "volume"; role: string }[];
+  connections: {
+    role: "writer" | "reader";
+    host: string;
+    port: number;
+    database: string;
+    username: string;
+    passwordSecretRef: string;
+  }[];
+  missingPasswordSecret?: boolean;
+};
 
 export type NodeHealth = {
   clusterId: string;

@@ -55,6 +55,12 @@ export type OpsNodeData = {
   onNetwork?: boolean
   /** Ouvre l'inspecteur du volume embarqué (édition) comme s'il était un nœud libre. */
   onVolumeClick?: (volumeId: string) => void
+  /**
+   * BASE DE DONNÉES — résumé compact du nœud managé (moteur · mode · membres),
+   * affiché sous le libellé comme le mapping d'une passerelle. Le détail complet
+   * des ressources générées / endpoints vit dans l'inspecteur (DatabasePreviewPanel).
+   */
+  dbSummary?: { engine: string; mode: string; replicas: number; consensus?: number }
 }
 
 /** Pastille d'état spécifique passerelle : libellé + couleur façon santé upstream. */
@@ -107,10 +113,11 @@ const STATE_COLOR: Record<string, string> = {
  * Couleur par NATURE de lien (pas par type de nœud) : permet de reconnaître au
  * premier coup d'œil quel handle accepte quoi, façon GNS3 (ports typés).
  */
-const HANDLE_COLOR: Record<"net-link" | "vol-link" | "gw-link", string> = {
+const HANDLE_COLOR: Record<"net-link" | "vol-link" | "gw-link" | "db-link", string> = {
   "net-link": "!bg-ui-tag-blue-icon",
   "vol-link": "!bg-ui-tag-orange-icon",
   "gw-link": "!bg-ui-tag-purple-icon",
+  "db-link": "!bg-ui-tag-green-icon",
 }
 
 const HANDLE_SIZE = "!h-2.5 !w-2.5 !border-2 !border-ui-bg-base"
@@ -227,7 +234,7 @@ export function OpsNode({ data, selected }: NodeProps) {
         </span>
       )}
       <div
-        className={`min-w-[128px] max-w-[200px] rounded-md border bg-ui-bg-base px-2 py-1.5 shadow-elevation-card-rest transition-all duration-150 ${
+        className={`min-w-[128px] max-w-[200px] rounded-md border bg-ui-bg-base px-2 py-1.5 shadow-elevation-card-rest transition-[border-color,box-shadow] duration-150 ${
           dropHighlight
             ? "border-ui-tag-orange-icon ring-2 ring-ui-tag-orange-icon"
             : selected
@@ -258,6 +265,13 @@ export function OpsNode({ data, selected }: NodeProps) {
             className={`${HANDLE_SIZE} ${HANDLE_COLOR["gw-link"]}`}
             title="Passerelle"
           />
+          <Handle
+            type="source"
+            id="db-link"
+            position={Position.Top}
+            className={`${HANDLE_SIZE} ${HANDLE_COLOR["db-link"]}`}
+            title="Base de données (dépendance applicative)"
+          />
         </>
       ) : d.nodeType === "network" ? (
         <Handle
@@ -274,6 +288,14 @@ export function OpsNode({ data, selected }: NodeProps) {
           position={Position.Top}
           className={`${HANDLE_SIZE} ${HANDLE_COLOR["vol-link"]}`}
           title="Volume"
+        />
+      ) : d.nodeType === "database" ? (
+        <Handle
+          type="target"
+          id="db-link"
+          position={Position.Left}
+          className={`${HANDLE_SIZE} ${HANDLE_COLOR["db-link"]}`}
+          title="Base de données (dépendance applicative)"
         />
       ) : (
         <Handle
@@ -299,6 +321,23 @@ export function OpsNode({ data, selected }: NodeProps) {
             >
               {d.gatewayDomain}
               {d.gatewayTargetPort ? ` :${d.gatewayTargetPort}` : ""}
+            </div>
+          ) : d.nodeType === "database" && d.dbSummary ? (
+            // Base de données : compact résumé du service managé (moteur · mode).
+            // Le détail des ressources/endpoints est dans l'inspecteur.
+            <div
+              className="truncate text-[10px] leading-tight text-ui-fg-subtle"
+              title={
+                d.dbSummary.mode === "ha"
+                  ? `${d.dbSummary.engine} HA — ${d.dbSummary.replicas} membre(s) data` +
+                    (d.dbSummary.consensus
+                      ? `, ${d.dbSummary.consensus} nœud(s) de coordination`
+                      : "")
+                  : `${d.dbSummary.engine} single — 1 nœud`
+              }
+            >
+              {d.dbSummary.engine} · {d.dbSummary.mode}
+              {d.dbSummary.mode === "ha" ? ` · ${d.dbSummary.replicas} membres` : ""}
             </div>
           ) : (
             <div className="text-[10px] leading-tight text-ui-fg-muted">

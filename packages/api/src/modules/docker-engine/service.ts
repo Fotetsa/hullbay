@@ -300,6 +300,19 @@ export class DockerEngineService {
     return services[0]?.ID ?? null
   }
 
+  /**
+   * Services générés par l'expansion database rattachés à un NŒUD PARENT
+   * (membres, consensus, endpoints) via le label bozando.database.parent.
+   * Serve la résolution d'état AGRÉGÉE de l'observer (le nœud `database` reflète
+   * la somme de ses services générés, pas un service isolé).
+   */
+  async listServiceIdsByDatabaseParent(parentId: string): Promise<string[]> {
+    const services = (await this.docker.listServices({
+      filters: { label: [`${LabelKeys.dbParent}=${parentId}`] },
+    })) as { ID?: string }[]
+    return services.map((s) => s.ID ?? "").filter(Boolean)
+  }
+
   async getServiceMetrics(serviceId: string): Promise<ServiceMetrics> {
     const [svc, tasks] = await Promise.all([
       this.inspectService(serviceId),
@@ -558,6 +571,19 @@ export class DockerEngineService {
         Networks: networkNames.map((n) => ({ Target: n })),
         Resources: { Limits: limits },
         RestartPolicy: { Condition: DockerEngineService.restartCondition(config.restartPolicy) },
+        // Placement Swarm (Constraints + Spread) — porté par les providers database
+        // pour la distribution des membres . Omit quand absent : ne pas
+        // polluer les specs des services existants qui n'en avaient pas.
+        ...(config.placement
+          ? {
+              Placement: {
+                Constraints: config.placement.constraints.length > 0 ? config.placement.constraints : undefined,
+                Preferences: config.placement.spreadOver.map((descriptor) => ({
+                  Spread: { SpreadDescriptor: descriptor },
+                })),
+              },
+            }
+          : {}),
       },
       Mode: { Replicated: { Replicas: config.replicas } },
       UpdateConfig: {

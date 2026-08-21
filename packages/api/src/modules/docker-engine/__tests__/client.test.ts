@@ -1,19 +1,23 @@
 import { describe, it, expect, beforeEach, vi } from "vitest"
 
-const { mockDocker, mockFindUniqueOrThrow, mockEnsureTunnel } = vi.hoisted(() => ({
+const { mockDocker, mockFindUniqueOrThrow, mockEnsureTunnel, mockCloseTunnel } = vi.hoisted(() => ({
   // function (pas arrow) : dockerode est instancié via `new Docker(params)`
   mockDocker: vi.fn(function (params: Record<string, unknown>) {
     return { params, opts: params }
   }),
   mockFindUniqueOrThrow: vi.fn(),
   mockEnsureTunnel: vi.fn(),
+  mockCloseTunnel: vi.fn(),
 }))
 
 vi.mock("dockerode", () => ({ default: mockDocker }))
 vi.mock("../../../lib/prisma", () => ({
   prisma: { cluster: { findUniqueOrThrow: mockFindUniqueOrThrow } },
 }))
-vi.mock("../../../lib/ssh-tunnel", () => ({ ensureTunnel: mockEnsureTunnel }))
+vi.mock("../../../lib/ssh-tunnel", () => ({
+  ensureTunnel: mockEnsureTunnel,
+  closeTunnel: mockCloseTunnel,
+}))
 
 import { getDockerForCluster, invalidateDockerClient } from "../client"
 
@@ -190,6 +194,7 @@ describe("getDockerForCluster — cache + accès selon le type de cluster (P2)",
 
     expect(before).not.toBe(after)
     expect(mockFindUniqueOrThrow).toHaveBeenCalledTimes(2)
+    expect(mockCloseTunnel).toHaveBeenCalledWith("c1", 2375)
   })
 
   it("appels concurrents → un seul client construit (Promise partagée)", async () => {
