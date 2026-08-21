@@ -6,6 +6,7 @@ import { handleContainerEvent, resetTrackerForTests } from "../service";
 const mockEngine = {
   findServiceIdByNodeId: vi.fn(),
   getServiceMetrics: vi.fn(),
+  listServiceIdsByDatabaseParent: vi.fn(),
 };
 
 vi.mock("../../../lib/prisma", () => ({
@@ -162,6 +163,126 @@ describe("observer.service — handleContainerEvent", () => {
     expect(eventBus.emit).toHaveBeenCalledWith(
       "node.state",
       expect.objectContaining({ nodeId: "n1", state: "exited" }),
+    );
+  });
+});
+
+describe("observer.service — attribution au parent database (S3-10)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.useFakeTimers();
+    resetTrackerForTests();
+  });
+
+  afterEach(() => {
+    vi.runOnlyPendingTimers();
+    vi.useRealTimers();
+  });
+
+  const memberEvent = (dockerId: string, action: string) => ({
+    Type: "container",
+    Action: action,
+    Actor: {
+      ID: dockerId,
+      Attributes: {
+        "bozando.nodeId": "db::n_db::member::0",
+        "bozando.projectId": "proj-1",
+        "bozando.database.parent": "n_db",
+      },
+    },
+  });
+
+  it("attribue l'état au PARENT (nœud persisté), jamais à l'id synthétique", async () => {
+    await handleContainerEvent(memberEvent("m1", "start"), mockEngine as any);
+    // Le reflet runtime est écrit sur le parent…
+    expect(prisma.node.update).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: "n_db" } }),
+    );
+    // …et l'event live porte le nodeId du parent.
+    expect(eventBus.emit).toHaveBeenCalledWith(
+      "node.state",
+      expect.objectContaining({ nodeId: "n_db", state: "running" }),
+    );
+    expect(eventBus.emit).not.toHaveBeenCalledWith(
+      "node.state",
+      expect.objectContaining({ nodeId: "db::n_db::member::0" }),
+    );
+  });
+
+  it("sans label parent (conteneur normal) : attribution inchangée, pas de régression", async () => {
+    await handleContainerEvent(
+      containerEvent("c1", "n1", "start"),
+      mockEngine as any,
+    );
+    expect(eventBus.emit).toHaveBeenCalledWith(
+      "node.state",
+      expect.objectContaining({ nodeId: "n1" }),
+    );
+  });
+});
+
+describe("observer.service — recomptage replicas agrégé par parent (S3-11)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.useFakeTimers();
+    resetTrackerForTests();
+  });
+
+  afterEach(() => {
+    vi.runOnlyPendingTimers();
+    vi.useRealTimers();
+  });
+
+  const parentEvent = (dockerId: string, action: string) => ({
+    Type: "container",
+    Action: action,
+    Actor: {
+      ID: dockerId,
+      Attributes: {
+        "bozando.nodeId": "db::n_db::member::0",
+        "bozando.projectId": "proj-1",
+        "bozando.database.parent": "n_db",
+      },
+    },
+  });
+
+  it("SOMME les replicas running de tous les services générés du parent", async () => {
+    vi.mocked(mockEngine.listServiceIdsByDatabaseParent).mockResolvedValue([
+      "svc-member",
+      "svc-consensus",
+      "svc-writer",
+    ]);
+    vi.mocked(mockEngine.getServiceMetrics)
+      .mockResolvedValueOnce({ runningReplicas: 2 })
+      .mockResolvedValueOnce({ runningReplicas: 3 })
+      .mockResolvedValueOnce({ runningReplicas: 1 });
+
+    await handleContainerEvent(parentEvent("m1", "start"), mockEngine as any);
+    await vi.advanceTimersByTimeAsync(801);
+
+    expect(mockEngine.listServiceIdsByDatabaseParent).toHaveBeenCalledWith("n_db");
+    expect(eventBus.emit).toHaveBeenCalledWith(
+      "node.replicas",
+      expect.objectContaining({ nodeId: "n_db", runningReplicas: 6 }),
+    );
+  });
+
+  it("conteneur normal : recompte au service individuel (pas d'agrégation)", async () => {
+    vi.mocked(mockEngine.findServiceIdByNodeId).mockResolvedValue("svc-1");
+    vi.mocked(mockEngine.getServiceMetrics).mockResolvedValue({
+      runningReplicas: 2,
+    });
+
+    await handleContainerEvent(
+      containerEvent("c1", "n1", "start"),
+      mockEngine as any,
+    );
+    await vi.advanceTimersByTimeAsync(801);
+
+    expect(mockEngine.listServiceIdsByDatabaseParent).not.toHaveBeenCalled();
+    expect(eventBus.emit).toHaveBeenCalledWith(
+      "node.replicas",
+      expect.objectContaining({ nodeId: "n1", runningReplicas: 2 }),
     );
   });
 });

@@ -3,6 +3,8 @@ import {
   parseNodeConfig,
   effectivePullPolicy,
   LabelKeys,
+  databaseOwnershipLabels,
+  isRetainedDataVolume,
   type ProjectGraph,
   type Node,
   type Edge,
@@ -23,6 +25,7 @@ import { invalidateDockerClient } from "../modules/docker-engine/client"
 import { ReconcilerService } from "../modules/reconciler/service"
 import { registryService } from "../modules/registry/service"
 import { prisma } from "../lib/prisma"
+import { expandDatabaseGraph, DatabaseValidationError } from "../modules/database"
 
 /**
  * Erreur MÉTIER de déploiement (image indisponible, garde multi-nœuds, secret
@@ -48,12 +51,14 @@ export interface DeployInput {
   createdBy?: string
 }
 
-type DeployShared = {
+export type DeployShared = {
   log: string[]
   networkIdByNodeId: Map<string, string>
   createdServiceIds: string[]
   createdNetworkIds: string[]
   createdGateways: { nodeName: string }[]
+  /** Expansion database du graphe déployé : ownership des ressources générées. */
+  db: ReturnType<typeof expandDatabaseGraph>
   /**
    * État déployé à persister en base APRÈS succès (sinon node.dockerId reste null
    * et le badge "à déployer" ne disparaît jamais). Pour les nœuds non-conteneur
@@ -94,14 +99,31 @@ function outgoing(graph: ProjectGraph, nodeId: string): EdgeSummary[] {
     })
 }
 
-function labelsFor(input: DeployInput, node: Node) {
-  return buildBozandoLabels({
+function labelsFor(input: DeployInput, node: Node, db: ReturnType<typeof expandDatabaseGraph>) {
+  const labels = buildBozandoLabels({
     projectId: input.graph.id,
     projectSlug: input.graph.slug,
     node,
     outgoingEdges: outgoing(input.graph, node.id),
     createdBy: input.createdBy,
   })
+  // Ownership database des ressources GÉNÉRÉES (observer/rebuild/rétention/UI).
+  const own = db.ownership.get(node.id)
+  if (own) {
+    // Labels bozando.database.* : rétention honorée (retainDataOnDelete). Aucun
+    // label dbData posé si opt-out → volume supprimable par les 3 chemins.
+    Object.assign(labels, databaseOwnershipLabels({
+      parentNodeId: own.parentNodeId,
+      parentNodeName: own.parentName,
+      parentConfig: own.parentConfig,
+      role: own.role,
+      index: own.index,
+      engine: own.engine,
+      data: own.data,
+      retainDataOnDelete: own.parentConfig.retainDataOnDelete,
+    }))
+  }
+  return labels
 }
 
 // ── Steps ──────────────────────────────────────────────────────────────────
@@ -129,7 +151,7 @@ const networksStep: Step<DeployInput> = {
       const net = await s.engine.createNetwork(
         name,
         parseNodeConfig("network", node.config) as NetworkConfig,
-        labelsFor(input, node)
+        labelsFor(input, node, s.db)
       )
       const id = (net as { id: string }).id
       s.networkIdByNodeId.set(node.id, id)
@@ -146,7 +168,7 @@ const networksStep: Step<DeployInput> = {
   },
 }
 
-const volumesStep: Step<DeployInput> = {
+export const volumesStep: Step<DeployInput> = {
   name: "volumes",
   run: async (input, ctx) => {
     const s = ctx.shared as DeployShared
@@ -158,6 +180,9 @@ const volumesStep: Step<DeployInput> = {
     // volume retiré du canvas survit indéfiniment dans Docker (le step ne faisait
     // que créer), et réapparaît à chaque déploiement. On ne touche QU'aux volumes
     // managés de CE projet (filtre projectId), jamais aux volumes système/externes.
+    // GARDE RÉTENTION : un volume marqué bozando.database.data=true (données d'une
+    // base) n'est JAMAIS supprimé automatiquement  — la suppression
+    // n'efface pas les données sans politique explicite de l'utilisateur.
     const wantedNames = new Set(
       input.graph.nodes
         .filter((n) => n.type === "volume")
@@ -167,6 +192,7 @@ const volumesStep: Step<DeployInput> = {
       const labels = v.Labels ?? {}
       if (labels[LabelKeys.projectId] !== input.graph.id) continue
       if (labels[LabelKeys.system] === "true") continue
+      if (isRetainedDataVolume(labels)) continue
       if (wantedNames.has(v.Name)) continue
       try {
         await s.engine.removeVolume(v.Name);
@@ -191,14 +217,65 @@ const volumesStep: Step<DeployInput> = {
         s.log.push(`volume ${name} déjà présent`)
         continue
       }
-      await s.engine.createVolume(name, cfg, labelsFor(input, node));
+      await s.engine.createVolume(name, cfg, labelsFor(input, node, s.db));
       s.deployed.set(node.id, { actualState: "running" })
       s.log.push(`volume ${name} créé`)
     }
   },
 }
 
-const servicesStep: Step<DeployInput> = {
+export const secretsStep: Step<DeployInput> = {
+  name: "secrets",
+  run: async (input, ctx) => {
+    const s = ctx.shared as DeployShared
+    const generated = s.db.generatedSecrets
+    // Pas de secrets générés  ; le step reste prêt pour HA.
+    if (generated.length === 0) return
+    // Config-secrets générés par l'expansion (haproxy.cfg, sentinel.conf…). Les
+    // providers nomment déjà par `-<hash8>` (contenu) : un nom IDENTIQUE = même
+    // contenu → skip (pas de delete+recreate ; les secrets Swarm immuables seraient
+    // supprimés alors qu'un service en cours les référence). Un changement de
+    // contenu produit un nom NEUF avant le rolling update.
+    const existing = await s.engine.listManagedSecrets()
+    const currentNames = new Set(generated.map((g) => g.name))
+    for (const g of generated) {
+      const already = existing.find(
+        (sec) =>
+          sec.name === g.name &&
+          sec.labels["bozando.database.generated"] === "true" &&
+          sec.labels[LabelKeys.projectId] === input.graph.id
+      )
+      if (already) {
+        s.log.push(`secret généré ${g.name} inchangé (skip)`)
+        continue
+      }
+      await s.engine.upsertSecret(g.name, g.data, {
+        [LabelKeys.managed]: "true",
+        "bozando.database.generated": "true",
+        [LabelKeys.projectId]: input.graph.id,
+        [LabelKeys.projectSlug]: input.graph.slug,
+      })
+      s.log.push(`secret généré ${g.name} posé`)
+    }
+    // Orphelins : générés pour CE projet mais non référencés par le nouveau nom
+    // (contenu changé). Suppression tolérante — un secret encore monté par un
+    // service pré-rolling ne se supprime pas (Swarm) : réessai au prochain deploy.
+    for (const sec of existing) {
+      const mine =
+        sec.labels["bozando.database.generated"] === "true" &&
+        sec.labels[LabelKeys.projectId] === input.graph.id
+      if (!mine || currentNames.has(sec.name)) continue
+      try {
+        await s.engine.removeSecret(sec.name)
+        s.log.push(`ancien secret généré ${sec.name} supprimé (contenu changé)`)
+      } catch {
+        s.log.push(`secret ${sec.name} retenu (encore monté ?) — réessai au prochain déploiement`)
+      }
+    }
+  },
+}
+
+export const servicesStep: Step<DeployInput> = {
   name: "services",
   run: async (input, ctx) => {
     const s = ctx.shared as DeployShared
@@ -225,7 +302,7 @@ const servicesStep: Step<DeployInput> = {
       const cfg = parseNodeConfig("container", node.config) as ContainerConfig
       const networks = networkNamesFor(input.graph, node, slug)
       const mounts = volumeMountsFor(input.graph, node)
-      const labels = labelsFor(input, node)
+      const labels = labelsFor(input, node, s.db)
 
       // 1) Disponibilité de l'image SELON LA POLICY (avant toute création de service).
       const image = `${cfg.image}:${cfg.tag}`
@@ -419,6 +496,20 @@ export async function deployProjectWorkflow(input: DeployInput) {
   // tunnel précédent a été refermé entre deux appels).
   invalidateDockerClient(input.graph.clusterId)
 
+  // EXPANSION database : le graphe persisté (avec nœuds `database` de composition)
+  // devient le graphe déployable (membres/consensus/endpoints/réseau/volumes).
+  // En mémoire uniquement — jamais persisté . Une topologie invalide ou
+  // un moteur non implémenté bloquent le déploiement AVANT toute action Docker.
+  let expanded: ReturnType<typeof expandDatabaseGraph>
+  try {
+    expanded = expandDatabaseGraph(input.graph)
+  } catch (err) {
+    if (err instanceof DatabaseValidationError) {
+      throw new DeployError(err.message)
+    }
+    throw err
+  }
+
   const engine = await DockerEngineService.forCluster(
     input.graph.clusterId,
     async (image) => {
@@ -437,14 +528,15 @@ export async function deployProjectWorkflow(input: DeployInput) {
     createdServiceIds: [],
     createdNetworkIds: [],
     createdGateways: [],
+    db: expanded,
     deployed: new Map(),
     engine,
     reconciler,
   };
   const result = await runWorkflow<DeployInput>(
     "deploy-project",
-    [networksStep, volumesStep, servicesStep, gatewaysStep],
-    input,
+    [networksStep, volumesStep, secretsStep, servicesStep, gatewaysStep],
+    { ...input, graph: expanded.graph },
     {},
     shared as unknown as Record<string, unknown>,
   );

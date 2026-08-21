@@ -17,7 +17,7 @@ import { useQuery, useQueryClient, keepPreviousData } from "@tanstack/react-quer
 import { Navigate, useNavigate, useParams } from "react-router-dom"
 import { Button, Heading, Text, toast, usePrompt } from "@medusajs/ui"
 import { PlaySolid, Trash, ArrowLeft, ExclamationCircle, Spinner, XMark } from "@medusajs/icons"
-import type { NodeType, ActualState, Node, Edge } from "@hullbay/shared"
+import type { NodeType, ActualState, Node, Edge, DatabaseConfig } from "@hullbay/shared"
 // Sous-chemin node-config : évite de tirer labels.ts (node:crypto) dans le bundle navigateur.
 import { isConnectionAllowed, edgeKindForPair } from "@hullbay/shared/node-config"
 import { api } from "../lib/api"
@@ -26,6 +26,7 @@ import { useMutationToast } from "../lib/useMutationToast"
 import { useOpsSocket } from "../lib/useOpsSocket"
 import { OpsNode, type OpsNodeData } from "../canvas/OpsNode"
 import { Palette } from "../canvas/Palette"
+import { ENGINE_DEFAULTS } from "../canvas/forms/DatabaseForm"
 import { Inspector } from "../canvas/Inspector"
 import { EdgeInspector } from "../canvas/EdgeInspector"
 import { DeployPlanModal } from "../canvas/DeployPlanModal"
@@ -37,6 +38,7 @@ const KIND_TO_HANDLE: Record<string, string> = {
   network: "net-link",
   volume: "vol-link",
   gateway: "gw-link",
+  database: "db-link",
 }
 
 const nodeTypes = { ops: OpsNode }
@@ -56,6 +58,17 @@ const DEFAULT_CONFIG: Record<NodeType, Record<string, unknown>> = {
   network: { driver: "overlay", internal: false },
   volume: { driver: "local" },
   gateway: { domain: "example.com", targetPort: 80, tls: true },
+  database: {
+    engine: "postgres",
+    version: "16.3",
+    mode: "single",
+    topology: { replicas: 1 },
+    storage: { sizeGb: 20 },
+    // Pas de secret par défaut : un nœud neuf est un état de travail valide,
+    // le déploiement exige le choix d'un secret (provider.validate).
+    credentials: { username: "app", database: "app" },
+    retainDataOnDelete: true,
+  },
 }
 
 function CanvasInner({ projectId }: { projectId: string }) {
@@ -219,6 +232,21 @@ function CanvasInner({ projectId }: { projectId: string }) {
           const isGw = n.type === "gateway"
           const gwCfg = isGw ? (n.config as { domain?: string; targetPort?: number } | null) : null
           const targetId = isGw ? gatewayTargetByGateway.get(n.id) : undefined
+          // Base de données : résumé compact (moteur · mode · membres) affiché sur
+          // le nœud ; le détail généré vit dans l'inspecteur (DatabasePreviewPanel).
+          const dbCfg = n.type === "database" ? (n.config as DatabaseConfig | null) : null
+          const dbSummary = dbCfg
+            ? {
+                engine: dbCfg.engine ?? "postgres",
+                mode: dbCfg.mode ?? "single",
+                replicas:
+                  dbCfg.topology?.replicas ??
+                  (dbCfg.mode === "ha"
+                    ? ENGINE_DEFAULTS[dbCfg.engine ?? "postgres"].haReplicas[0]!
+                    : 1),
+                consensus: dbCfg.topology?.consensusReplicas,
+              }
+            : undefined
           // Conteneur : on garde l'état caché/live (l'observer le pousse en continu,
           // éviter le flicker pendant un rolling update). Réseau/volume/passerelle
           // n'émettent AUCUN event live -> on fait confiance à l'actualState fraîchement
@@ -266,6 +294,7 @@ function CanvasInner({ projectId }: { projectId: string }) {
               onVolumeDrop:
                 n.type === "container" ? () => onContainerVolumeDrop(n.id) : undefined,
               onVolumeClick: n.type === "container" ? (id: string) => setSelectedId(id) : undefined,
+              ...(n.type === "database" && dbSummary ? { dbSummary } : {}),
             } satisfies OpsNodeData,
           }
         })
@@ -701,6 +730,7 @@ function CanvasInner({ projectId }: { projectId: string }) {
             <Inspector
               key={selectedNode.id}
               node={selectedNode}
+              projectId={projectId}
               clusterId={graph?.clusterId ?? null}
               onClose={() => setSelectedId(null)}
               onSaved={() => qc.invalidateQueries({ queryKey: ["project", projectId] })}

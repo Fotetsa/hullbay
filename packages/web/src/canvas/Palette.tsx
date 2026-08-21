@@ -11,7 +11,7 @@ import { NODE_META } from "./node-meta"
  *  - CLIC / CLAVIER (Enter/Space) : `onAdd` crée le nœud au centre du canvas.
  * Le drag HTML5 seul est inutilisable au clavier ; le fallback est obligatoire.
  */
-const TYPES: NodeType[] = ["container", "network", "volume", "gateway"]
+const TYPES: NodeType[] = ["container", "network", "volume", "gateway", "database"]
 
 export function Palette({ onAdd }: { onAdd: (type: NodeType) => void }) {
   return (
