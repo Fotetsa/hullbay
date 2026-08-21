@@ -54,14 +54,15 @@
       "copied": "Copié",
       "verificationCodeLabel": "Code de vérification",
       "confirmButton": "Confirmer l'activation"
-    }   
+    }
   },
-  
+
   "nav": {
     "projects": "Projets",
     "health": "Santé",
     "logs": "Journal",
     "servers": "Serveurs",
+    "clusters": "Clusters",
     "registries": "Registres",
     "secrets": "Secrets",
     "users": "Utilisateurs",
@@ -214,6 +215,68 @@
       "statusOk": "quorum OK"
     },
     "empty": "Aucun serveur. Le premier ajouté devient le manager du cluster."
+  },
+
+  "clusters": {
+    "pageTitle": "Clusters",
+    "loading": "Chargement…",
+    "empty": {
+      "title": "Aucun cluster",
+      "description": "Un cluster « Default » est normalement créé automatiquement au premier démarrage."
+    },
+    "badge": { "default": "défaut" },
+    "serverCount": "{{count}} serveur(s)",
+    "actions": { "delete": "Supprimer" },
+    "deleteConfirm": {
+      "title": "Supprimer ce cluster ?",
+      "description": "« {{name}} » n'est pas opérationnel (statut : {{status}}) — la suppression retire aussi tout serveur qui lui serait rattaché. Action irréversible."
+    },
+    "toast": {
+      "deleteSuccess": "Cluster supprimé",
+      "deleteSuccessWithServers_one": "Cluster supprimé ({{count}} serveur retiré)",
+      "deleteSuccessWithServers_other": "Cluster supprimé ({{count}} serveurs retirés)"
+    },
+    "detail": {
+      "back": "Retour",
+      "backToClusters": "Retour aux clusters",
+      "loading": "Chargement du cluster...",
+      "notFound": {
+        "title": "Cluster introuvable",
+        "description": "Ce cluster n'existe pas ou a été supprimé."
+      },
+      "defaultBadge": "cluster par défaut",
+      "clusterBadge": "cluster",
+      "tabs": { "overview": "Vue d'ensemble", "services": "Services" },
+      "quorum": {
+        "title": "Quorum (HA control plane)",
+        "description": "{{reachable}}/{{total}} managers joignables. Recommandé : nombre impair (3 tolère 1 panne, 5 en tolère 2).",
+        "ok": "quorum OK",
+        "atRisk": "quorum à risque"
+      },
+      "unreachable": "Ce cluster n'est pas joignable actuellement — aucune donnée de santé disponible.",
+      "server": {
+        "promote": "Promouvoir manager",
+        "demote": "Rétrograder worker",
+        "remove": "Retirer du cluster",
+        "leader": "leader",
+        "empty": "Aucun serveur dans ce cluster."
+      },
+      "removeServerConfirm": {
+        "title": "Retirer ce serveur ?",
+        "description": "« {{name}} » ({{host}}) sera drainé puis retiré du cluster Swarm. Les tasks qui y tournent seront reschedulées sur les autres nœuds. Action destructive."
+      },
+      "toast": {
+        "roleChanged": "Rôle changé : {{role}}",
+        "serverRemoved": "Serveur retiré"
+      },
+      "services": {
+        "empty": "Aucun service en cours sur ce cluster.",
+        "service": "Service",
+        "replicas": "Replicas",
+        "avgCpu": "CPU moyen",
+        "memory": "Mémoire"
+      }
+    }
   },
 
   "integrations": {

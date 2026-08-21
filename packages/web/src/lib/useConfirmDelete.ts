@@ -24,35 +24,35 @@ export function useConfirmDelete<TVars>({
   confirm,
   onSuccess,
 }: {
-  mutationFn: (vars: TVars) => Promise<unknown>
-  success?: string
-  invalidate?: QueryKey[]
+  mutationFn: (vars: TVars) => Promise<unknown>;
+  success?: string | ((response: unknown) => string);
+  invalidate?: QueryKey[];
   confirm: (vars: TVars) => {
-    title: string
-    description: string
-    confirmText?: string
-    cancelText?: string
-  }
-  onSuccess?: (vars: TVars) => void
+    title: string;
+    description: string;
+    confirmText?: string;
+    cancelText?: string;
+  };
+  onSuccess?: (vars: TVars) => void;
 }) {
-  const prompt = usePrompt()
+  const prompt = usePrompt();
   const mutation = useMutationToast<unknown, TVars>({
     mutationFn,
-    success,
+    success: success as any,
     invalidate,
     onSuccess: (_d, vars) => onSuccess?.(vars),
-  })
+  });
 
   return async (vars: TVars) => {
-    const c = confirm(vars)
+    const c = confirm(vars);
     const ok = await prompt({
       title: c.title,
       description: c.description,
       confirmText: c.confirmText ?? "Supprimer",
       cancelText: c.cancelText ?? "Annuler",
       variant: "danger",
-    })
-    if (!ok) return
-    mutation.mutate(vars)
-  }
+    });
+    if (!ok) return;
+    mutation.mutate(vars);
+  };
 }

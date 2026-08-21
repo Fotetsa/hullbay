@@ -1,16 +1,17 @@
 import { useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
+import { useTranslation } from "react-i18next";
 import { Button, Container, Heading, Text, Badge, Table } from "@medusajs/ui";
 import {
   ArrowLeft,
-  ServerStack,
+  ServerSolid,
   ArrowUpMini,
   ArrowDownMini,
   Trash,
   CircleMiniSolid,
 } from "@medusajs/icons";
-import { api, type Server, type ClusterHealth } from "../lib/api";
+import { api, type Server } from "../lib/api";
 import { useMutationToast } from "../lib/useMutationToast";
 import { useConfirmDelete } from "../lib/useConfirmDelete";
 import { PageHeader, PageContainer } from "../components/PageHeader";
@@ -36,10 +37,10 @@ const CLUSTER_STATUS_COLOR: Record<
 type TabKey = "overview" | "services";
 
 export function ClusterDetailPage() {
+  const { t } = useTranslation();
   const { clusterId } = useParams<{ clusterId: string }>();
   const navigate = useNavigate();
   const [tab, setTab] = useState<TabKey>("overview");
-
 
   const { data: clusters, isLoading: clustersLoading } = useQuery({
     queryKey: ["clusters"],
@@ -54,51 +55,62 @@ export function ClusterDetailPage() {
     queryFn: api.clusterHealth,
   });
 
-  const isLoading = clustersLoading || serversLoading || healthLoading
+  const removeServer = useConfirmDelete<Server>({
+    mutationFn: (srv) => api.deleteServer(srv.id),
+    success: t("clusters.detail.toast.serverRemoved"),
+    invalidate: [["servers"], ["health"]],
+    confirm: (srv) => ({
+      title: t("clusters.detail.removeServerConfirm.title"),
+      description: t("clusters.detail.removeServerConfirm.description", {
+        name: srv.name,
+        host: srv.host,
+      }),
+    }),
+  });
+
+  const setRole = useMutationToast({
+    mutationFn: ({ id, role }: { id: string; role: "manager" | "worker" }) =>
+      api.setServerRole(id, role),
+    success: (r) => t("clusters.detail.toast.roleChanged", { role: r.role }),
+    invalidate: [["servers"], ["health"]],
+  });
+
+  const isLoading = clustersLoading || serversLoading || healthLoading;
 
   if (isLoading) {
     return (
       <PageContainer>
-        <Text className="text-ui-fg-subtle">Chargement du cluster...</Text>
+        <Text className="text-ui-fg-subtle">
+          {t("clusters.detail.loading")}
+        </Text>
       </PageContainer>
-    )
+    );
   }
 
-  const cluster = clusters?.find((c) => c.id === clusterId)
+  const cluster = clusters?.find((c) => c.id === clusterId);
 
   if (!cluster) {
     return (
       <PageContainer>
         <Container className="p-6 text-center">
-          <Heading level="h2" className="mb-2">Cluster introuvable</Heading>
+          <Heading level="h2" className="mb-2">
+            {t("clusters.detail.notFound.title")}
+          </Heading>
           <Text className="text-ui-fg-subtle mb-4">
-            Ce cluster n'existe pas ou a été supprimé.
+            {t("clusters.detail.notFound.description")}
           </Text>
-          <Button onClick={() => navigate("/servers")}>Retour aux serveurs</Button>
+          <Button onClick={() => navigate("/clusters")}>
+            {t("clusters.detail.backToClusters")}
+          </Button>
         </Container>
       </PageContainer>
-    )
+    );
   }
 
-  const servers = (serversData?.servers ?? []).filter((s) => s.clusterId === clusterId)
-  const health = healthData?.clusters.find((c) => c.clusterId === clusterId)
-
-  const setRole = useMutationToast({
-    mutationFn: ({ id, role }: { id: string; role: "manager" | "worker" }) =>
-      api.setServerRole(id, role),
-    success: (r) => `Rôle changé : ${r.role}`,
-    invalidate: [["servers"], ["health"]],
-  });
-
-  const removeServer = useConfirmDelete<Server>({
-    mutationFn: (srv) => api.deleteServer(srv.id),
-    success: "Serveur retiré",
-    invalidate: [["servers"], ["health"]],
-    confirm: (srv) => ({
-      title: "Retirer ce serveur ?",
-      description: `« ${srv.name} » (${srv.host}) sera drainé puis retiré du cluster Swarm. Les tasks qui y tournent seront reschedulées sur les autres nœuds. Action destructive.`,
-    }),
-  });
+  const servers = (serversData?.servers ?? []).filter(
+    (s) => s.clusterId === clusterId,
+  );
+  const health = healthData?.clusters.find((c) => c.clusterId === clusterId);
 
   const managersTotal = servers.filter((s) => s.role === "manager").length;
   const managersReachable =
@@ -112,35 +124,31 @@ export function ClusterDetailPage() {
         <Button
           variant="transparent"
           size="small"
-          onClick={() => navigate("/servers")}
+          onClick={() => navigate("/clusters")}
         >
-          <ArrowLeft /> Retour
+          <ArrowLeft /> {t("clusters.detail.back")}
         </Button>
       </div>
 
       <PageHeader
-        title={cluster?.name ?? "Cluster"}
+        title={cluster.name}
         actions={
-          cluster && (
-            <Badge
-              color={
-                CLUSTER_STATUS_COLOR[cluster.isDefault ? "ready" : "ready"] ??
-                "grey"
-              }
-              size="small"
-            >
-              {cluster.isDefault ? "cluster par défaut" : "cluster"}
-            </Badge>
-          )
+          <Badge
+            color={CLUSTER_STATUS_COLOR[cluster.status] ?? "grey"}
+            size="small"
+          >
+            {cluster.isDefault
+              ? t("clusters.detail.defaultBadge")
+              : t("clusters.detail.clusterBadge")}
+          </Badge>
         }
       />
-
 
       <div className="mb-4 flex gap-1 border-b border-ui-border-base">
         {(
           [
-            ["overview", "Vue d'ensemble"],
-            ["services", "Services"],
+            ["overview", t("clusters.detail.tabs.overview")],
+            ["services", t("clusters.detail.tabs.services")],
           ] as [TabKey, string][]
         ).map(([key, label]) => (
           <button
@@ -163,14 +171,18 @@ export function ClusterDetailPage() {
           {managersTotal > 0 && (
             <Container className="flex items-center justify-between p-4">
               <div>
-                <Heading level="h3">Quorum (HA control plane)</Heading>
+                <Heading level="h3">{t("clusters.detail.quorum.title")}</Heading>
                 <Text size="small" className="text-ui-fg-subtle">
-                  {managersReachable}/{managersTotal} managers joignables.
-                  Recommandé : nombre impair (3 tolère 1 panne, 5 en tolère 2).
+                  {t("clusters.detail.quorum.description", {
+                    reachable: managersReachable,
+                    total: managersTotal,
+                  })}
                 </Text>
               </div>
               <Badge color={quorumOk ? "green" : "red"}>
-                {quorumOk ? "quorum OK" : "quorum à risque"}
+                {quorumOk
+                  ? t("clusters.detail.quorum.ok")
+                  : t("clusters.detail.quorum.atRisk")}
               </Badge>
             </Container>
           )}
@@ -178,8 +190,7 @@ export function ClusterDetailPage() {
           {!health?.swarmActive && (
             <Container className="p-4">
               <Text className="text-ui-fg-error">
-                Ce cluster n'est pas joignable actuellement — aucune donnée de
-                santé disponible.
+                {t("clusters.detail.unreachable")}
               </Text>
             </Container>
           )}
@@ -195,7 +206,7 @@ export function ClusterDetailPage() {
                   className="flex items-center justify-between p-4"
                 >
                   <div className="flex items-center gap-3">
-                    <ServerStack />
+                    <ServerSolid />
                     <div>
                       <div className="flex items-center gap-2">
                         <Heading level="h3">{srv.name}</Heading>
@@ -208,7 +219,7 @@ export function ClusterDetailPage() {
                         </Badge>
                         {nodeHealth?.leader && (
                           <Badge size="2xsmall" color="purple">
-                            leader
+                            {t("clusters.detail.server.leader")}
                           </Badge>
                         )}
                       </div>
@@ -229,7 +240,7 @@ export function ClusterDetailPage() {
                           ...(srv.swarmNodeId && srv.role === "worker"
                             ? [
                                 {
-                                  label: "Promouvoir manager",
+                                  label: t("clusters.detail.server.promote"),
                                   icon: <ArrowUpMini />,
                                   onClick: () =>
                                     setRole.mutate({
@@ -242,7 +253,7 @@ export function ClusterDetailPage() {
                           ...(srv.swarmNodeId && srv.role === "manager"
                             ? [
                                 {
-                                  label: "Rétrograder worker",
+                                  label: t("clusters.detail.server.demote"),
                                   icon: <ArrowDownMini />,
                                   onClick: () =>
                                     setRole.mutate({
@@ -257,7 +268,7 @@ export function ClusterDetailPage() {
                       {
                         actions: [
                           {
-                            label: "Retirer du cluster",
+                            label: t("clusters.detail.server.remove"),
                             icon: <Trash />,
                             variant: "danger" as const,
                             onClick: () => removeServer(srv),
@@ -271,7 +282,7 @@ export function ClusterDetailPage() {
             })}
             {servers.length === 0 && (
               <Text className="text-ui-fg-subtle">
-                Aucun serveur dans ce cluster.
+                {t("clusters.detail.server.empty")}
               </Text>
             )}
           </div>
@@ -282,16 +293,24 @@ export function ClusterDetailPage() {
         <Container className="p-0">
           {!health?.services.length ? (
             <Text className="p-6 text-ui-fg-subtle">
-              Aucun service en cours sur ce cluster.
+              {t("clusters.detail.services.empty")}
             </Text>
           ) : (
             <Table>
               <Table.Header>
                 <Table.Row>
-                  <Table.HeaderCell>Service</Table.HeaderCell>
-                  <Table.HeaderCell>Replicas</Table.HeaderCell>
-                  <Table.HeaderCell>CPU moyen</Table.HeaderCell>
-                  <Table.HeaderCell>Mémoire</Table.HeaderCell>
+                  <Table.HeaderCell>
+                    {t("clusters.detail.services.service")}
+                  </Table.HeaderCell>
+                  <Table.HeaderCell>
+                    {t("clusters.detail.services.replicas")}
+                  </Table.HeaderCell>
+                  <Table.HeaderCell>
+                    {t("clusters.detail.services.avgCpu")}
+                  </Table.HeaderCell>
+                  <Table.HeaderCell>
+                    {t("clusters.detail.services.memory")}
+                  </Table.HeaderCell>
                 </Table.Row>
               </Table.Header>
               <Table.Body>

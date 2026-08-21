@@ -89,14 +89,25 @@ export class ClusterService {
    * Supprimer un cluster non opérationnel, et impossible de supprimer un Cluster
    * avec pour status "ready"
    */
-  async remove(id: string): Promise<void> {
+  async remove(id: string): Promise<{ removedServers: number }> {
     const cluster = await this.get(id);
     if (!cluster) {
       const err = new Error("cluster introuvable");
       (err as Error & { statusCode?: number }).statusCode = 404;
       throw err;
     }
+    if (cluster.status === "ready") {
+      const err = new Error(
+        "impossible de supprimer un cluster opérationnel — retire d'abord ses serveurs",
+      );
+      (err as Error & { statusCode?: number }).statusCode = 409;
+      throw err;
+    }
+    const removedServers = await prisma.server.count({
+      where: { clusterId: id },
+    });
     await prisma.cluster.delete({ where: { id } });
+    return { removedServers };
   }
 }
 
