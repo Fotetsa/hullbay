@@ -55,8 +55,8 @@ export async function registerClustersRoutes(app: FastifyInstance) {
     async (req, reply) => {
       const { id } = req.params as { id: string };
       try {
-        await clusterService.remove(id);
-        return { ok: true };
+        const { removedServers } = await clusterService.remove(id);
+        return { ok: true, removedServers };
       } catch (err) {
         const status =
           (err as Error & { statusCode?: number }).statusCode ?? 500;

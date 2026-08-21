@@ -1,5 +1,5 @@
-import { eventBus } from "../../lib/event-bus";
-import { invalidateDockerClient } from "../docker-engine/client";
+import { eventBus } from "../lib/event-bus";
+import { invalidateDockerClient } from "../modules/docker-engine/client";
 
 /**
  * Réagit aux changements d'état d'un cluster. le workflow de provisioning 

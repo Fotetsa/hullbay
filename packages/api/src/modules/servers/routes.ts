@@ -8,7 +8,6 @@ import { eventBus } from "../../lib/event-bus"
 import { runWithConcurrency, CLUSTER_CONCURRENCY } from "../../lib/concurrency"
 import { TunnelError } from "../../lib/ssh-tunnel"
 import { clusterService } from "../clusters/service"
-import { prisma } from "../../lib/prisma"
 
 
 /**
@@ -134,16 +133,6 @@ export async function registerServersRoutes(app: FastifyInstance) {
         clusterId = body.clusterId;
         role = body.role ?? "worker";
       } else {
-        // Nettoyage auto : un cluster portant le même nom peut subsister en
-        // status "failed" (provisioning échoué + suppression du serveur via l'UI).
-        // La contrainte @unique sur Cluster.name ferait sinon échouer la recréation
-        // en 500 (P2002). Un cluster "ready" n'est JAMAIS supprimé ici.
-        const existing = await prisma.cluster.findFirst({
-          where: { name: body.newClusterName!, status: "failed" },
-        })
-        if (existing) {
-          await prisma.cluster.delete({ where: { id: existing.id } })
-        }
         const cluster = await clusterService.createPending(
           body.newClusterName!,
         );

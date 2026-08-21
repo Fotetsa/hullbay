@@ -15,7 +15,8 @@ import {
   DocumentText,
   ArrowPath,
   Sparkles,
-} from "@medusajs/icons"
+  Server,
+} from "@medusajs/icons";
 import { auth } from "../lib/api"
 import { useMe, type Role } from "../lib/useMe"
 import { useUpdatesCheck } from "../lib/useUpdates"
@@ -33,6 +34,7 @@ const NAV: NavItem[] = [
   { to: "/health", labelKey: "nav.health", Icon: ChartBar, min: "viewer" },
   { to: "/audit", labelKey: "nav.logs", Icon: DocumentText, min: "operator" },
   { to: "/servers", labelKey: "nav.servers", Icon: ServerStack, min: "owner" },
+  { to: "/clusters", labelKey: "nav.clusters", Icon: Server, min: "owner" },
   { to: "/registries", labelKey: "nav.registries", Icon: CircleStack, min: "owner" },
   { to: "/secrets", labelKey: "nav.secrets", Icon: Key, min: "operator" },
   { to: "/users", labelKey: "nav.users", Icon: Users, min: "owner" },

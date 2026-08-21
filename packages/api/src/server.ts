@@ -30,7 +30,7 @@ import { startAutoScaler } from "./jobs/auto-scaler";
 import fastify, { type FastifyInstance } from "fastify";
 import { stopTunnelCleanup, closeAllTunnels } from "./lib/ssh-tunnel";
 import { registerClustersRoutes } from "./modules/clusters/routes";
-import { registerClusterSubscribers } from "./modules/clusters/subscribers";
+import { registerClusterSubscribers } from "./subscribers/clusters";
 
 
 

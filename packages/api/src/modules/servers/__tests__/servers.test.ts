@@ -225,7 +225,7 @@ describe("GET /api/servers", () => {
 
   describe("DELETE /api/clusters/:id", () => {
     it("devrait supprimer un cluster failed", async () => {
-      mockClusterService.remove.mockResolvedValue(undefined);
+      mockClusterService.remove.mockResolvedValue({ removedServers: 0 });
 
       const response = await app.inject({
         method: "DELETE",
@@ -234,7 +234,7 @@ describe("GET /api/servers", () => {
       });
 
       expect(response.statusCode).toBe(200);
-      expect(response.json()).toEqual({ ok: true });
+      expect(response.json()).toEqual({ ok: true, removedServers: 0 });
     });
 
     it("devrait refuser de supprimer un cluster ready (409)", async () => {

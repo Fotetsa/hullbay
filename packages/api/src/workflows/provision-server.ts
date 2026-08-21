@@ -458,7 +458,7 @@ export async function provisionServerWorkflow(input: ProvisionInput): Promise<vo
         lastError: result.error ?? "échec provisioning",
       });
       if (input.isNewCluster) {
-        await clusterService.markFailed(input.clusterId); // remplace le bloc prisma+eventBus+console.log
+        await clusterService.markFailed(input.clusterId);
       }
       await eventBus.emit("provision.step", {
         serverId: input.serverId,

@@ -271,6 +271,10 @@ export const api = {
 
   // Clusters
   listClusters: () => req<Cluster[]>("/api/clusters"),
+  deleteCluster: (id: string) =>
+    req<{ ok: true; removedServers: number }>(`/api/clusters/${id}`, {
+      method: "DELETE",
+    }),
 
   // Serveurs (cluster Swarm)
   listServers: () =>
@@ -338,7 +342,7 @@ export const api = {
       },
     ),
 
-    // Domaine
+  // Domaine
   getDomain: () => req<{ domain: string }>("/api/settings/domain"),
   setDomain: (domain: string) =>
     req<{ ok: boolean; url?: string }>("/api/settings/domain", {
@@ -381,7 +385,12 @@ export const api = {
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
-export type Cluster = { id: string; name: string; isDefault: boolean };
+export type Cluster = {
+  id: string;
+  name: string;
+  isDefault: boolean;
+  status: "pending" | "ready" | "failed";
+};
 
 export type UserAccount = {
   id: string;
@@ -518,7 +527,7 @@ export type Server = {
   status: string;
   swarmNodeId: string | null;
   lastError: string | null;
-  clusterId: string; // 🆕 Conservé pour le multi-cluster
+  clusterId: string;
 };
 
 export type UpdateChannel = "stable" | "beta";
