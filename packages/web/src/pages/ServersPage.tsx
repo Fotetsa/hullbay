@@ -22,6 +22,7 @@ import { useProvisionLog } from "../lib/useProvisionLog"
 import { PageHeader, PageContainer } from "../components/PageHeader"
 import { ActionMenu } from "../components/ActionMenu"
 import { ModalForm } from "../components/ModalForm"
+import { useTranslation } from 'react-i18next'
 
 const STATUS_COLOR: Record<string, "green" | "orange" | "red" | "grey"> = {
   ready: "green",
@@ -32,6 +33,7 @@ const STATUS_COLOR: Record<string, "green" | "orange" | "red" | "grey"> = {
 }
 
 export function ServersPage() {
+  const { t } = useTranslation()
   const { data } = useQuery({ queryKey: ["servers"], queryFn: api.listServers })
   const { data: clusters } = useQuery({ queryKey: ["clusters"], queryFn: api.listClusters})
   const [open, setOpen] = useState(false)
@@ -67,8 +69,8 @@ export function ServersPage() {
             ? { type: "key", privateKey }
             : { type: "password", password },
       }),
-    success: "Provisioning lancé",
-    successDescription: "Suis les étapes ci-dessous.",
+    success: t('servers.toast.provisionSuccess'),
+    successDescription: t('servers.toast.provisionSuccessDesc'),
     invalidate: [["servers"], ["clusters"]],
     onSuccess: () => {
       // On efface immédiatement les secrets du state (jamais conservés côté front).
@@ -79,18 +81,18 @@ export function ServersPage() {
 
   const removeServer = useConfirmDelete<Server>({
     mutationFn: (srv) => api.deleteServer(srv.id),
-    success: "Serveur retiré",
+    success: t('servers.toast.removeSuccess'),
     invalidate: [["servers"]],
     confirm: (srv) => ({
-      title: "Retirer ce serveur ?",
-      description: `« ${srv.name} » (${srv.host}) sera drainé puis retiré du cluster Swarm. Les tasks qui y tournent seront reschedulées sur les autres nœuds. Action destructive.`,
+      title: t('servers.confirm.removeTitle'),
+      description: t('servers.confirm.removeDesc', { name: srv.name, host: srv.host }),
     }),
   })
 
   const setRole = useMutationToast({
     mutationFn: ({ id, role }: { id: string; role: "manager" | "worker" }) =>
       api.setServerRole(id, role),
-    success: (r) => `Rôle changé : ${r.role}`,
+    success: (r) => t('servers.toast.roleChanged', { role: r.role }),
     invalidate: [["servers"]],
   })
 
@@ -114,7 +116,7 @@ export function ServersPage() {
   return (
     <PageContainer>
       <PageHeader
-        title="Serveurs"
+        title={t('servers.pageTitle')}
         actions={
           <Button
             size="small"
@@ -123,7 +125,7 @@ export function ServersPage() {
               setOpen(true);
             }}
           >
-            <Plus /> Ajouter un serveur
+            <Plus /> {t('servers.actions.add')}
           </Button>
         }
       />
@@ -131,14 +133,13 @@ export function ServersPage() {
       {mgr && mgr.total > 0 && (
         <Container className="mb-4 flex items-center justify-between p-4">
           <div>
-            <Heading level="h3">Quorum (HA control plane)</Heading>
+            <Heading level="h3">{t('servers.quorum.title')}</Heading>
             <Text size="small" className="text-ui-fg-subtle">
-              {mgr.reachable}/{mgr.total} managers joignables. Recommandé :
-              nombre impair (3 tolère 1 panne, 5 en tolère 2).
+              {t('servers.quorum.description', { reachable: mgr.reachable, total: mgr.total })}
             </Text>
           </div>
           <Badge color={mgr.quorumOk ? "green" : "red"}>
-            {mgr.quorumOk ? "quorum OK" : "quorum à risque"}
+            {mgr.quorumOk ? t('servers.quorum.ok') : t('servers.quorum.atRisk')}
           </Badge>
         </Container>
       )}
@@ -186,7 +187,7 @@ export function ServersPage() {
                           ...(srv.swarmNodeId && srv.role === "worker"
                             ? [
                                 {
-                                  label: "Promouvoir manager",
+                                  label: t('servers.actions.promote'),
                                   icon: <ArrowUpMini />,
                                   onClick: () =>
                                     setRole.mutate({
@@ -199,7 +200,7 @@ export function ServersPage() {
                           ...(srv.swarmNodeId && srv.role === "manager"
                             ? [
                                 {
-                                  label: "Rétrograder worker",
+                                  label: t('servers.actions.demote'),
                                   icon: <ArrowDownMini />,
                                   onClick: () =>
                                     setRole.mutate({
@@ -214,7 +215,7 @@ export function ServersPage() {
                       {
                         actions: [
                           {
-                            label: "Retirer du cluster",
+                            label: t('servers.actions.remove'),
                             icon: <Trash />,
                             variant: "danger" as const,
                             onClick: () => removeServer(srv),
@@ -230,7 +231,7 @@ export function ServersPage() {
         ))}
         {data?.servers.length === 0 && (
           <Text className="text-ui-fg-subtle">
-            Aucun serveur. Le premier ajouté devient le manager de son cluster.
+            {t('servers.empty')}
           </Text>
         )}
       </div>
@@ -238,7 +239,7 @@ export function ServersPage() {
       <FocusModal open={open} onOpenChange={setOpen}>
         <FocusModal.Content>
           <FocusModal.Header>
-            <Heading>Ajouter un serveur</Heading>
+            <Heading>{t('servers.modal.title')}</Heading>
           </FocusModal.Header>
           <FocusModal.Body className="overflow-y-auto">
             <ModalForm
@@ -247,23 +248,23 @@ export function ServersPage() {
             >
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <Label size="small">Nom</Label>
+                  <Label size="small">{t('servers.modal.nameLabel')}</Label>
                   <Input
                     value={name}
                     onChange={(e) => setName(e.target.value)}
-                    placeholder="vps-paris-1"
+                    placeholder={t('servers.modal.namePlaceholder')}
                   />
                 </div>
                 <div>
-                  <Label size="small">Hôte (IP / domaine)</Label>
+                  <Label size="small">{t('servers.modal.hostLabel')}</Label>
                   <Input
                     value={host}
                     onChange={(e) => setHost(e.target.value)}
-                    placeholder="203.0.113.10"
+                    placeholder={t('servers.modal.hostPlaceholder')}
                   />
                 </div>
                 <div>
-                  <Label size="small">Port SSH</Label>
+                  <Label size="small">{t('servers.modal.portLabel')}</Label>
                   <Input
                     type="number"
                     value={port}
@@ -271,7 +272,7 @@ export function ServersPage() {
                   />
                 </div>
                 <div>
-                  <Label size="small">Utilisateur</Label>
+                  <Label size="small">{t('servers.modal.userLabel')}</Label>
                   <Input
                     value={user}
                     onChange={(e) => setUser(e.target.value)}
@@ -282,7 +283,7 @@ export function ServersPage() {
               {/* Choix du cluster */}
               <div className="rounded-lg border border-ui-border-base p-3">
                 <Label size="small" className="mb-2 block">
-                  Destination
+                  {t('servers.modal.destinationLabel')}
                 </Label>
                 <RadioGroup
                   value={clusterMode}
@@ -295,7 +296,7 @@ export function ServersPage() {
                       disabled={!clusters?.length}
                     />
                     <Label htmlFor="existing">
-                      Rejoindre un cluster existant
+                      {t('servers.modal.joinCluster')}
                     </Label>
                   </div>
                   {clusterMode === "existing" && (
@@ -304,13 +305,13 @@ export function ServersPage() {
                       onValueChange={setSelectedClusterId}
                     >
                       <Select.Trigger>
-                        <Select.Value placeholder="Choisir un cluster" />
+                        <Select.Value placeholder={t('servers.modal.chooseClusterPlaceholder')} />
                       </Select.Trigger>
                       <Select.Content>
                         {clusters?.map((c) => (
                           <Select.Item key={c.id} value={c.id}>
                             {c.name}
-                            {c.isDefault ? " (défaut)" : ""}
+                            {c.isDefault ? t('servers.modal.defaultSuffix') : ""}
                           </Select.Item>
                         ))}
                       </Select.Content>
@@ -318,13 +319,13 @@ export function ServersPage() {
                   )}
                   <div className="mt-2 flex items-center gap-2">
                     <RadioGroup.Item value="new" id="new" />
-                    <Label htmlFor="new">Créer un nouveau cluster</Label>
+                    <Label htmlFor="new">{t('servers.modal.createCluster')}</Label>
                   </div>
                   {clusterMode === "new" && (
                     <Input
                       value={newClusterName}
                       onChange={(e) => setNewClusterName(e.target.value)}
-                      placeholder="Nom du nouveau cluster (ex: Cluster CM-2)"
+                      placeholder={t('servers.modal.newClusterPlaceholder')}
                     />
                   )}
                 </RadioGroup>
@@ -332,8 +333,7 @@ export function ServersPage() {
 
               <div>
                 <Label size="small">
-                  Méthode d'authentification (utilisée une seule fois, jamais
-                  stockée)
+                  {t('servers.modal.authMethodLabel')}
                 </Label>
                 <Select
                   value={credType}
@@ -343,15 +343,15 @@ export function ServersPage() {
                     <Select.Value />
                   </Select.Trigger>
                   <Select.Content>
-                    <Select.Item value="key">Clé SSH privée</Select.Item>
-                    <Select.Item value="password">Mot de passe</Select.Item>
+                    <Select.Item value="key">{t('servers.modal.sshKey')}</Select.Item>
+                    <Select.Item value="password">{t('servers.modal.password')}</Select.Item>
                   </Select.Content>
                 </Select>
               </div>
 
               {credType === "key" ? (
                 <div>
-                  <Label size="small">Clé privée SSH</Label>
+                  <Label size="small">{t('servers.modal.privateKeyLabel')}</Label>
                   <Textarea
                     value={privateKey}
                     onChange={(e) => setPrivateKey(e.target.value)}
@@ -361,7 +361,7 @@ export function ServersPage() {
                 </div>
               ) : (
                 <div>
-                  <Label size="small">Mot de passe</Label>
+                  <Label size="small">{t('servers.modal.passwordLabel')}</Label>
                   <Input
                     type="password"
                     value={password}
@@ -373,11 +373,9 @@ export function ServersPage() {
               {clusterMode === "existing" && (
                 <div className="flex items-center justify-between rounded-lg border border-ui-border-base p-3">
                   <div>
-                    <Label size="small">Rejoindre comme manager (HA)</Label>
+                    <Label size="small">{t('servers.modal.joinAsManagerLabel')}</Label>
                     <Text size="xsmall" className="text-ui-fg-muted">
-                      Ajoute un manager au quorum Raft (résilience du control
-                      plane). Sinon = worker. Le 1er serveur est toujours
-                      manager.
+                      {t('servers.modal.joinAsManagerDesc')}
                     </Text>
                   </div>
                   <Switch checked={asManager} onCheckedChange={setAsManager} />
@@ -385,9 +383,7 @@ export function ServersPage() {
               )}
 
               <Text size="xsmall" className="text-ui-fg-muted">
-                Cette information sert uniquement au provisioning (installer
-                Docker, rejoindre le cluster). Elle n'est jamais enregistrée.
-                L'outil installe ensuite sa propre clé de maintenance.
+                {t('servers.modal.infoNote')}
               </Text>
 
               <div className="mt-2 flex justify-end gap-2">
@@ -396,7 +392,7 @@ export function ServersPage() {
                   type="button"
                   onClick={() => setOpen(false)}
                 >
-                  Fermer
+                  {t('servers.modal.closeButton')}
                 </Button>
                 <Button
                   type="submit"
@@ -407,7 +403,7 @@ export function ServersPage() {
                     (credType === "key" ? !privateKey : !password)
                   }
                 >
-                  Provisionner
+                  {t('servers.modal.provisionButton')}
                 </Button>
               </div>
 
@@ -415,7 +411,7 @@ export function ServersPage() {
                 <pre
                   className="mt-2 max-h-48 overflow-auto rounded-lg bg-ui-bg-base-pressed p-2 txt-compact-xsmall font-mono text-ui-fg-subtle"
                   aria-live="polite"
-                  aria-label="Journal de provisioning"
+                  aria-label={t('servers.modal.logAriaLabel')}
                 >
                   {lines.map((l) => l.message).join("\n")}
                 </pre>

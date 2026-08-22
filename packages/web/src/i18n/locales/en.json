@@ -43,20 +43,30 @@
       "loginFailed": "Login failed",
       "mfaEnrollFailed": "Failed to start MFA enrollment",
       "invalidCode": "Invalid code"
-    },
-    "mfaModal": {
-      "title": "Enable MFA",
-      "description": "To secure your account, enable two-factor authentication. Scan this QR code with your authenticator app (Google Authenticator, Authy, etc.) and then enter the code.",
-      "preparing": "Preparing...",
-      "manualEntryLabel": "Manual entry (to copy)",
-      "manualEntryHint": "Copy this secret into your app if you can't scan.",
-      "copy": "Copy",
-      "copied": "Copied",
-      "verificationCodeLabel": "Verification code",
-      "confirmButton": "Confirm activation"
     }
 
   },
+  
+  "mfa": {
+    "activate": {
+      "toast": {
+        "startError": "Failed to start MFA activation",
+        "notEnabledDesc": "First enable MFA before proceeding.",
+        "success": "MFA activated",
+        "invalidCode": "Invalid code",
+        "invalidCodeDesc": "The MFA code is incorrect."
+      },
+      "title": "Enable Two-Factor Authentication",
+      "description": "To secure your account, enable MFA by scanning the QR code below (Google Authenticator, Authy, etc.) and entering the code.",
+      "preparing": "Preparing...",
+      "manualEntryTitle": "Manual entry (copy)",
+      "manualEntryDesc": "Copy this secret to your app if you cannot scan the code.",
+      "copyButton": "Copy",
+      "verifyCodeLabel": "Verification code",
+      "confirmButton": "Confirm activation"
+    }
+  },
+
   "nav": {
     "projects": "Projects",
     "health": "Health",
@@ -138,16 +148,60 @@
       "next": "Next"
     }
   },
+  
   "servers": {
-    "title": "Servers",
-    "addServer": "Add a server",
+    "pageTitle": "Servers",
+    "actions": {
+      "add": "Add a server",
+      "promote": "Promote to manager",
+      "demote": "Demote to worker",
+      "remove": "Remove from cluster"
+    },
+    "toast": {
+      "provisionSuccess": "Provisioning started",
+      "provisionSuccessDesc": "Follow the steps below.",
+      "removeSuccess": "Server removed",
+      "roleChanged": "Role changed: {{role}}"
+    },
+    "confirm": {
+      "removeTitle": "Remove this server?",
+      "removeDesc": "\"{{name}}\" ({{host}}) will be drained and then removed from the Swarm cluster. The tasks running on it will be rescheduled on other nodes. Destructive action."
+    },
     "quorum": {
       "title": "Quorum (HA control plane)",
-      "description": "{{reachable}}/{{total}} managers reachable. Recommended: odd number (3 tolerates 1 failure, 5 tolerates 2).",
-      "statusOk": "quorum OK"
+      "description": "{{reachable}}/{{total}} reachable managers. Recommended: odd number (3 tolerates 1 failure, 5 tolerates 2).",
+      "ok": "quorum OK",
+      "atRisk": "quorum at risk"
     },
-    "empty": "No servers. The first one added becomes the cluster manager."
+    "empty": "No server. The first one added becomes the manager of its cluster.",
+    "modal": {
+      "title": "Add a server",
+      "nameLabel": "Name",
+      "namePlaceholder": "vps-paris-1",
+      "hostLabel": "Host (IP / domain)",
+      "hostPlaceholder": "203.0.113.10",
+      "portLabel": "SSH Port",
+      "userLabel": "User",
+      "destinationLabel": "Destination",
+      "joinCluster": "Join an existing cluster",
+      "chooseClusterPlaceholder": "Select a cluster",
+      "defaultSuffix": " (default)",
+      "createCluster": "Create a new cluster",
+      "newClusterPlaceholder": "New cluster name (e.g., Cluster CM-2)",
+      "authMethodLabel": "Authentication method (used once, never stored)",
+      "sshKey": "Private SSH key",
+      "password": "Password",
+      "privateKeyLabel": "Private SSH key",
+      "passwordLabel": "Password",
+      "joinAsManagerLabel": "Join as manager (HA)",
+      "joinAsManagerDesc": "Adds a manager to the Raft quorum (control plane resilience). Otherwise = worker. The 1st server is always a manager.",
+      "infoNote": "This information is only used for provisioning (installing Docker, joining the cluster). It is never saved. The tool then installs its own maintenance key.",
+      "closeButton": "Close",
+      "provisionButton": "Provision",
+      "logAriaLabel": "Provisioning log"
+    }
   },
+  
   "integrations": {
     "pageTitle": "Container Registries",
     "toast": {
@@ -284,5 +338,116 @@
       "confirmLabel": "Confirm new password",
       "submitButton": "Change password"
     }
+  },
+  
+  "updates": {
+    "pageTitle": "Updates",
+    "pageSubtitle": "Version and distribution channel for the hullbay instance.",
+    "betaLabel": "Beta version",
+    "checkNow": "Check now",
+    "toast": {
+      "appliedSuccess": "Update {{version}} applied",
+      "appliedSuccessDesc": "hullbay upgraded from {{fromVersion}} to {{toVersion}}.",
+      "rollbackInfo": "Update canceled (rollback)",
+      "rollbackInfoDesc": "hullbay rolled back to {{toVersion}}.",
+      "failed": "Update failed",
+      "channelChanged": "Channel switched to {{channel}}",
+      "applyStarted": "Update started — live tracking",
+      "rollbackStarted": "Rollback started — live tracking"
+    },
+    "tabs": {
+      "ariaLabel": "Content",
+      "releases": "Published releases",
+      "history": "History"
+    },
+    "confirmModal": {
+      "title": "Confirm update",
+      "installText": "Install version",
+      "channelText": "on the {{channel}} channel.",
+      "intermediateBadge": "Intermediate version",
+      "notice": "The update is automatic and reversible:",
+      "stepBackup": "Database backup prior to any operation.",
+      "stepRedeploy": "Progressive redeployment (2-3s downtime).",
+      "stepRollback": "Automatic rollback upon failure."
+    },
+    "actions": {
+      "cancel": "Cancel",
+      "confirm": "Confirm update"
+    }
+  },
+  
+  "health": {
+    "pageTitle": "Cluster Health",
+    "actions": {
+      "refresh": "Refresh"
+    },
+    "toast": {
+      "noOrphanResources": "No orphan resources found",
+      "pruneSuccess": "Prune: {{removed}} removed, {{errors}} errors"
+    },
+    "empty": {
+      "noCluster": "No cluster registered. Add a server to create your first cluster.",
+      "swarmInactive": "Swarm is inactive on this cluster. Run `docker swarm init` on its manager to enable services, replicas, and observability."
+    },
+    "status": {
+      "inactive": "inactive"
+    },
+    "drift": {
+      "title": "Drift detected",
+      "description": "{{count}} project(s) diverge from the desired state. Redeploy the affected project to reconcile.",
+      "actionsCount": "{{count}} action(s)"
+    },
+    "nodes": {
+      "title": "Nodes ({{count}})",
+      "table": {
+        "host": "Host",
+        "role": "Role",
+        "state": "State",
+        "availability": "Avail."
+      },
+      "role": {
+        "leader": "leader"
+      }
+    },
+    "services": {
+      "title": "Services ({{count}})",
+      "table": {
+        "service": "Service",
+        "replicas": "Replicas",
+        "nodes": "Nodes",
+        "avgCpu": "Avg CPU",
+        "memory": "Memory"
+      },
+      "empty": "No managed services."
+    },
+    "prune": {
+      "title": "Orphan resources",
+      "description": "Managed resources (bozando.managed) for which the project no longer exists. The system (bozando.system) is never affected.",
+      "analyze": "Analyze",
+      "delete": "Delete {{count}} orphan(s)"
+    },
+    "drawer": {
+      "defaultTitle": "Service",
+      "loading": "Loading…",
+      "metrics": {
+        "replicas": "Replicas",
+        "sampledTasks": "Sampled tasks",
+        "avgCpu": "Avg CPU",
+        "memory": "Memory",
+        "na": "n/a",
+        "mb": "MB"
+      },
+      "placement": {
+        "title": "Task placement",
+        "empty": "No running tasks.",
+        "table": {
+          "node": "Node",
+          "state": "State",
+          "desired": "Desired"
+        }
+      }
+    }
   }
 }
+
+
