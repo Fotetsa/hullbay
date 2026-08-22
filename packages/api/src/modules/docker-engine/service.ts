@@ -886,12 +886,23 @@ export class DockerEngineService {
   private async pullImage(image: string): Promise<void> {
     const authconfig = this.authResolver ? await this.authResolver(image) : null
     const opts = authconfig ? { authconfig } : {}
+    const PULL_TIMEOUT_MS = 120_000
     await new Promise<void>((resolve, reject) => {
+      let settled = false
+      const timer = setTimeout(() => {
+        if (!settled) {
+          settled = true
+          reject(new Error(`Pull timeout after ${PULL_TIMEOUT_MS / 1000}s: ${image}`))
+        }
+      }, PULL_TIMEOUT_MS)
       this.docker.pull(image, opts, (err: unknown, stream?: NodeJS.ReadableStream) => {
-        if (err || !stream) return reject(err ?? new Error("pull: pas de stream"))
-        this.docker.modem.followProgress(stream, (doneErr: unknown) =>
-          doneErr ? reject(doneErr) : resolve()
-        )
+        if (err || !stream) {
+          if (!settled) { settled = true; clearTimeout(timer); reject(err ?? new Error("pull: pas de stream")) }
+          return
+        }
+        this.docker.modem.followProgress(stream, (doneErr: unknown) => {
+          if (!settled) { settled = true; clearTimeout(timer); doneErr ? reject(doneErr) : resolve() }
+        })
       })
     })
   }

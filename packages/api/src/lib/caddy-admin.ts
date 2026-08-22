@@ -99,6 +99,9 @@ export function caddyAdmin({
       },
     );
     req.on("error", reject);
+    req.setTimeout(10_000, () => {
+      req.destroy(new Error(`Caddy admin timeout after 10s: ${method} ${url.pathname}`));
+    });
     if (payload) req.write(payload);
     req.end();
   });
@@ -131,7 +134,7 @@ export async function resolveServerName(adminUrl: string): Promise<string> {
     const init = await caddyAdmin({
       adminUrl,
       path: `/config/apps/http/servers/srv0`,
-      method: "PUT",
+      method: "POST",
       body: { listen: [":80"] },
     });
     if (!init.ok) {

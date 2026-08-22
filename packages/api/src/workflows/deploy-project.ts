@@ -40,6 +40,16 @@ export class DeployError extends Error {
 }
 
 /**
+ * Détecte si une image provient de Docker Hub (pas de registry explicite).
+ * Convention Docker : la première partie du nom sans "." = Docker Hub.
+ * Exemples : "postgres:16.3" → true, "ghcr.io/fotetsa/api:v1" → false
+ */
+function isDockerHubImage(image: string): boolean {
+  const firstPart = (image.split(":")[0]?.split("/")[0]) ?? ""
+  return !firstPart.includes(".")
+}
+
+/**
  * Workflow de déploiement d'un projet (DOCKER SWARM), en STEPS avec COMPENSATION.
  * Ordre : réseaux(overlay) -> volumes -> services (diff create/update rolling +
  * montage volumes + réseaux déclarés) -> passerelles (routes Caddy). Si un step
@@ -317,7 +327,9 @@ export const servicesStep: Step<DeployInput> = {
 
       // 2) Garde multi-nœuds : une image servie depuis le local (pas pull) n'est pas
       //    déployable de façon fiable sur un cluster (un autre nœud ne l'a pas).
-      if (!pulled && nodeCount > 1) {
+      //    Exception : images Docker Hub (pas de registry explicite) — Swarm les
+      //    tirera automatiquement sur le nœud cible.
+      if (!pulled && nodeCount > 1 && !isDockerHubImage(image)) {
         throw new DeployError(
           `Image locale « ${image} » (policy ${policy}) non déployable sur un cluster ` +
             `multi-nœuds (${nodeCount} nœuds) : pousse-la sur un registre (ex. ghcr.io/...) ` +
@@ -565,6 +577,25 @@ export async function deployProjectWorkflow(input: DeployInput) {
         .catch(() => {})
     )
   )
+
+  // Persiste l'état des nœuds PARENTS database : l'expansion remplace chaque
+  // nœud database par des membres synthétiques (ids éphémères absents de la DB).
+  // Le deployed map ne contient donc JAMAIS l'id du parent → son actualState reste
+  // null → badge "à déployer" persistant. On le fixe ici directement. Les clés de
+  // `ownership` sont des ids synthétiques (`db::<parent>::…`) : le vrai id parent
+  // est dans les VALEURS (own.parentNodeId) — extrait puis dédupliqué.
+  const parentIds = new Set<string>()
+  for (const own of expanded.ownership.values()) {
+    parentIds.add(own.parentNodeId)
+  }
+  for (const parentNodeId of parentIds) {
+    await prisma.node
+      .update({
+        where: { id: parentNodeId },
+        data: { actualState: "running" },
+      })
+      .catch(() => {})
+  }
 
   return final.log
 }

@@ -182,6 +182,7 @@ export function postgresConnections(
           DATABASE_USER: username,
           DATABASE_NAME: database,
           DATABASE_CREDENTIALS_FILE: `/run/secrets/${passwordSecretRef}`,
+          DATABASE_SCHEME: "postgresql",
         },
       },
     ]
@@ -208,6 +209,7 @@ export function postgresConnections(
         DATABASE_USER: username,
         DATABASE_NAME: database,
         DATABASE_CREDENTIALS_FILE: `/run/secrets/${passwordSecretRef}`,
+        DATABASE_SCHEME: "postgresql",
       },
     },
     {
@@ -221,6 +223,7 @@ export function postgresConnections(
         DATABASE_READ_HOST: readerHost,
         DATABASE_READ_PORT: String(POSTGRES_PORT),
         DATABASE_READ_CREDENTIALS_FILE: `/run/secrets/${passwordSecretRef}`,
+        DATABASE_READ_SCHEME: "postgresql",
       },
     },
   ]
