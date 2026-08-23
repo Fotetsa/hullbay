@@ -95,6 +95,21 @@ export type SecretRef = z.infer<typeof SecretRefSchema>
 export const PullPolicySchema = z.enum(["Always", "IfNotPresent", "Never"])
 export type PullPolicy = z.infer<typeof PullPolicySchema>
 
+/**
+ * Placement Swarm d'un service : mappé sur TaskTemplate.
+ * Optionnel — aucune
+ * représentation UI requise en V1 (généré par les providers database pour la
+ * distribution des membres). Tant que le mapping n'est pas appliqué dans
+ * buildServiceSpec, cette config est ignorée silencieusement.
+ */
+export const PlacementSchema = z.object({
+  /** Contraintes d'emplacement (ex: ["node.role==worker", "node.labels.rack==a"]). */
+  constraints: z.array(z.string()).default([]),
+  /** Préférences de répartition spread (ex: ["node.labels.rack"]). */
+  spreadOver: z.array(z.string()).default([]),
+})
+export type Placement = z.infer<typeof PlacementSchema>
+
 export const ContainerConfigSchema = z.object({
   image: z.string().min(1),
   tag: z.string().min(1).default("latest"),
@@ -115,6 +130,8 @@ export const ContainerConfigSchema = z.object({
   restartPolicy: RestartPolicySchema.default("unless-stopped"),
   resources: ResourcesSchema.optional(),
   healthcheck: HealthcheckSchema.optional(),
+  /** Placement Swarm optionnel (Constraints + Spread). */
+  placement: PlacementSchema.optional(),
   // ── Swarm : chaque conteneur est un SERVICE répliqué ──
   /** Nombre de replicas (load balancing natif via routing mesh). */
   replicas: z.number().int().min(0).default(1),
@@ -196,14 +213,115 @@ export const GatewayConfigSchema = z.object({
 })
 export type GatewayConfig = z.infer<typeof GatewayConfigSchema>
 
+// ── Base de données (nœud de composition, JAMAIS une ressource runtime) ──────
+
+export const DatabaseEngineSchema = z.enum(["postgres", "mysql", "mongodb", "redis"])
+export type DatabaseEngine = z.infer<typeof DatabaseEngineSchema>
+
+export const DatabaseModeSchema = z.enum(["single", "ha"])
+export type DatabaseMode = z.infer<typeof DatabaseModeSchema>
+
+/**
+ * Topologie de la base. Les data-replicas et les replicas de consensus
+ * (etcd/Sentinel…) sont DEUX AXES DISTINCTS : chacun a ses propres
+ * règles de validation côté provider, aucune règle globale « impair » ici.
+ */
+export const DatabaseTopologySchema = z.object({
+  /**
+   * Nombre de membres data. Optionnel : le défaut est PAR MOTEUR (defaultReplicas
+   * dans le module database) — ne pas codifier un défaut global ici, sinon une
+   * config `mode: "ha"` sans topology hériterait de `replicas: 1`, contradictoire
+   * avec les règles du moteur.
+   */
+  replicas: z.number().int().min(1).optional(),
+  /**
+   * Nombre de replicas de consensus/coordination (etcd, Sentinel, voteur…).
+   * Découplé de `replicas` ; défaut par moteur si absent. Interdit quand le
+   * moteur/mode n'a pas de consensus (validation dans le module database).
+   */
+  consensusReplicas: z.number().int().min(1).optional(),
+})
+export type DatabaseTopology = z.infer<typeof DatabaseTopologySchema>
+
+export const DatabaseStorageSchema = z
+  .object({
+    /** Taille souhaitée du volume de données (Go). Informative, non provisionnée en V1. */
+    sizeGb: z.number().positive().optional(),
+    driver: z.string().default("local"),
+    driverOpts: z.record(z.string(), z.string()).default({}),
+    /** Volume EXTERNE préexistant (comme VolumeConfig.external). */
+    external: z.boolean().default(false),
+    externalName: z.string().optional(),
+  })
+  .refine((s) => !s.external || (s.externalName && s.externalName.length > 0), {
+    message: "externalName requis quand external=true",
+    path: ["externalName"],
+  })
+export type DatabaseStorage = z.infer<typeof DatabaseStorageSchema>
+
+/**
+ * Credentials de la base. Le mot de passe n'est JAMAIS stocké : seule une
+ * référence vers un Docker Secret (passwordSecretRef) existe dans la config.
+ * Règle de sécurité : la valeur ne doit pas finir en clair dans les
+ * labels Docker ni dans l'env. Schema STRICT : toute clé inconnue (ex. un
+ * `password` en clair) est rejetée au lieu d'être silencieusement ignorée.
+ */
+export const DatabaseCredentialsSchema = z
+  .object({
+    username: z
+      .string()
+      .regex(/^[A-Za-z0-9_-]+$/, "username : [A-Za-z0-9_-] uniquement (interpolé dans cmd/healthcheck)"),
+    /** Référence à un Docker Secret (module Secrets). Jamais la valeur.
+     *  Optionnelle en config : un nœud neuf n'a pas encore de secret choisi.
+     *  Le déploiement (provider.validate) l'exige et guide vers l'action. */
+    passwordSecretRef: z
+      .string()
+      .regex(
+        /^[A-Za-z0-9][A-Za-z0-9_.-]*$/,
+        "passwordSecretRef : doit être un nom de secret Docker valide"
+      )
+      .optional(),
+    database: z
+      .string()
+      .regex(
+        /^[A-Za-z0-9_-]+$/,
+        "database : [A-Za-z0-9_-] uniquement (interpolé dans les URL de connexion)"
+      ),
+  })
+  .strict()
+export type DatabaseCredentials = z.infer<typeof DatabaseCredentialsSchema>
+
+export const DatabaseConfigSchema = z.object({
+  engine: DatabaseEngineSchema,
+  /** Version explicite — jamais "latest" en production. */
+  version: z
+    .string()
+    .min(1)
+    .refine((v) => v !== "latest", {
+      message: "version explicite requise (jamais \"latest\")",
+    }),
+  mode: DatabaseModeSchema.default("single"),
+  topology: DatabaseTopologySchema.default({}),
+  storage: DatabaseStorageSchema.default({}),
+  resources: ResourcesSchema.optional(),
+  credentials: DatabaseCredentialsSchema,
+  /**
+   * Rétention des données à la suppression par défaut TRUE.
+   * Les volumes de données sont labellisés bozando.database.data=true et exclus
+   * des trois chemins de suppression (destroy, volumesStep, prune-orphans).
+   */
+  retainDataOnDelete: z.boolean().default(true),
+})
+export type DatabaseConfig = z.infer<typeof DatabaseConfigSchema>
+
 // ── Union discriminée par type de nœud ───────────────────────────────────────
 
-export const NodeType = z.enum(["container", "network", "volume", "gateway"])
+export const NodeType = z.enum(["container", "network", "volume", "gateway", "database"])
 export type NodeType = z.infer<typeof NodeType>
 
 // ── Matrice de compatibilité des connexions (GNS3-like) ──────────────────────
 
-type EdgeKindLiteral = "network" | "volume" | "gateway"
+type EdgeKindLiteral = "network" | "volume" | "gateway" | "database"
 
 /**
  * Paires de nœuds qu'il est sémantiquement possible de relier, et la nature
@@ -217,6 +335,8 @@ const CONNECTION_RULES: { a: NodeType; b: NodeType; kind: EdgeKindLiteral }[] = 
   { a: "container", b: "network", kind: "network" },
   { a: "container", b: "volume", kind: "volume" },
   { a: "container", b: "gateway", kind: "gateway" },
+  // Dépendance applicative app→base : l'expansion injectera env + edge réseau.
+  { a: "container", b: "database", kind: "database" },
 ]
 
 const RULE_BY_PAIR = new Map<string, EdgeKindLiteral>(
@@ -245,6 +365,7 @@ export const NodeConfigSchemas = {
   network: NetworkConfigSchema,
   volume: VolumeConfigSchema,
   gateway: GatewayConfigSchema,
+  database: DatabaseConfigSchema,
 } as const
 
 export type NodeConfigByType = {
@@ -252,6 +373,7 @@ export type NodeConfigByType = {
   network: NetworkConfig
   volume: VolumeConfig
   gateway: GatewayConfig
+  database: DatabaseConfig
 }
 
 /** Valide la config d'un nœud selon son type. Lève si invalide. */

@@ -6,7 +6,7 @@
     "error": "Error",
     "success": "Success",
     "delete": "Delete",
-    "confirm":"Confirm"
+    "confirm": "Confirm"
   },
   "bootstrap": {
     "title": "Welcome to hullbay",
@@ -55,13 +55,13 @@
       "verificationCodeLabel": "Verification code",
       "confirmButton": "Confirm activation"
     }
-
   },
   "nav": {
     "projects": "Projects",
     "health": "Health",
     "logs": "Logs",
     "servers": "Servers",
+    "clusters": "Clusters",
     "registries": "Registries",
     "secrets": "Secrets",
     "users": "Users",
@@ -215,6 +215,67 @@
     },
     "empty": "No servers. The first one added becomes the cluster manager."
   },
+  "clusters": {
+    "pageTitle": "Clusters",
+    "loading": "Loading…",
+    "empty": {
+      "title": "No clusters",
+      "description": "A « Default » cluster is normally created automatically on first startup."
+    },
+    "badge": { "default": "default" },
+    "serverCount": "{{count}} server(s)",
+    "actions": { "delete": "Delete" },
+    "deleteConfirm": {
+      "title": "Delete this cluster?",
+      "description": "\"{{name}}\" is not operational (status: {{status}}) — deleting it also removes any attached server. This action is irreversible."
+    },
+    "toast": {
+      "deleteSuccess": "Cluster deleted",
+      "deleteSuccessWithServers_one": "Cluster deleted ({{count}} server removed)",
+      "deleteSuccessWithServers_other": "Cluster deleted ({{count}} servers removed)"
+    },
+    "detail": {
+      "back": "Back",
+      "backToClusters": "Back to clusters",
+      "loading": "Loading cluster...",
+      "notFound": {
+        "title": "Cluster not found",
+        "description": "This cluster does not exist or has been deleted."
+      },
+      "defaultBadge": "default cluster",
+      "clusterBadge": "cluster",
+      "tabs": { "overview": "Overview", "services": "Services" },
+      "quorum": {
+        "title": "Quorum (HA control plane)",
+        "description": "{{reachable}}/{{total}} managers reachable. Recommended: odd number (3 tolerates 1 failure, 5 tolerates 2).",
+        "ok": "quorum OK",
+        "atRisk": "quorum at risk"
+      },
+      "unreachable": "This cluster is currently unreachable — no health data available.",
+      "server": {
+        "promote": "Promote to manager",
+        "demote": "Demote to worker",
+        "remove": "Remove from cluster",
+        "leader": "leader",
+        "empty": "No servers in this cluster."
+      },
+      "removeServerConfirm": {
+        "title": "Remove this server?",
+        "description": "\"{{name}}\" ({{host}}) will be drained then removed from the Swarm cluster. Running tasks will be rescheduled on the other nodes. This action is destructive."
+      },
+      "toast": {
+        "roleChanged": "Role changed: {{role}}",
+        "serverRemoved": "Server removed"
+      },
+      "services": {
+        "empty": "No services running on this cluster.",
+        "service": "Service",
+        "replicas": "Replicas",
+        "avgCpu": "Avg CPU",
+        "memory": "Memory"
+      }
+    }
+  },
   "integrations": {
     "pageTitle": "Container Registries",
     "toast": {
@@ -248,7 +309,7 @@
       "saveButton": "Save"
     }
   },
-"secrets": {
+  "secrets": {
     "pageTitle": "Secrets",
     "toast": {
       "saveSuccess": "Secret saved",

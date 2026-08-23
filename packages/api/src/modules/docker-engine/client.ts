@@ -1,6 +1,6 @@
 import Docker from "dockerode"
-import { prisma } from "../../lib/prisma"
-import { ensureTunnel } from "../../lib/ssh-tunnel"
+import { ensureTunnel, closeTunnel } from "../../lib/ssh-tunnel"
+import { clusterService } from "../clusters/service"
 
 /**
  * Connexion à l'API Docker Engine.
@@ -69,9 +69,28 @@ async function resolveConnectionParams(cluster: {
 
 /** Construit (sans cache ni mutex) le client dockerode d'un cluster. */
 async function buildClientForCluster(clusterId: string): Promise<Docker> {
-  const cluster = await prisma.cluster.findUniqueOrThrow({ where: { id: clusterId } })
-  const params = await resolveConnectionParams(cluster)
-  return params ? new Docker(params) : new Docker({ socketPath: DOCKER_SOCKET_PATH })
+  const cluster = await clusterService.getOrThrow(clusterId);
+  if (!cluster) throw new Error(`Cluster ${clusterId} introuvable`);
+
+  const params = await resolveConnectionParams(cluster);
+
+  if (params) {
+    if (cluster.isDefault) {
+      console.log(
+        `[docker-engine] Cluster ${clusterId} (${cluster.name}): connexion TCP directe tcp://${params.host}:${params.port}`,
+      );
+    } else {
+      console.log(
+        `[docker-engine] Cluster ${clusterId} (${cluster.name}): connexion via SSH tunnel 127.0.0.1:${params.port} → ${cluster.dockerHost}`,
+      );
+    }
+    return new Docker(params);
+  }
+
+  console.log(
+    `[docker-engine] Cluster ${clusterId} (${cluster.name}): connexion via socket Unix ${DOCKER_SOCKET_PATH}`,
+  );
+  return new Docker({ socketPath: DOCKER_SOCKET_PATH });
 }
 
 export async function getDockerForCluster(clusterId: string): Promise<Docker> {
@@ -105,26 +124,15 @@ export async function getDockerForCluster(clusterId: string): Promise<Docker> {
 }
 
 /**
- * Purge le client dockerode d'un cluster du cache. À appeler quand le
- * dockerHost d'un cluster change (fin de provision) pour ne pas continuer
- * à viser l'ancienne cible (tunnel ou socket).
+ * Purge le client dockerode d'un cluster du cache ET ferme le tunnel SSH
+ * associé. À appeler quand le dockerHost d'un cluster change (fin de provision)
+ * ou quand le tunnel est suspecté mort (ECONNREFUSED) : le prochain appel
+ * recrée une session SSH toute neuve avec un port local neuf.
  */
 export function invalidateDockerClient(clusterId: string): void {
   registry.delete(clusterId)
   pendingClients.delete(clusterId)
-}
-
-export async function getDefaultCluster() {
-  const existing = await prisma.cluster.findFirst({ where: { isDefault: true } })
-  if (existing) return existing
-  return prisma.cluster.create({
-    data: {
-      name: "Default",
-      dockerHost: process.env.DOCKER_HOST || "tcp://socket-proxy:2375",
-      caddyAdminUrl: process.env.CADDY_ADMIN_URL || "http://caddy:2019",
-      isDefault: true,
-    },
-  })
+  closeTunnel(clusterId, 2375)
 }
 
 export interface DockerPingResult {
@@ -138,7 +146,7 @@ export interface DockerPingResult {
 
 export async function pingDocker(): Promise<DockerPingResult> {
   try {
-    const cluster = await getDefaultCluster();
+    const cluster = await clusterService.getDefault();
     const docker = await getDockerForCluster(cluster.id);
     const info = await docker.version();
     const system = (await docker.info()) as {

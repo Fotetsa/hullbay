@@ -2,7 +2,7 @@ import { useEffect, useState } from "react"
 import { Button, Heading, Input, Label, Text, toast, usePrompt } from "@medusajs/ui"
 import { Trash, XMark, CommandLine } from "@medusajs/icons"
 import { z } from "zod"
-import type { Node } from "@hullbay/shared"
+import type { DatabaseConfig, Node } from "@hullbay/shared"
 // Import depuis le sous-chemin node-config : évite de tirer labels.ts (node:crypto)
 // dans le bundle navigateur via le barrel index.ts.
 import { parseNodeConfig, type NodeType, type VolumeConfig } from "@hullbay/shared/node-config"
@@ -11,6 +11,8 @@ import { ContainerForm } from "./forms/ContainerForm"
 import { NetworkForm } from "./forms/NetworkForm"
 import { VolumeForm } from "./forms/VolumeForm"
 import { GatewayForm } from "./forms/SimpleForms"
+import { DatabaseForm } from "./forms/DatabaseForm"
+import { DatabasePreviewPanel } from "./DatabasePreviewPanel"
 import { useContainerLogs } from "../lib/useContainerLogs"
 
 /**
@@ -19,12 +21,14 @@ import { useContainerLogs } from "../lib/useContainerLogs"
  */
 export function Inspector({
   node,
+  projectId,
   clusterId,
   onClose,
   onSaved,
   onDeleted,
 }: {
     node: Node
+  projectId: string
   clusterId: string | null
   onClose: () => void
   onSaved: () => void
@@ -140,6 +144,23 @@ export function Inspector({
         )}
         {node.type === "gateway" && (
           <GatewayForm config={config} onChange={setConfig} />
+        )}
+        {node.type === "database" && (
+          <>
+            <DatabaseForm
+              config={config as Partial<DatabaseConfig>}
+              onChange={setConfig}
+              clusterId={clusterId ?? ""}
+            />
+            {/* Aperçu des ressources générées — refresh à chaque édit via la clé de query. */}
+            <div className="mt-4 rounded-lg border border-ui-border-base bg-ui-bg-subtle p-3">
+              <DatabasePreviewPanel
+                projectId={projectId}
+                nodeId={node.id}
+                config={config as Partial<DatabaseConfig>}
+              />
+            </div>
+          </>
         )}
 
         {/* Logs (conteneurs déployés uniquement). */}

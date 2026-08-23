@@ -63,7 +63,7 @@ export const NodeSchema = z.object({
 })
 export type Node = z.infer<typeof NodeSchema>
 
-export const EdgeKind = z.enum(["network", "volume", "gateway"])
+export const EdgeKind = z.enum(["network", "volume", "gateway", "database"])
 export type EdgeKind = z.infer<typeof EdgeKind>
 
 export const EdgeSchema = z.object({

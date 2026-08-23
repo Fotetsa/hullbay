@@ -1,4 +1,4 @@
-import { computeDesiredHash, LabelKeys, type NodeType } from "@hullbay/shared"
+import { computeDesiredHash, LabelKeys, isRetainedDataVolume, type NodeType } from "@hullbay/shared"
 import { DockerEngineService } from "../docker-engine/service"
 import { exposureService } from "../exposure/service"
 import type { ProjectGraph, Node } from "@hullbay/shared"
@@ -81,8 +81,29 @@ export class ReconcilerService {
     return { actions }
   }
 
-  /** Détruit toutes les ressources gérées d'un projet (routes Caddy -> services -> volumes -> networks). */
-  async destroy(graph: ProjectGraph): Promise<string[]> {
+  /**
+   * Détruit toutes les ressources gérées d'un projet
+   * (routes Caddy -> services -> secrets -> volumes -> networks).
+   *
+   * RÉTENTION des volumes de données : 3 cases, dans l'ordre :
+   *  1. DANS le graphe et retain=true  (retainedVolumeNames)  → conservé.
+   *  2. DANS le graphe et retain=false (managedDataVolumeNames) → supprimé :
+   *     la config live (persistée) prime sur un label daté d'un ancien deploy —
+   *     Docker ne met pas à jour les labels d'un volume existant.
+   *  3. HORS du graphe (orphelin) → garde par label bozando.database.data :
+   *     plus rien dans le graphe ne peut exprimer une politique, on ne détruit
+   *     pas aveuglément des données.
+   */
+  async destroy(
+    graph: ProjectGraph,
+    {
+      retainedVolumeNames = new Set<string>(),
+      managedDataVolumeNames = new Set<string>(),
+    }: {
+      retainedVolumeNames?: Set<string>
+      managedDataVolumeNames?: Set<string>
+    } = {}
+  ): Promise<string[]> {
     const log: string[] = []
 
     // 0. Routes Caddy des passerelles.
@@ -102,6 +123,25 @@ export class ReconcilerService {
       await this.waitServiceTasksGone(s.ID)
       log.push(`service ${s.Spec?.Name ?? s.ID} supprimé`)
     }
+    // Secrets de config GÉNÉRÉS par l'expansion (patroni-replication, haproxy.cfg…)
+    // : purge best-effort. Immutables et versionnés par contenu, ils s'accumulent
+    // sinon à chaque cycle deploy/destroy. Un secret encore référencé (rare, tasks
+    // en cours) est toléré — réessai au prochain destroy/déploiement.
+    const secrets = await this.docker.listManagedSecrets()
+    for (const sec of secrets) {
+      const labels = sec.labels ?? {}
+      const mine =
+        labels["bozando.database.generated"] === "true" &&
+        labels[LabelKeys.projectId] === graph.id
+      if (!mine) continue
+      try {
+        await this.docker.removeSecret(sec.name)
+        log.push(`secret généré ${sec.name} supprimé`)
+      } catch (err) {
+        const detail = err instanceof Error ? err.message : String(err)
+        log.push(`secret généré ${sec.name} retenu (encore référencé ?) : ${detail}`)
+      }
+    }
     const networks = await this.docker.listManagedNetworks()
     for (const n of networks.filter((n) => n.Labels?.[LabelKeys.projectId] === graph.id)) {
       await this.docker.removeNetwork(n.Id)
@@ -109,6 +149,21 @@ export class ReconcilerService {
     }
     const volumes = await this.docker.listManagedVolumes()
     for (const v of volumes.filter((v) => v.Labels?.[LabelKeys.projectId] === graph.id)) {
+      // RÉTENTION  — cf. doc de destroy : décision LIVE (graphe) d'abord,
+      // garde par label pour les seuls volumes orphelins de toute décision.
+      if (retainedVolumeNames.has(v.Name)) {
+        log.push(`volume ${v.Name} conservé (rétention définie dans la config)`)
+        continue
+      }
+      if (managedDataVolumeNames.has(v.Name)) {
+        log.push(`volume ${v.Name} supprimé (rétention désactivée dans la config)`)
+        await this.removeVolumeWithRetry(v.Name)
+        continue
+      }
+      if (isRetainedDataVolume(v.Labels)) {
+        log.push(`volume ${v.Name} conservé (données retenues)`)
+        continue
+      }
       // Filet de sécurité en plus de `waitServiceTasksGone` : un volume peut rester
       // "in use" un instant même après disparition des tasks (démontage du device
       // côté nœud, légèrement décalé). Retry court avec backoff plutôt qu'échec sec.

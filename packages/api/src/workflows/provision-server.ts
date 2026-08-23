@@ -6,7 +6,9 @@ import { invalidateDockerClient } from "../modules/docker-engine/client"
 import { registryService } from "../modules/registry/service"
 import { serversService } from "../modules/servers/service"
 import { eventBus } from "../lib/event-bus"
-import { prisma } from "../lib/prisma" 
+import { clusterService } from "../modules/clusters/service"
+import { prisma } from "../lib/prisma"
+import { decryptSecret } from "../modules/auth/crypto"
 
 /**
  * Provisionne un serveur en ONE-SHOT SSH puis le fait rejoindre le Swarm.
@@ -57,6 +59,89 @@ async function getEngineLazy(input: ProvisionInput, s: ProvShared): Promise<Dock
   if (s.engine) return s.engine
   s.engine = await DockerEngineService.forCluster(input.clusterId)
   return s.engine
+}
+
+/**
+ * Récupère le join token et l'adresse du manager via SSH direct,
+ * en contournant le tunnel Docker API (évite le "socket hang up"
+ * causé par les réponses volumineuses de swarmInspect via forwardOut).
+ */
+async function getJoinTokenViaSsh(
+  clusterId: string,
+  joinRole: "worker" | "manager",
+): Promise<{ token: string; managerAddr: string }> {
+  const manager = await prisma.server.findFirst({
+    where: { clusterId, role: "manager", status: "ready" },
+    orderBy: { createdAt: "asc" },
+  })
+  if (!manager) {
+    throw new Error(`Aucun manager prêt pour le cluster ${clusterId}`)
+  }
+  if (!manager.privateKeyEnc) {
+    throw new Error(`Manager ${manager.name} sans clé de maintenance`)
+  }
+
+  const session = await SshSession.connect({
+    host: manager.host,
+    port: manager.port,
+    user: manager.user,
+    credential: { type: "key", privateKey: decryptSecret(manager.privateKeyEnc) },
+    knownHostKeyFp: manager.hostKeyFp ?? undefined,
+  })
+
+  try {
+    const tokenRes = await session.exec(`docker swarm join-token -q ${joinRole}`)
+    if (tokenRes.code !== 0) {
+      throw new Error(`swarm join-token: ${tokenRes.stderr || tokenRes.stdout}`)
+    }
+    const token = tokenRes.stdout.trim()
+
+    const addrRes = await session.exec("docker info --format '{{.Swarm.NodeAddr}}'")
+    if (addrRes.code !== 0 || !addrRes.stdout.trim()) {
+      throw new Error(`docker info (NodeAddr): ${addrRes.stderr || addrRes.stdout}`)
+    }
+    const managerAddr = `${addrRes.stdout.trim()}:2377`
+
+    return { token, managerAddr }
+  } finally {
+    session.dispose()
+  }
+}
+
+/**
+ * Récupère la liste des nœuds swarm via SSH direct au manager
+ * (contourne le tunnel Docker API pour la même raison que getJoinTokenViaSsh).
+ */
+async function listNodesViaSsh(
+  clusterId: string,
+): Promise<Array<{ ID?: string; Status?: { Addr?: string }; Description?: { Hostname?: string } }>> {
+  const manager = await prisma.server.findFirst({
+    where: { clusterId, role: "manager", status: "ready" },
+    orderBy: { createdAt: "asc" },
+  })
+  if (!manager || !manager.privateKeyEnc) return []
+
+  const session = await SshSession.connect({
+    host: manager.host,
+    port: manager.port,
+    user: manager.user,
+    credential: { type: "key", privateKey: decryptSecret(manager.privateKeyEnc) },
+    knownHostKeyFp: manager.hostKeyFp ?? undefined,
+  })
+
+  try {
+    const res = await session.exec("docker node ls --format '{{json .}}'")
+    if (res.code !== 0) return []
+    return res.stdout
+      .trim()
+      .split("\n")
+      .filter(Boolean)
+      .map((line) => {
+        try { return JSON.parse(line) } catch { return {} }
+      })
+  } finally {
+    session.dispose()
+  }
 }
 
 const connectStep: Step<ProvisionInput> = {
@@ -116,13 +201,16 @@ const swarmJoinStep: Step<ProvisionInput> = {
         throw new Error(`swarm init: ${res.stderr}`)
       }
 
-      
-    } else {
+    } else if (input.role === "manager" && swarmExists && s.isNewCluster) { 
+      log(input.serverId, "Swarm déjà actif sur ce serveur réutilisé comme nouveau cluster.")
+    }else{
       // Worker, OU manager additionnel (HA quorum) : on JOINT le cluster existant
       // avec le token correspondant au rôle demandé.
+      // Utilise SSH direct au lieu du tunnel Docker API pour éviter le
+      // "socket hang up" causé par les réponses volumineuses de swarmInspect.
       const joinRole = input.role === "manager" ? "manager" : "worker"
       log(input.serverId, `Récupération du token de cluster (${joinRole})…`)
-      const { token, managerAddr } = await s.engine!.getSwarmJoinInfo(joinRole)
+      const { token, managerAddr } = await getJoinTokenViaSsh(input.clusterId, joinRole)
       log(input.serverId, `Jonction au Swarm (${joinRole})…`)
       const res = await s.session!.exec(
         `docker swarm join --token ${shellQuote(token)} ${shellQuote(managerAddr)}`
@@ -146,9 +234,9 @@ export const deploySocketProxyStep: Step<ProvisionInput> = {
     const s = ctx.shared as ProvShared;
     // Seulement pour le 1er manager d'un NOUVEAU cluster — un worker ou un
     // manager additionnel (HA) rejoint un cluster qui a déjà son proxy.
-    const swarmWasFreshlyInitialized =
-      input.role === "manager" && !s.hadExistingSwarm;
-    if (!swarmWasFreshlyInitialized) return;
+    const isFirstManagerOfNewCluster =
+      input.role === "manager" && s.isNewCluster;
+    if (!isFirstManagerOfNewCluster) return;
 
     log(input.serverId, "Déploiement du docker-socket-proxy…");
 
@@ -194,9 +282,9 @@ export const deployCaddyStep: Step<ProvisionInput> = {
   name: "deploy-caddy",
   run: async (input, ctx) => {
     const s = ctx.shared as ProvShared;
-    const swarmWasFreshlyInitialized =
-      input.role === "manager" && !s.hadExistingSwarm;
-    if (!swarmWasFreshlyInitialized) return;
+    const isFirstManagerOfNewCluster =
+      input.role === "manager" && s.isNewCluster;
+    if (!isFirstManagerOfNewCluster) return;
 
     log(input.serverId, "Déploiement de Caddy (cluster)…");
 
@@ -208,10 +296,12 @@ export const deployCaddyStep: Step<ProvisionInput> = {
       return;
     }
 
-    // Config minimale : admin seul, aucun site pré-défini — tout sera ajouté
-    // dynamiquement via l'API admin (exposure/settings), comme pour le système.
+    // Config minimale : un serveur HTTP `:80` est nécessaire dès le départ —
+    // resolveServerName (gateways/exposure) exige un serveur existant pour
+    // insérer des routes. Tout le reste est ajouté dynamiquement via l'API
+    // admin (exposure/settings), comme pour le système.
     await s.session!.exec(
-      `mkdir -p /opt/hullbay-caddy && printf '{\\n\\tadmin 0.0.0.0:2019\\n}\\n' > /opt/hullbay-caddy/Caddyfile`,
+      `mkdir -p /opt/hullbay-caddy && printf '{\\n\\tadmin 0.0.0.0:2019\\n}\\n\\n:80\\n' > /opt/hullbay-caddy/Caddyfile`,
     );
 
     const cmd = [
@@ -224,7 +314,15 @@ export const deployCaddyStep: Step<ProvisionInput> = {
       `-p 127.0.0.1:2019:2019`,
       "-v /opt/hullbay-caddy/Caddyfile:/etc/caddy/Caddyfile:ro",
       "-v hullbay_caddy_data:/data",
+      // Persiste l'autosave de Caddy (config admin) pour survivre aux restarts.
+      "-v hullbay_caddy_config:/config/caddy",
       "caddy:2-alpine",
+      // --resume : charge l'autosave s'il existe (config persistée par hullbay),
+      // sinon fallback sur le Caddyfile (premier démarrage).
+      "caddy", "run",
+      "--config", "/etc/caddy/Caddyfile",
+      "--adapter", "caddyfile",
+      "--resume",
     ].join(" ");
 
     const res = await s.session!.exec(cmd);
@@ -246,34 +344,16 @@ export const deployCaddyStep: Step<ProvisionInput> = {
 export const finalizeClusterStep: Step<ProvisionInput> = {
   name: "finalize-cluster",
   run: async (input, ctx) => {
-    const s = ctx.shared as ProvShared
+    const s = ctx.shared as ProvShared;
     if (s.isNewCluster) {
-      await prisma.cluster.update({
-        where: { id: input.clusterId },
-        data: {
-          dockerHost: `tcp://${input.host}:2375`,
-          caddyAdminUrl: `http://${input.host}:2019`,
-          status: "ready",
-        },
-      });
-
-      // Le dockerHost du cluster vient d'être fixé : purge le client dockerode
-      // en cache, sinon les prochaines opérations visent encore l'ancienne cible.
-      invalidateDockerClient(input.clusterId);
-
-      await eventBus.emit("cluster.status", {
-        clusterId: input.clusterId,
-        from: "pending",
-        to: "ready",
-        timestamp: new Date().toISOString(),
-      });
-
-      console.log(
-        `[cluster] Status transition: pending → ready (cluster: ${input.clusterId})`,
+      await clusterService.markReady(
+        input.clusterId,
+        `tcp://${input.host}:2375`,
+        `http://${input.host}:2019`,
       );
     }
   },
-}
+};
 
 const registryLoginStep: Step<ProvisionInput> = {
   name: "registry-login",
@@ -326,8 +406,8 @@ const persistStep: Step<ProvisionInput> = {
       } else {
         // Worker, ou manager additionnel (HA) : le cluster existe déjà,
         // le manager cible (potentiellement un AUTRE serveur) est ready.
-        const engine = await getEngineLazy(input, s);
-        const nodes = await engine.listNodes();
+        // Utilise SSH direct au lieu du tunnel Docker API (même raison que swarm-join).
+        const nodes = await listNodesViaSsh(input.clusterId)
         const match = nodes.find(
           (n) =>
             (n as { Status?: { Addr?: string } }).Status?.Addr === input.host ||
@@ -376,31 +456,15 @@ export async function provisionServerWorkflow(input: ProvisionInput): Promise<vo
       await serversService.update(input.serverId, {
         status: "error",
         lastError: result.error ?? "échec provisioning",
-      })
+      });
       if (input.isNewCluster) {
-        await prisma.cluster
-          .update({
-            where: { id: input.clusterId },
-            data: { status: "failed" },
-          })
-          .catch(() => {});
-
-        await eventBus.emit("cluster.status", {
-          clusterId: input.clusterId,
-          from: "pending",
-          to: "failed",
-          timestamp: new Date().toISOString(),
-        });
-
-        console.log(
-          `[cluster] Status transition: pending → failed (cluster: ${input.clusterId})`,
-        );
+        await clusterService.markFailed(input.clusterId);
       }
       await eventBus.emit("provision.step", {
         serverId: input.serverId,
         message: `Échec : ${result.error}`,
-      })
-      throw new Error(result.error || "provisioning échoué")
+      });
+      throw new Error(result.error || "provisioning échoué");
     }
     await eventBus.emit("server.provisioned", {
       serverId: input.serverId,

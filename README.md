@@ -14,11 +14,11 @@
 
 hullbay is a visual operations plane for modern infrastructure teams. It transforms Docker-based deployments into a safe, guided experience where services, networks, volumes, and routing can be drawn, reviewed, and applied from a single interface.
 
-The platform is designed for a single VPS or a Swarm cluster and aims to make infrastructure operations accessible, traceable, and less error-prone for both operators and teams with limited Docker experience.
+The platform is designed for a Multi-VPS or/and a Swarm cluster and aims to make infrastructure operations accessible, traceable, and less error-prone for both operators and teams with limited Docker experience ( CIA Triad oriented)
 
 ## Key capabilities
 
-- Visual topology design for containers, networks, gateways, and volumes
+- Visual topology design for containers, networks, gateways, and volumes ( drag, drop, start)
 - Deployment review with a clear before/after plan before applying changes
 - Multi-node Docker Swarm orchestration with resilient rollout behavior
 - Provisioning and server onboarding workflows with secure SSH handling
@@ -53,17 +53,6 @@ The platform is designed for a single VPS or a Swarm cluster and aims to make in
   <img src="docs/image%20sant%C3%A9.png" alt="hullbay health view" width="1000" />
 </div>
 
-## Architecture
-
-The project is organized as a monorepo with three main packages:
-
-| Package | Role |
-|---|---|
-| packages/shared | Shared domain model and validation contracts for projects, nodes, and edges |
-| packages/api | Backend service for orchestration, Docker integration, sockets, Prisma, and RBAC |
-| packages/web | React and Vite front end with a visual canvas and operator workflow UI |
-
-A core principle of the platform is that Docker labels act as a redundant source of truth. The canvas can be reconstructed from the runtime state, while the database serves as a convenient operational cache.
 
 ## Quick start
 
@@ -75,7 +64,7 @@ curl -fsSL https://raw.githubusercontent.com/fotetsa/hullbay/master/install.sh |
 
 The installer is idempotent and will:
 
-1. Install Docker and initialize Swarm if needed
+1. Install Docker and initialize Swarm if needed 
 2. Generate the required environment and secret files
 3. Pull the production stack configuration
 4. Start the operations panel

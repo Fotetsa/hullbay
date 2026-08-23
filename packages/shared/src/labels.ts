@@ -36,6 +36,19 @@ export const LabelKeys = {
   edges: `${NS}.edges`,
   createdBy: `${NS}.createdBy`,
   createdAt: `${NS}.createdAt`,
+  // ── Ownership des ressources générées par l'expansion database ──
+  // Chaque membre (conteneur/volume/réseau) porte l'identité du parent et son
+  // rôle : nécessaire pour l'observer (attribution au parent), le rebuild
+  // (reconstruction du nœud database), le drift et la suppression.
+  dbParent: `${NS}.database.parent`,
+  dbParentName: `${NS}.database.parentName`,
+  dbRole: `${NS}.database.role`,
+  dbIndex: `${NS}.database.index`,
+  dbEngine: `${NS}.database.engine`,
+  /** Config encodée du nœud database parent (rebuild sans membres persistés). */
+  dbParentConfig: `${NS}.database.parentConfig`,
+  /** Vrai pour les volumes de données retenus à la suppression (rétention). */
+  dbData: `${NS}.database.data`,
 } as const
 
 /** Taille max recommandée d'une valeur de label encodée (garde-fou). */
@@ -152,7 +165,7 @@ export function buildBozandoLabels(input: BuildLabelsInput): Record<string, stri
   return labels
 }
 
-/** Filtre dockerode pour ne lister QUE nos ressources gérées. */
+/** Filtre dockerode pour lister QUE nos ressources gérées. */
 export function managedFilter(): { label: string[] } {
   return { label: [`${LabelKeys.managed}=true`] }
 }
@@ -162,7 +175,94 @@ export function projectFilter(projectId: string): { label: string[] } {
   return { label: [`${LabelKeys.managed}=true`, `${LabelKeys.projectId}=${projectId}`] }
 }
 
+/** Métadonnées d'ownership d'une ressource générée par l'expansion database. */
+export interface DatabaseOwnershipLabelsInput {
+  parentNodeId: string
+  parentNodeName: string
+  parentConfig: unknown
+  role: string
+  index: number
+  engine: string
+  /** true pour les volumes de données. */
+  data: boolean
+  /** Politique explicite de l'utilisateur (default true). */
+  retainDataOnDelete: boolean
+}
+
+/**
+ * Labels bozando.database.* d'une ressource générée (membre/consensus/endpoint/
+ * réseau/volume). Portent l'identité du parent pour l'observer (attribution), le
+ * rebuild (reconstruction du nœud database depuis les labels), le drift et la
+ * rétention.
+ *
+ * GARDE RÉTENTION : le label bozando.database.data=true n'est posé
+ * QUE si l'utilisateur a explicitement demandé la rétention (retainDataOnDelete,
+ * défaut true). `false` → aucun label → le volume est supprimable par les 3
+ * chemins (destroy, volumesStep orphelins, prune-orphans).
+ */
+export function databaseOwnershipLabels(
+  own: DatabaseOwnershipLabelsInput
+): Record<string, string> {
+  const labels: Record<string, string> = {
+    [LabelKeys.dbParent]: own.parentNodeId,
+    [LabelKeys.dbParentName]: own.parentNodeName,
+    [LabelKeys.dbRole]: own.role,
+    [LabelKeys.dbIndex]: String(own.index),
+    [LabelKeys.dbEngine]: own.engine,
+    // Config du parent encodée — aucune valeur sensible (passwordSecretRef seul).
+    [LabelKeys.dbParentConfig]: encodeJsonLabel(own.parentConfig),
+  }
+  if (own.data && own.retainDataOnDelete) {
+    labels[LabelKeys.dbData] = "true"
+  }
+  return labels
+}
+
+/**
+ * GARDE RÉTENTION  — source unique des 3 chemins de suppression
+ * (reconciler.destroy, volumesStep orphelins, prune-orphans).
+ *
+ * Un volume de données (bozando.database.data=true) n'est JAMAIS supprimé sans
+ * politique explicite de l'utilisateur. Le label n'est posé par
+ * databaseOwnershipLabels que si `retainDataOnDelete` est vrai (défaut) : une
+ * valeur absente = volume normal, supprimable.
+ */
+export function isRetainedDataVolume(
+  labels: Record<string, string> | undefined | null
+): boolean {
+  return labels?.[LabelKeys.dbData] === "true"
+}
+
 // ── Décodage : reconstruire un nœud depuis les labels d'une ressource Docker ──
+
+/** Nœud database parent reconstruit depuis les labels d'une ressource déployée. */
+export interface DecodedDatabaseParent {
+  parentNodeId: string
+  parentNodeName: string
+  engine: string
+  /** Config du nœud database (décodée depuis dbParentConfig). null → dégradé. */
+  parentConfig: Record<string, unknown> | null
+}
+
+/**
+ * Décode l'identité du nœud database PARENT depuis les labels bozando.database.*
+ * d'une ressource générée (membre/consensus/endpoint/réseau/volume).
+ * Retourne null si la ressource n'a pas de parent database (nœud régulier).
+ * Pilier de rebuildFromDocker — permet de reconstruire le nœud database depuis
+ * Docker SEUL (les membres portent la config parent, jamais persistés en base).
+ */
+export function decodeDatabaseParent(
+  labels: Record<string, string> | undefined
+): DecodedDatabaseParent | null {
+  const parentNodeId = labels?.[LabelKeys.dbParent]
+  if (!parentNodeId) return null
+  return {
+    parentNodeId,
+    parentNodeName: labels[LabelKeys.dbParentName] ?? "",
+    engine: labels[LabelKeys.dbEngine] ?? "",
+    parentConfig: decodeJsonLabel<Record<string, unknown>>(labels[LabelKeys.dbParentConfig]),
+  }
+}
 
 export interface DecodedResource {
   projectId: string
@@ -190,6 +290,8 @@ export function decodeBozandoLabels(
   if (!labels || labels[LabelKeys.managed] !== "true") return null
 
   const nodeType = labels[LabelKeys.nodeType]
+  // "database" est volontairement EXCLU : c'est un nœud de composition, jamais
+  // labelisé Docker — seuls les membres générés le sont (via bozando.database.*).
   if (!nodeType || !["container", "network", "volume", "gateway"].includes(nodeType)) {
     return null
   }

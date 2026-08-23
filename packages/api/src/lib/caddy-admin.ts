@@ -1,6 +1,6 @@
 import { request as httpRequest } from "node:http";
 import { request as httpsRequest } from "node:https";
-import { getDefaultCluster } from "../modules/docker-engine/client";
+import { clusterService } from "../modules/clusters/service";
 import { ensureTunnel } from "./ssh-tunnel";
 import { prisma } from "./prisma";
 
@@ -20,16 +20,18 @@ import { prisma } from "./prisma";
  */
 export async function getSystemAdminUrl(): Promise<string> {
   if (process.env.CADDY_ADMIN_URL) return process.env.CADDY_ADMIN_URL
-  return (await getDefaultCluster()).caddyAdminUrl
+  return (await clusterService.getDefault()).caddyAdminUrl
 }
 
+
 export async function getAdminUrlForCluster(clusterId: string): Promise<string> {
-  const cluster = await prisma.cluster.findUniqueOrThrow({ where: { id: clusterId } })
-  if (cluster.isDefault) return cluster.caddyAdminUrl
-  const remote = new URL(cluster.caddyAdminUrl)
-  const remotePort = Number(remote.port || 2019)
-  const localPort = await ensureTunnel(clusterId, remotePort)
-  return `http://127.0.0.1:${localPort}`
+  const cluster = await clusterService.getOrThrow(clusterId);
+  if (!cluster) throw new Error(`Cluster ${clusterId} introuvable`);
+  if (cluster.isDefault) return cluster.caddyAdminUrl;
+  const remote = new URL(cluster.caddyAdminUrl);
+  const remotePort = Number(remote.port || 2019);
+  const localPort = await ensureTunnel(clusterId, remotePort);
+  return `http://127.0.0.1:${localPort}`;
 }
 
 /** Forme partielle de la config http renvoyée par l'admin Caddy. */
@@ -111,8 +113,8 @@ export function caddyAdmin({
  * serveur qui écoute sur le port public (80/443), avec repli sur le 1er serveur.
  */
 export async function resolveServerName(adminUrl: string): Promise<string> {
-  const res = await caddyAdmin({ adminUrl, path: `/config/apps/http/servers` });
-  if (!res.ok) {
+  let res = await caddyAdmin({ adminUrl, path: `/config/apps/http/servers` });
+  if (!res.ok && res.status !== 404) {
     throw new Error(`Caddy: lecture des serveurs impossible (${res.status})`);
   }
   let servers: CaddyServers = {};
@@ -121,11 +123,21 @@ export async function resolveServerName(adminUrl: string): Promise<string> {
   } catch {
     servers = {};
   }
-  const names = Object.keys(servers ?? {});
+  let names = Object.keys(servers ?? {});
   if (names.length === 0) {
-    throw new Error(
-      "Caddy: aucun serveur HTTP configuré",
-    );
+    // Caddy sans serveur HTTP (config minimale `admin` seul) : la lecture des
+    // serveurs renvoie 404, ou un objet vide. On auto-crée `srv0` sur :80 pour
+    // pouvoir insérer des routes (gateways/exposure) sur un serveur existant.
+    const init = await caddyAdmin({
+      adminUrl,
+      path: `/config/apps/http/servers/srv0`,
+      method: "PUT",
+      body: { listen: [":80"] },
+    });
+    if (!init.ok) {
+      throw new Error(`Caddy: impossible de créer srv0 (${init.status})`);
+    }
+    names = ["srv0"];
   }
   // Préfère le serveur qui publie le trafic public (port 80 ou 443).
   const onPublicPort = names.find((n) =>
