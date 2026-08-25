@@ -55,8 +55,9 @@ export class ExposureService {
     const current = new Set(cfg.automatic_https?.skip ?? [])
     if (skip) current.add(domain)
     else current.delete(domain)
-    // Écrit la liste `skip` (idempotent). PUT sur le sous-chemin remplace la valeur.
-    await caddyAdmin({adminUrl, path: `/config/apps/http/servers/${server}/automatic_https/skip`, method: "PUT", body: [...current]})
+    // Écrit la liste `skip` (idempotent). PATCH merge sur le parent
+    // (PUT=409 si existe, POST=append array, PATCH=merge)
+    await caddyAdmin({adminUrl, path: `/config/apps/http/servers/${server}/automatic_https`, method: "PATCH", body: { skip: [...current] }})
   }
 
   /**
@@ -103,6 +104,8 @@ export class ExposureService {
       try { existingRoutes = JSON.parse(readRes.body).routes ?? [] } catch { /* routes illisibles : on repart de zéro */ }
     }
     const updatedRoutes = [route, ...existingRoutes]
+    // DELETE puis PUT : PUT seul donne 409 si le tableau existe déjà
+    await caddyAdmin({ adminUrl, path: `/config/apps/http/servers/${server}/routes`, method: "DELETE" }).catch(() => {})
     const res = await caddyAdmin({ adminUrl, path: `/config/apps/http/servers/${server}/routes`, method: "PUT", body: updatedRoutes })
     if (!res.ok) {
       throw new Error(`Caddy upsert route ${id} a échoué (${res.status})`)

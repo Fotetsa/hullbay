@@ -311,6 +311,8 @@
   },
   "secrets": {
     "pageTitle": "Secrets",
+    "clusterLabel": "Cluster",
+    "clusterPlaceholder": "Select a cluster",
     "toast": {
       "saveSuccess": "Secret saved",
       "removeSuccess": "Secret removed"

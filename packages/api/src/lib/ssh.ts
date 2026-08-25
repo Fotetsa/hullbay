@@ -57,9 +57,13 @@ export class SshSession {
             : { password: opts.credential.password }),
           // TOFU : on inspecte la host key avant d'accepter.
           hostVerifier: (key: Buffer) => {
-            const fp = "sha256:" + createHash("sha256").update(key).digest("base64")
+            // Base64 sans padding final (=) : les empreintes ssh-keyscan (SHA256:)
+            // n'en portent pas — comparaison cohérente des deux côtés.
+            const fp = "sha256:" + createHash("sha256").update(key).digest("base64").replace(/=+$/, "")
             opts.onHostKey?.(fp)
-            if (opts.knownHostKeyFp && opts.knownHostKeyFp !== fp) {
+            // Comparaison case-insensitive : ssh-keyscan émet `SHA256:…` en
+            // majuscules, notre fp est `sha256:…` en minuscules.
+            if (opts.knownHostKeyFp && opts.knownHostKeyFp.toLowerCase() !== fp.toLowerCase()) {
               return false // empreinte changée → refus
             }
             return true

@@ -147,6 +147,23 @@ export class ProjectsService {
         `Kind "${kind}" incohérent avec la paire ${sourceType}/${targetType} (attendu "${inferredKind}").`
       )
     }
+    // Dédup : un même couple de nœuds ne porte qu'UN lien par nature (le sens
+    // est indifférent — le canvas traite les paires en non-orienté). Sans ça,
+    // re-tirer un lien database existant créait un doublon invisible.
+    const duplicate = await prisma.edge.findFirst({
+      where: {
+        projectId: input.projectId,
+        kind,
+        OR: [
+          { sourceNodeId: input.sourceNodeId, targetNodeId: input.targetNodeId },
+          { sourceNodeId: input.targetNodeId, targetNodeId: input.sourceNodeId },
+        ],
+      },
+      select: { id: true },
+    })
+    if (duplicate) {
+      throw new Error("Ces deux nœuds sont déjà reliés par ce type de lien.")
+    }
     return prisma.edge.create({
       data: {
         projectId: input.projectId,
