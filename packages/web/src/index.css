@@ -146,4 +146,20 @@ body {
   .hb-progress-fill {
     transition: none;
   }
+
+}
+.react-flow__controls-button  {
+  background: var(--bg-base);
+  color: var(--fg-base);
+  border-color: var(--border-base);
+}
+.react-flow__controls-button svg {
+  fill: currentColor;
+}
+.react-flow__attribution {
+  background: color-mix(in srgb, var(--bg-base) 80%, transparent);
+  color: var(--fg-subtle);
+}
+.react-flow__attribution a {
+  color: inherit;
 }
