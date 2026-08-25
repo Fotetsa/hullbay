@@ -10,7 +10,7 @@ import { api } from "../../lib/api"
  * Champs (champs avancés conditionnels par moteur) :
  *  - moteur / version explicite (jamais "latest")
  *  - mode (single / HA) + topologie : data-replicas et consensus DECOUPLÉS  ;
- *    le consensus (etcd/Sentinel) n'est présent que pour les moteurs qui en ont.
+ *    le consensus (etcd/Sentinel) n'est présent que pour les mofteurs qui en ont.
  *  - stockage (sizeGo informatif + driver + volume externe)
  *  - ressources (CPU/mémoire, optionnel)
  *  - credentials = username + database + RÉFÉRENCE à un Docker Secret (la
@@ -146,7 +146,7 @@ export function DatabaseForm({
         </Select>
       </Section>
 
-      {/* Topologie (data-replicas vs consensus découplés, spec §13) */}
+      {/* Topologie (data-replicas vs consensus découplés*/}
       {mode === "ha" ? (
         <Section title="Topologie HA">
           <div>
@@ -287,7 +287,7 @@ export function DatabaseForm({
         </div>
       </Section>
 
-      {/* Credentials — référence de secret, JAMAIS la valeur (§23) */}
+      {/* Credentials — référence de secret, JAMAIS la valeur  */}
       <Section title="Identifiants">
         <div className="flex flex-col gap-2">
           <div>
@@ -347,12 +347,12 @@ export function DatabaseForm({
         </div>
       </Section>
 
-      {/* Rétention (§30) */}
+      {/* Rétention */}
       <div className="flex items-center justify-between">
         <div>
           <Label size="small">Conserver les données à la suppression</Label>
           <Text size="xsmall" className="text-ui-fg-muted">
-            Le volume de données survive au destroy (spec §30).
+            Le volume de données survive au destroy.
           </Text>
         </div>
         <Switch

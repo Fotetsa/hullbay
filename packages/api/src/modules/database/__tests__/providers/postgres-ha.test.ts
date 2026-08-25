@@ -281,12 +281,14 @@ describe("expandPostgres HA (S4 §12-13)", () => {
       DATABASE_USER: "catalog",
       DATABASE_NAME: "catalog_db",
       DATABASE_CREDENTIALS_FILE: "/run/secrets/db_catalog_secret",
+      DATABASE_SCHEME: "postgresql",
     })
     // Reader : env DATABASE_READ_* exacte (l'app fusionne les deux endpoints).
     expect(reader!.env).toEqual({
       DATABASE_READ_HOST: "boz_proj-a_catalog-reader",
       DATABASE_READ_PORT: "5432",
       DATABASE_READ_CREDENTIALS_FILE: "/run/secrets/db_catalog_secret",
+      DATABASE_READ_SCHEME: "postgresql",
     })
     // Cohérence : la connexion est la même fonction que les endpoints de l'exp.
     expect(exp.connections).toEqual(postgresConnections(cfg({}), ctx))

@@ -235,6 +235,7 @@ describe("expandPostgres single (S2-04)", () => {
       DATABASE_USER: "catalog",
       DATABASE_NAME: "catalog_db",
       DATABASE_CREDENTIALS_FILE: "/run/secrets/db_catalog_secret",
+      DATABASE_SCHEME: "postgresql",
     })
   })
 })

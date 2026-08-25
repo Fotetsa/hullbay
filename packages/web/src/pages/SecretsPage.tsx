@@ -1,7 +1,6 @@
-import { useState } from "react"
-import { useParams } from "react-router-dom" // <-- Ajout pour récupérer l'ID dans l'URL
+import { useState, useEffect } from "react"
 import { useQuery } from "@tanstack/react-query"
-import { Button, Container, Heading, Input, Label, Text, Badge } from "@medusajs/ui"
+import { Button, Container, Heading, Input, Label, Text, Badge, Select } from "@medusajs/ui"
 import { Plus, Trash, Key } from "@medusajs/icons"
 import { api } from "../lib/api"
 import { useMutationToast } from "../lib/useMutationToast"
@@ -19,24 +18,32 @@ import { useTranslation } from "react-i18next"
  */
 export function SecretsPage() {
   const { t } = useTranslation()
-  
-  // 1. Récupération du clusterId depuis l'URL
-  const { clusterId } = useParams<{ clusterId: string }>()
 
-  // 2. Ajout du clusterId dans la queryKey et la queryFn
-  const { data: secrets } = useQuery({ 
-    queryKey: ["secrets", clusterId], 
-    queryFn: () => api.listSecrets(clusterId!) 
+  // 1. Récupération des clusters + sélection du cluster par défaut
+  const { data: clusters } = useQuery({ queryKey: ["clusters"], queryFn: api.listClusters })
+  const [selectedClusterId, setSelectedClusterId] = useState<string>("")
+
+  useEffect(() => {
+    if (!selectedClusterId && clusters?.length) {
+      const def = clusters.find((c) => c.isDefault)
+      setSelectedClusterId(def?.id ?? clusters[0].id)
+    }
+  }, [clusters, selectedClusterId])
+
+  // 2. Liste des secrets du cluster sélectionné (guard si pas encore choisi)
+  const { data: secrets } = useQuery({
+    queryKey: ["secrets", selectedClusterId],
+    queryFn: () => api.listSecrets(selectedClusterId),
+    enabled: Boolean(selectedClusterId),
   })
 
   const [name, setName] = useState("")
   const [value, setValue] = useState("")
 
   const save = useMutationToast({
-    // 3. Ajout du clusterId pour la création
-    mutationFn: () => api.setSecret(clusterId!, { name, value }),
+    mutationFn: () => api.setSecret(selectedClusterId, { name, value }),
     success: t('secrets.toast.saveSuccess'),
-    invalidate: [["secrets", clusterId]], // Invalidation ciblée
+    invalidate: [["secrets", selectedClusterId]],
     onSuccess: () => {
       setName("")
       setValue("")
@@ -44,10 +51,9 @@ export function SecretsPage() {
   })
 
   const removeSecret = useConfirmDelete<string>({
-    // 4. Ajout du clusterId pour la suppression
-    mutationFn: (n) => api.deleteSecret(clusterId!, n),
+    mutationFn: (n) => api.deleteSecret(selectedClusterId, n),
     success: t('secrets.toast.removeSuccess'),
-    invalidate: [["secrets", clusterId]], // Invalidation ciblée
+    invalidate: [["secrets", selectedClusterId]],
     confirm: (n) => ({
       title: t('secrets.deleteConfirm.title'),
       description: t('secrets.deleteConfirm.description', { name: n }),
@@ -57,6 +63,20 @@ export function SecretsPage() {
   return (
     <PageContainer size="2xl">
       <PageHeader title={t('secrets.pageTitle')} />
+
+      <div className="mb-4">
+        <Label size="small">{t('secrets.clusterLabel')}</Label>
+        <Select value={selectedClusterId} onValueChange={setSelectedClusterId}>
+          <Select.Trigger>
+            <Select.Value placeholder={t('secrets.clusterPlaceholder')} />
+          </Select.Trigger>
+          <Select.Content>
+            {clusters?.map((c) => (
+              <Select.Item key={c.id} value={c.id}>{c.name}</Select.Item>
+            ))}
+          </Select.Content>
+        </Select>
+      </div>
 
       <div className="mb-6">
         <ListContainer
@@ -127,7 +147,7 @@ export function SecretsPage() {
           <Button
             onClick={() => save.mutate()}
             isLoading={save.isPending}
-            disabled={!name.trim() || !value}
+            disabled={!name.trim() || !value || !selectedClusterId}
           >
             <Plus /> {t('secrets.form.saveButton')}
           </Button>
