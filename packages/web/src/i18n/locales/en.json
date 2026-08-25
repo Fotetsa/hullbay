@@ -2,6 +2,7 @@
   "common": {
     "save": "Save",
     "cancel": "Cancel",
+    "close": "Close",
     "loading": "Loading...",
     "error": "Error",
     "success": "Success",
@@ -224,15 +225,38 @@
     },
     "badge": { "default": "default" },
     "serverCount": "{{count}} server(s)",
-    "actions": { "delete": "Delete" },
+    "actions": { "create": "New cluster", "delete": "Delete" },
     "deleteConfirm": {
       "title": "Delete this cluster?",
-      "description": "\"{{name}}\" is not operational (status: {{status}}) — deleting it also removes any attached server. This action is irreversible."
+      "description": "\"{{name}}\" is not operational (status: {{status}}) — deleting it also removes any attached server. This action is irreversible.",
+      "teardownLabel": "Also remove the {{count}} attached server(s)",
+      "teardownHint": "Drains and removes each server from the Swarm cluster before deleting.",
+      "teardownRequired": "You must confirm teardown to delete a cluster with attached servers."
     },
     "toast": {
+      "creationStarted": "Provisioning started",
       "deleteSuccess": "Cluster deleted",
       "deleteSuccessWithServers_one": "Cluster deleted ({{count}} server removed)",
-      "deleteSuccessWithServers_other": "Cluster deleted ({{count}} servers removed)"
+      "deleteSuccessWithServers_other": "Cluster deleted ({{count}} servers removed)",
+      "teardownStarted": "Teardown started ({{count}} server(s))",
+      "deleteError": "Deletion failed"
+    },
+    "createModal": {
+      "title": "New cluster",
+      "clusterNameLabel": "Cluster name",
+      "hint": "The first server added becomes this cluster's manager.",
+      "serverNameLabel": "Server name",
+      "hostLabel": "Host / IP",
+      "portLabel": "SSH port",
+      "userLabel": "SSH user",
+      "authMethodLabel": "Authentication method",
+      "sshKey": "SSH private key",
+      "password": "Password",
+      "errors": {
+        "name": "2 to 63 characters, letters/digits/spaces/-/_ only.",
+        "host": "Enter a valid hostname or IP address.",
+        "port": "Enter a valid port (1–65535)."
+      }
     },
     "detail": {
       "back": "Back",

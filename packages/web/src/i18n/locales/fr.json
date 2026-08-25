@@ -2,6 +2,7 @@
   "common": {
     "save": "Enregistrer",
     "cancel": "Annuler",
+    "close": "Fermer",
     "loading": "Chargement...",
     "error": "Erreur",
     "success": "Succès",
@@ -226,15 +227,38 @@
     },
     "badge": { "default": "défaut" },
     "serverCount": "{{count}} serveur(s)",
-    "actions": { "delete": "Supprimer" },
+    "actions": { "create": "Nouveau cluster", "delete": "Supprimer" },
     "deleteConfirm": {
       "title": "Supprimer ce cluster ?",
-      "description": "« {{name}} » n'est pas opérationnel (statut : {{status}}) — la suppression retire aussi tout serveur qui lui serait rattaché. Action irréversible."
+      "description": "« {{name}} » n'est pas opérationnel (statut : {{status}}) — la suppression retire aussi tout serveur qui lui serait rattaché. Action irréversible.",
+      "teardownLabel": "Retirer aussi les {{count}} serveur(s) rattaché(s)",
+      "teardownHint": "Draine et retire chaque serveur du cluster Swarm avant la suppression.",
+      "teardownRequired": "Tu dois confirmer le teardown pour supprimer un cluster avec des serveurs rattachés."
     },
     "toast": {
+      "creationStarted": "Provisionnement démarré",
       "deleteSuccess": "Cluster supprimé",
       "deleteSuccessWithServers_one": "Cluster supprimé ({{count}} serveur retiré)",
-      "deleteSuccessWithServers_other": "Cluster supprimé ({{count}} serveurs retirés)"
+      "deleteSuccessWithServers_other": "Cluster supprimé ({{count}} serveurs retirés)",
+      "teardownStarted": "Teardown démarré ({{count}} serveur(s))",
+      "deleteError": "Échec de la suppression"
+    },
+    "createModal": {
+      "title": "Nouveau cluster",
+      "clusterNameLabel": "Nom du cluster",
+      "hint": "Le premier serveur ajouté devient le manager de ce cluster.",
+      "serverNameLabel": "Nom du serveur",
+      "hostLabel": "Hôte / IP",
+      "portLabel": "Port SSH",
+      "userLabel": "Utilisateur SSH",
+      "authMethodLabel": "Méthode d'authentification",
+      "sshKey": "Clé privée SSH",
+      "password": "Mot de passe",
+      "errors": {
+        "name": "2 à 63 caractères, lettres/chiffres/espaces/-/_ uniquement.",
+        "host": "Entre un nom d'hôte ou une adresse IP valide.",
+        "port": "Entre un port valide (1–65535)."
+      }
     },
     "detail": {
       "back": "Retour",

@@ -20,6 +20,7 @@ export async function registerClustersRoutes(app: FastifyInstance) {
   );
 
   const idParams = z.object({ id: z.string() });
+  const deleteQuery = z.object({ teardown: z.coerce.boolean().optional() });
 
   app.get(
     "/api/clusters/:id",
@@ -47,22 +48,29 @@ export async function registerClustersRoutes(app: FastifyInstance) {
       ...owner,
       schema: {
         params: idParams,
+        querystring: deleteQuery,
         tags: ["clusters"],
-        summary: "Supprimer un cluster pending/failed (owner uniquement)",
+        summary: "Supprimer un cluster pending/failed, avec teardown optionnel des serveurs (owner uniquement)",
         security: [{ bearerAuth: [] }],
       },
     },
     async (req, reply) => {
       const { id } = req.params as { id: string };
+      const { teardown } = req.query as { teardown?: boolean }
       try {
-        const { removedServers } = await clusterService.remove(id);
-        return { ok: true, removedServers };
+        const result = await clusterService.remove(id, { teardown });
+        return { ok: true, ...result };
       } catch (err) {
-        const status =
-          (err as Error & { statusCode?: number }).statusCode ?? 500;
+        const statusCode = (err as Error & { statusCode?: number }).statusCode;
+        if (statusCode) {
+          return reply
+            .code(statusCode)
+            .send({ error: err instanceof Error ? err.message : String(err) });
+        }
+        req.log.error(err, "suppression de cluster: erreur inattendue");
         return reply
-          .code(status)
-          .send({ error: err instanceof Error ? err.message : String(err) });
+          .code(500)
+          .send({ error: "erreur interne lors de la suppression du cluster" });
       }
     },
   );
