@@ -290,6 +290,11 @@ The updates system is documented in `docs/`:
 
 Update these guides when changing user-visible behavior or the pipeline.
 
+## Architecture
+
+Voir [docs/architecture.md](./docs/architecture.md) pour les conventions
+(emplacement des subscribers, etc.) avant d'ajouter un nouveau module.
+
 ## Pull requests
 
 Before opening a pull request, ensure that:
