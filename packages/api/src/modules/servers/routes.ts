@@ -124,20 +124,34 @@ export async function registerServersRoutes(app: FastifyInstance) {
         if (!target)
           return reply.code(404).send({ error: "cluster introuvable" });
         if (target.status !== "ready") {
-          return reply
-            .code(409)
-            .send({
-              error: `cluster "${target.name}" pas encore prêt (statut: ${target.status})`,
-            });
+          return reply.code(409).send({
+            error: `cluster "${target.name}" pas encore prêt (statut: ${target.status})`,
+          });
         }
         clusterId = body.clusterId;
         role = body.role ?? "worker";
       } else {
-        const cluster = await clusterService.createPending(
-          body.newClusterName!,
-        );
-        clusterId = cluster.id;
-        role = "manager";
+        try {
+          const cluster = await clusterService.createPending(
+            body.newClusterName!,
+          );
+          clusterId = cluster.id;
+          role = "manager";
+        } catch (err) {
+          const statusCode = (err as Error & { statusCode?: number })
+            .statusCode;
+          if (statusCode) {
+            return reply
+              .code(statusCode)
+              .send({
+                error: err instanceof Error ? err.message : String(err),
+              });
+          }
+          req.log.error(err, "création de cluster: erreur inattendue");
+          return reply
+            .code(500)
+            .send({ error: "erreur interne lors de la création du cluster" });
+        }
       }
       const server = await serversService.create({
         name,

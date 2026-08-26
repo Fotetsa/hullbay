@@ -274,13 +274,25 @@ export function OpsNode({ data, selected }: NodeProps) {
           />
         </>
       ) : d.nodeType === "network" ? (
-        <Handle
-          type="target"
-          id="net-link"
-          position={Position.Left}
-          className={`${HANDLE_SIZE} ${HANDLE_COLOR["net-link"]}`}
-          title="Réseau"
-        />
+        <>
+          <Handle
+            type="target"
+            id="net-link"
+            position={Position.Left}
+            className={`${HANDLE_SIZE} ${HANDLE_COLOR["net-link"]}`}
+            title="Réseau"
+          />
+          {/* Ancrage visuel des liaisons « base de données » routées par ce
+              réseau (rendu seul : la règle CONNECTION_RULES interdit toute
+              connexion manuelle network↔database). */}
+          <Handle
+            type="source"
+            id="db-link"
+            position={Position.Right}
+            className={`${HANDLE_SIZE} ${HANDLE_COLOR["db-link"]}`}
+            title="Base de données (dépendance applicative)"
+          />
+        </>
       ) : d.nodeType === "volume" ? (
         <Handle
           type="target"

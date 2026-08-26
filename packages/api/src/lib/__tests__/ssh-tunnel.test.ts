@@ -323,32 +323,53 @@ it("nettoyage un seul appel même si close et error se suivent", async () => {
   })
 
   it("stream forwardOut en erreur → socket fermé, pas de crash, tunnel vivant", async () => {
-    const port = await ensureTunnel("cluster-1", 2375)
+    const port = await ensureTunnel("cluster-1", 2375);
 
-    const socket = net.connect({ host: "127.0.0.1", port })
-    await new Promise((r) => socket.once("connect", r))
+    const socket = net.connect({ host: "127.0.0.1", port });
+    await new Promise((r) => socket.once("connect", r));
 
-    // attendre que le handler serveur ait appelé forwardOut (mock.results rempli)
-    for (let i = 0; i < 10 && vi.mocked(mockSession.forwardOut).mock.results.length === 0; i++) {
-      await Promise.resolve()
+    const deadline = Date.now() + 2000;
+    while (
+      vi.mocked(mockSession.forwardOut).mock.results.length === 0 &&
+      Date.now() < deadline
+    ) {
+      await new Promise((r) => setTimeout(r, 10));
     }
-    const stream = await vi.mocked(mockSession.forwardOut).mock.results[0]!.value as PassThrough
-    for (let i = 0; i < 10 && stream.listenerCount("error") === 0; i++) await Promise.resolve()
-    expect(stream.listenerCount("error")).toBeGreaterThan(0)
+    if (vi.mocked(mockSession.forwardOut).mock.results.length === 0) {
+      throw new Error("forwardOut n'a jamais été appelé après 2s");
+    }
 
-    // 'error' sans handler aurait crashé le process (EventEmitter)
-    stream.emit("error", new Error("canal SSH rompu"))
+    const stream = (await vi.mocked(mockSession.forwardOut).mock.results[0]!
+      .value) as PassThrough;
+    const deadline2 = Date.now() + 2000;
+    while (stream.listenerCount("error") === 0 && Date.now() < deadline2) {
+      await new Promise((r) => setTimeout(r, 10));
+    }
+    expect(stream.listenerCount("error")).toBeGreaterThan(0);
+
+    stream.emit("error", new Error("canal SSH rompu"));
     await Promise.race([
       new Promise((r) => socket.once("close", r)),
-      new Promise((_, rej) => setTimeout(() => rej(new Error("socket jamais fermé")), 2000)),
-    ])
+      new Promise((_, rej) =>
+        setTimeout(() => rej(new Error("socket jamais fermé")), 2000),
+      ),
+    ]);
 
-    // seul le socket a été coupé : le tunnel entier reste debout
-    const s2 = net.connect({ host: "127.0.0.1", port })
-    await new Promise((r) => s2.once("connect", r))
-    expect(mockSession.forwardOut).toHaveBeenCalledTimes(2)
-    s2.destroy()
-  })
+   
+    const s2 = net.connect({ host: "127.0.0.1", port });
+    await new Promise((r) => s2.once("connect", r));
+
+  
+    const deadline3 = Date.now() + 2000;
+    while (
+      vi.mocked(mockSession.forwardOut).mock.calls.length < 2 &&
+      Date.now() < deadline3
+    ) {
+      await new Promise((r) => setTimeout(r, 10));
+    }
+    expect(mockSession.forwardOut).toHaveBeenCalledTimes(2);
+    s2.destroy();
+  });
 
   it("socket inactif au-delà du idle timeout → fermé", async () => {
     process.env.SSH_TUNNEL_IDLE_TIMEOUT_MS = "50"

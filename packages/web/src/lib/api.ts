@@ -250,7 +250,11 @@ export const api = {
   plan: (id: string) => req<ReconcilePlan>(`/api/projects/${id}/plan`),
   /** Aperçu lecture seule des ressources générées d'un nœud database (S5-09/10).
    *  `draft` : config EN COURS d'édition (non sauvée) — prévisualise avant save. */
-  databaseNodePreview: (projectId: string, nodeId: string, draft?: Partial<DatabaseConfig>) =>
+  databaseNodePreview: (
+    projectId: string,
+    nodeId: string,
+    draft?: Partial<DatabaseConfig>,
+  ) =>
     req<DatabaseNodePreview>(
       `/api/projects/${projectId}/nodes/${nodeId}/preview` +
         (draft ? `?draft=${encodeURIComponent(draftToBase64(draft))}` : ""),
@@ -271,10 +275,11 @@ export const api = {
 
   // Clusters
   listClusters: () => req<Cluster[]>("/api/clusters"),
-  deleteCluster: (id: string) =>
-    req<{ ok: true; removedServers: number }>(`/api/clusters/${id}`, {
-      method: "DELETE",
-    }),
+  deleteCluster: (id: string, opts: { teardown?: boolean } = {}) =>
+    req<{ ok: true; removedServers: number; status: "deleted" | "deleting" }>(
+      `/api/clusters/${id}${opts.teardown ? "?teardown=true" : ""}`,
+      { method: "DELETE" },
+    ),
 
   // Serveurs (cluster Swarm)
   listServers: () =>
@@ -389,7 +394,7 @@ export type Cluster = {
   id: string;
   name: string;
   isDefault: boolean;
-  status: "pending" | "ready" | "failed";
+  status: "pending" | "ready" | "failed" | "deleting";
 };
 
 export type UserAccount = {

@@ -55,7 +55,14 @@ describe("POST /api/rebuild-from-docker", () => {
         await registerReconcilerRoutes(app);
       },
     });
-  }, 60000);
+  }, 90000);
+  // Timeout élevé (90s, au lieu du défaut Vitest) : ce beforeAll construit une
+  // app Fastify complète avec import en cascade de plusieurs modules lourds
+  // (docker-engine, workflows, database). En local, sur un disque monté
+  // Windows plus lent qu'un disque Linux natif, ce chargement peut
+  // dépasser largement ce qu'il prend en CI. 90s laisse une marge confortable
+  // même en cas de contention, sans masquer un vrai blocage infini (qui, lui,
+  // dépasserait n'importe quelle valeur raisonnable et resterait détectable).
 
   afterAll(async () => {
     if (app) await app.close();
@@ -111,7 +118,6 @@ describe("POST /api/rebuild-from-docker", () => {
       url: "/api/rebuild-from-docker",
       headers: { authorization: `Bearer ${mockOwnerToken}` },
     });
-
 
     expect(response.statusCode).toBe(200);
     const body = response.json();
