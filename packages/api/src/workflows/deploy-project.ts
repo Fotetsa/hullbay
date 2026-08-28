@@ -314,8 +314,19 @@ export const servicesStep: Step<DeployInput> = {
       const mounts = volumeMountsFor(input.graph, node)
       const labels = labelsFor(input, node, s.db)
 
-      // 1) Disponibilité de l'image SELON LA POLICY (avant toute création de service).
-      const image = `${cfg.image}:${cfg.tag}`
+      // If railpack is configured on the container, build the image from the repo
+      let image: string
+      if ((cfg as any).railpack) {
+        const rp = (cfg as any).railpack as { repoUrl: string; branch?: string }
+        s.log.push(`Railpack: build image from ${rp.repoUrl}${rp.branch ? `@${rp.branch}` : ""}`)
+        const built = await s.engine.buildImageFromRepo(rp.repoUrl, { branch: rp.branch })
+        // Attempt to distribute the image to the cluster (stub may be no-op)
+        await s.engine.distributeImageToCluster(built.imageTag)
+        image = built.imageTag
+      } else {
+        // 1) Disponibilité de l'image SELON LA POLICY (avant toute création de service).
+        image = `${cfg.image}:${cfg.tag}`
+      }
       const policy = effectivePullPolicy(cfg)
       let pulled: boolean
       try {

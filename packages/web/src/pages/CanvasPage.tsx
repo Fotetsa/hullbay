@@ -407,6 +407,7 @@ function CanvasInner({ projectId }: { projectId: string }) {
                       .filter((p): p is { host: number; container: number } => typeof p.host === "number")
                       .map((p) => ({ host: p.host, container: p.container })),
                     onNetwork: networkedContainers.has(n.id),
+                    railpack: (n.config as { railpack?: { repoUrl?: string; branch?: string } } | null)?.railpack,
                   }
                 : {}),
               deployState: nodeDeployState(n, graph.status),

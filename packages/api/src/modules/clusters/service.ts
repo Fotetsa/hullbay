@@ -82,8 +82,12 @@ export class ClusterService {
   }
   private friendlyNameCollisionError(err: unknown, name: string): Error {
     if (
-      err instanceof Prisma.PrismaClientKnownRequestError &&
-      err.code === "P2002"
+      (typeof (Prisma as any).PrismaClientKnownRequestError === "function" &&
+        err instanceof (Prisma as any).PrismaClientKnownRequestError &&
+        (err as any).code === "P2002") ||
+      // In some test environments the error class may not be available to construct;
+      // fall back to duck-typing the error object by its `code` property.
+      (err && typeof (err as any).code === "string" && (err as any).code === "P2002")
     ) {
       const friendly = new Error(
         `un cluster nommé "${name}" vient d'être créé par une autre requête — réessaie avec un autre nom`,

@@ -88,6 +88,26 @@ export class SshSession {
   }
 
   /**
+   * Execute a remote command and return the raw stream so the caller can write to stdin.
+   * Also returns a promise that resolves when the command finishes.
+   */
+  execWithStream(command: string): Promise<{ stream: import("stream").Duplex; result: Promise<SshExecResult> }> {
+    return new Promise((resolve, reject) => {
+      this.client.exec(command, (err, stream) => {
+        if (err) return reject(err)
+        let stdout = ""
+        let stderr = ""
+        const finish = new Promise<SshExecResult>((res) => {
+          stream.on("close", (code: number) => res({ stdout, stderr, code: code ?? 0 }))
+        })
+        stream.on("data", (d: Buffer) => (stdout += d.toString()))
+        stream.stderr.on("data", (d: Buffer) => (stderr += d.toString()))
+        resolve({ stream, result: finish })
+      })
+    })
+  }
+
+  /**
    *  Ouverture d'un canal "direct-tcpip" vers dtsHost:dstHost:dstPort depuis le serveur distant
    * @param dstHost 
    * @param dstPort 

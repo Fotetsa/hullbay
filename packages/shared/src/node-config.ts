@@ -39,6 +39,27 @@ export const ResourcesSchema = z.object({
 })
 export type Resources = z.infer<typeof ResourcesSchema>
 
+// ── Railpack (build from repo) ─────────────────────────────────────────────
+
+export const RailpackConfigSchema = z
+  .object({
+    /** URL public du dépôt (https://github.com/owner/repo). */
+    repoUrl: z.string().min(1),
+    /** Branche ou ref à builder. Si absent, on prendra `main` ou tentera de déterminer le commit. */
+    branch: z.string().optional(),
+    /** Chemin relatif vers le Dockerfile dans le repo (si présent). */
+    dockerfilePath: z.string().optional(),
+    /** Chemin de contexte du build (par défaut la racine du repo). */
+    context: z.string().optional(),
+    /** Arguments de build optionnels. */
+    buildArgs: z.record(z.string(), z.string()).default({}),
+    /** Laisser l'auto-detection de la technologie (Dockerfile, Node, Rails...). */
+    autoDetect: z.boolean().default(true),
+  })
+  .strict()
+
+export type RailpackConfig = z.infer<typeof RailpackConfigSchema>
+
 export const HealthcheckSchema = z.object({
   /** Commande de test (forme exec : ["CMD", "curl", ...]). */
   test: z.array(z.string()).min(1),
@@ -145,6 +166,8 @@ export const ContainerConfigSchema = z.object({
    * défaut : le service garde son nombre de replicas fixe.
    */
   autoscale: AutoscaleSchema.optional(),
+  /** Option Railpack : construction d'une image depuis un repo public. */
+  railpack: RailpackConfigSchema.optional(),
 })
 export type ContainerConfig = z.infer<typeof ContainerConfigSchema>
 

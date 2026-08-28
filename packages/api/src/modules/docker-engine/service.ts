@@ -89,6 +89,7 @@ type DockerStats = {
 export class DockerEngineService {
   private docker: Docker
   private authResolver?: AuthResolver
+  private clusterId?: string
   constructor(docker: Docker, authResolver?: AuthResolver) {
     this.docker = docker
     this.authResolver = authResolver
@@ -96,7 +97,9 @@ export class DockerEngineService {
 
   static async forCluster(clusterId: string, authResolver?: AuthResolver): Promise<DockerEngineService> {
     const docker = await getDockerForCluster(clusterId)
-    return new DockerEngineService(docker, authResolver)
+    const svc = new DockerEngineService(docker, authResolver)
+    svc.clusterId = clusterId
+    return svc
   }
 
   // ── État Swarm ────────────────────────────────────────────────────────────
@@ -207,6 +210,132 @@ export class DockerEngineService {
   async listManagedVolumes() {
     const res = await this.docker.listVolumes({ filters: managedFilter() })
     return res.Volumes ?? []
+  }
+
+  /**
+   * Build an image from a public repository.
+   */
+  async buildImageFromRepo(
+    repoUrl: string,
+    opts?: {
+      branch?: string
+      dockerfilePath?: string
+      context?: string
+      buildArgs?: Record<string, string>
+      autoDetect?: boolean
+    }
+  ): Promise<{ imageTag: string; imageId?: string }> {
+    const branch = opts?.branch ?? "main"
+    const os = await import("node:os")
+    const path = await import("node:path")
+    const tmpBase = os.tmpdir()
+    const mkdtemp = await import("node:fs/promises").then((m) => m.mkdtemp)
+    const tmp = await mkdtemp(path.join(tmpBase, "railpack-"))
+
+    const { spawnSync } = await import("node:child_process")
+    try {
+      const clone = spawnSync("git", ["clone", "--depth", "1", "--branch", branch, repoUrl, tmp], { stdio: "inherit" })
+      if (clone.status !== 0) throw new Error(`git clone failed for ${repoUrl}@${branch}`)
+
+      const fs = await import("node:fs/promises")
+
+      let dockerfileFullPath: string | null = null
+      if (opts?.dockerfilePath) {
+        const candidate = path.join(tmp, opts.dockerfilePath)
+        try { await fs.access(candidate); dockerfileFullPath = candidate } catch {}
+      }
+      const defaultDockerfile = path.join(tmp, "Dockerfile")
+      try { await fs.access(defaultDockerfile); dockerfileFullPath = defaultDockerfile } catch {}
+
+      if (!dockerfileFullPath && (opts?.autoDetect ?? true)) {
+        const pkgPath = path.join(tmp, "package.json")
+        try {
+          await fs.access(pkgPath)
+          const content = `FROM node:20-alpine\nWORKDIR /app\nCOPY package*.json ./\nRUN npm ci --only=production\nCOPY . .\nCMD [\"npm\",\"start\"]\n`
+          await fs.writeFile(path.join(tmp, "Dockerfile"), content)
+          dockerfileFullPath = path.join(tmp, "Dockerfile")
+        } catch {}
+        const reqPath = path.join(tmp, "requirements.txt")
+        try {
+          await fs.access(reqPath)
+          const content = `FROM python:3.11-slim\nWORKDIR /app\nCOPY requirements.txt ./\nRUN pip install -r requirements.txt\nCOPY . .\nCMD [\"python\",\"app.py\"]\n`
+          await fs.writeFile(path.join(tmp, "Dockerfile"), content)
+          dockerfileFullPath = path.join(tmp, "Dockerfile")
+        } catch {}
+      }
+
+      if (!dockerfileFullPath) throw new Error("No Dockerfile found and auto-detect failed. Add a Dockerfile or set autoDetect to false.")
+
+      const tarProc = spawnSync("tar", ["-C", tmp, "-c", "."], { stdio: ["ignore", "pipe", "inherit"] })
+      if (!tarProc.stdout) throw new Error("tar failed to produce context")
+
+      const crypto = await import("node:crypto")
+      const slug = repoUrl.replace(/[:\/]+/g, "_").replace(/[^a-zA-Z0-9_\-]/g, "_").slice(0, 40)
+      const id = crypto.createHash("sha256").update(repoUrl + "@" + branch).digest("hex").slice(0, 12)
+      const imageTag = `boz_railpack_${slug}:${id}`
+
+      const buildStream = await this.docker.buildImage(tarProc.stdout, { t: imageTag, dockerfile: opts?.dockerfilePath ?? "Dockerfile", buildargs: opts?.buildArgs })
+      await new Promise((resolve, reject) => {
+        // @ts-ignore
+        this.docker.modem.followProgress(buildStream, (err: Error | null) => (err ? reject(err) : resolve(null)))
+      })
+
+      const image = this.docker.getImage(imageTag)
+      const info = await image.inspect()
+      return { imageTag, imageId: info.Id }
+    } finally {
+      try { const rimraf = await import("rimraf"); rimraf.sync(tmp) } catch {}
+    }
+  }
+
+  async distributeImageToCluster(imageTag: string, nodeIds?: string[]): Promise<void> {
+    if (!this.clusterId) throw new Error("distributeImageToCluster requires DockerEngineService created via forCluster(clusterId)")
+    const { prisma } = await import("../../lib/prisma")
+    const { decryptSecret } = await import("../auth/crypto")
+    const { SshSession } = await import("../../lib/ssh")
+
+    // Get servers in cluster
+    const servers = await prisma.server.findMany({ where: { clusterId: this.clusterId, status: "ready" } })
+    // If nodeIds provided, filter servers by matching swarmNodeId or id
+    const targets = servers.filter((s) => {
+      if (!nodeIds || nodeIds.length === 0) return true
+      return nodeIds.includes(s.id) || (s.swarmNodeId && nodeIds.includes(s.swarmNodeId))
+    })
+
+    // Obtain tar stream of image from local docker (builder)
+    const image = this.docker.getImage(imageTag) as any
+    const imageStream = await image.get() as import("stream").Readable
+
+    for (const srv of targets) {
+      if (!srv.privateKeyEnc) {
+        console.warn(`[docker-engine] server ${srv.id} has no privateKeyEnc; skipping image transfer`)
+        continue
+      }
+      const privateKey = decryptSecret(srv.privateKeyEnc)
+      const session = await SshSession.connect({ host: srv.host, port: srv.port ?? 22, user: srv.user ?? "root", credential: { type: "key", privateKey }, knownHostKeyFp: srv.hostKeyFp ?? undefined })
+      try {
+        // Create remote docker load process and get writable stream
+        const { stream: remoteStream, result } = await session.execWithStream("docker load")
+        // Pipe image tar into remote stdin
+        await new Promise<void>((resolve, reject) => {
+          imageStream.pipe(remoteStream as any)
+          remoteStream.on("close", () => resolve())
+          remoteStream.on("error", (err: Error) => reject(err))
+        })
+        // Wait for remote command to finish
+        const res = await result
+        if (res.code !== 0) {
+          console.warn(`[docker-engine] docker load failed on ${srv.host}:${srv.port} code=${res.code} stderr=${res.stderr}`)
+        } else {
+          console.log(`[docker-engine] image ${imageTag} loaded on ${srv.host}`)
+        }
+      } catch (err) {
+        console.warn(`[docker-engine] failed to transfer image to ${srv.host}: ${err instanceof Error ? err.message : String(err)}`)
+      } finally {
+        try { session.dispose() } catch {}
+      }
+    }
+    return
   }
 
   async inspectService(id: string) {

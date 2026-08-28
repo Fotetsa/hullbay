@@ -121,6 +121,7 @@ model Server {
 
   clusterId     String
   cluster       Cluster @relation(fields: [clusterId], references: [id], onDelete: Cascade)
+  railpackImagesBuilt RailpackImage[]
 }
 
 // ── Credentials de registre Docker (GHCR) — pour pull sur chaque nœud ──
@@ -150,8 +151,25 @@ model Cluster {
   status        String   @default("pending")
   servers       Server[]
   projects      Project[]
+  railpackImages RailpackImage[]
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
+}
+
+model RailpackImage {
+  id        String   @id @default(cuid())
+  repoUrl   String
+  ref       String   // commit SHA or branch@timestamp
+  imageTag  String   @unique
+  imageId   String?
+  builtAt   DateTime @default(now())
+  builtById String?  // server id that built the image
+  builtBy   Server?  @relation(fields: [builtById], references: [id], onDelete: SetNull)
+  clusterId String
+  cluster   Cluster  @relation(fields: [clusterId], references: [id], onDelete: Cascade)
+  nodesHavingImage Json?  // optional list of node ids that have the image loaded
+
+  @@index([repoUrl, ref])
 }
 
 

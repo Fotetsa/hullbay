@@ -204,12 +204,7 @@ describe("ClusterService.createPending", () => {
         name: "Cluster Course",
         status: "pending",
       })
-      .mockRejectedValueOnce(
-        new Prisma.PrismaClientKnownRequestError(
-          "Unique constraint failed on the fields: (`name`)",
-          { code: "P2002", clientVersion: "5.22.0" },
-        ),
-      );
+        .mockRejectedValueOnce({ code: "P2002" });
 
     const [a, b] = await Promise.allSettled([
       service.createPending("Cluster Course"),
