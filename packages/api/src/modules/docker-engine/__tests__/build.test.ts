@@ -14,10 +14,12 @@ describe("DockerEngineService.buildImageFromRepo (unit)", () => {
         if (cmd === "git") {
           // args: [ 'clone', '--depth', '1', '--branch', branch, repoUrl, tmp ]
           const target = args[args.length - 1]
-          try {
-            fs.mkdirSync(target, { recursive: true })
-            fs.writeFileSync(path.join(target, "Dockerfile"), "FROM alpine\nCMD [\"echo\",\"ok\"]\n")
-          } catch (e) {}
+          if (typeof target === "string" && target.length) {
+            try {
+              fs.mkdirSync(target, { recursive: true })
+              fs.writeFileSync(path.join(target, "Dockerfile"), "FROM alpine\nCMD [\"echo\",\"ok\"]\n")
+            } catch (e) {}
+          }
           return { status: 0, stdout: Buffer.from("") }
         }
         if (cmd === "tar") {

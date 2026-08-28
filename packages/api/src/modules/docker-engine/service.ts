@@ -274,7 +274,7 @@ export class DockerEngineService {
       const id = crypto.createHash("sha256").update(repoUrl + "@" + branch).digest("hex").slice(0, 12)
       const imageTag = `boz_railpack_${slug}:${id}`
 
-      const buildStream = await this.docker.buildImage(tarProc.stdout, { t: imageTag, dockerfile: opts?.dockerfilePath ?? "Dockerfile", buildargs: opts?.buildArgs })
+      const buildStream = await this.docker.buildImage(tarProc.stdout as any, { t: imageTag, dockerfile: opts?.dockerfilePath ?? "Dockerfile", buildargs: opts?.buildArgs })
       await new Promise((resolve, reject) => {
         // @ts-ignore
         this.docker.modem.followProgress(buildStream, (err: Error | null) => (err ? reject(err) : resolve(null)))
@@ -284,7 +284,10 @@ export class DockerEngineService {
       const info = await image.inspect()
       return { imageTag, imageId: info.Id }
     } finally {
-      try { const rimraf = await import("rimraf"); rimraf.sync(tmp) } catch {}
+      try {
+        const fs = await import("node:fs")
+        try { fs.rmSync(tmp, { recursive: true, force: true }) } catch {}
+      } catch {}
     }
   }
 
