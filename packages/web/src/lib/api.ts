@@ -386,6 +386,9 @@ export const api = {
     req<{ id: string; status: "running" }>(`/api/updates/${id}/rollback`, {
       method: "POST",
     }),
+
+  // Système
+  getEnvironment: () => req <{ environment: "development" | "test" | "production" }>("/api/system/environment"),
 };
 
 // ── Types ──────────────────────────────────────────────────────────────────

@@ -1,5 +1,6 @@
 import { useState } from "react"
 import { useQuery } from "@tanstack/react-query"
+import { useNavigate } from "react-router-dom"
 import { Button, Container, Heading, Input, Label, Text } from "@medusajs/ui"
 import { api } from "../lib/api"
 import { useMutationToast } from "../lib/useMutationToast"
@@ -29,6 +30,10 @@ export function SettingsPage() {
       setConfirmPassword("")
     },
   })
+
+  const navigate = useNavigate()
+  const { data: envData } = useQuery({ queryKey: ["environment"], queryFn: api.getEnvironment })
+  const isProduction = envData?.environment === "production"
 
   const pwMismatch = newPassword.length > 0 && newPassword !== confirmPassword
   const pwTooShort = newPassword.length > 0 && newPassword.length < 8
@@ -128,6 +133,20 @@ export function SettingsPage() {
           </Button>
         </div>
       </Container>
+
+      {!isProduction && (
+        <Container className="mb-4 p-6">
+          <Heading level="h3" className="mb-3">
+            {t('settings.domain.title')}
+          </Heading>
+          <Text size="small" className="text-ui-fg-subtle mb-3">
+            {t('settings.domain.hint')}
+          </Text>
+          <Button variant="secondary" onClick={() => navigate("/setup-domain")}>
+            {t('settings.domain.configureButton')}
+          </Button>
+        </Container>
+      )}
     </PageContainer>
   )
 }
