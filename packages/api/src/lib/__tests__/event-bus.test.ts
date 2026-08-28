@@ -3,7 +3,11 @@ import { describe, it, expect, beforeAll, afterAll, vi } from "vitest"
 // Fake Redis : pub/sub in-memory, l'écho de sa propre publication est simulé
 // (comportement réel de Redis pub/sub : un abonné reçoit aussi ses propres emit).
 type RedisMessage = { channel: string; message: string }
-const subscribers = new Set<(channel: string, message: string) => void>()
+// vi.hoisted : vi.mock est hoisté au-dessus de cette déclaration, le Set doit
+// exister avant que la fabrique du mock ne s'exécute (sinon ReferenceError).
+const subscribers = vi.hoisted(
+  () => new Set<(channel: string, message: string) => void>(),
+)
 
 vi.mock("ioredis", () => {
   class FakeRedis {
