@@ -71,10 +71,19 @@ export function App() {
 
 function DomainGate({ children, onUnauthenticated }: { children: ReactNode; onUnauthenticated: () => void }) {
   const location = useLocation()
+
+  const { data: envData, isLoading: envLoading } = useQuery({
+    queryKey: ["environment"],
+    queryFn: () => api.getEnvironment(),
+    staleTime: Infinity,
+  })
+  const isProduction = envData?.environment === "production"
+
   const { data, isLoading, isError: domainError, error: domainErrorObj } = useQuery<{ domain: string }>({
     queryKey: ["domain"],
     queryFn: () => api.getDomain(),
     staleTime: 0,
+    enabled: isProduction,
   })
 
   const { me, isLoading: meLoading, isError: meError, error: meErrorObj } = useMe()
@@ -84,16 +93,13 @@ function DomainGate({ children, onUnauthenticated }: { children: ReactNode; onUn
     const status = (err as { status?: number }).status
     const code = (err as { code?: string }).code
     return (
-      status === 401 ||
-      status === 403 ||
-      code === "unauthorized" ||
-      code === "forbidden" ||
-      code === "unauthenticated" ||
-      code === "invalid_token"
+      status === 401 || status === 403 ||
+      code === "unauthorized" || code === "forbidden" ||
+      code === "unauthenticated" || code === "invalid_token"
     )
   }
 
-  if (isLoading || meLoading) {
+  if (envLoading || meLoading || (isProduction && isLoading)) {
     return (
       <div className="flex h-full items-center justify-center bg-ui-bg-subtle">
         <Spinner className="animate-spin text-ui-fg-muted" />
@@ -117,11 +123,9 @@ function DomainGate({ children, onUnauthenticated }: { children: ReactNode; onUn
     )
   }
 
-  if (domainError) {
+  if (isProduction && domainError) {
     const domainErr = domainErrorObj as { status?: number; code?: string } | null
     const mfaPending = domainErr?.code === "mfa_not_enabled"
-    // 403 mfa_not_enabled ≠ session morte : l'utilisateur doit simplement passer
-    // par la MFA. On ne déconnecte PAS, on laisse la MFA-gate ci-dessous rediriger.
     if (!mfaPending && isAuthError(domainErr)) {
       auth.clear()
       onUnauthenticated()
@@ -141,15 +145,15 @@ function DomainGate({ children, onUnauthenticated }: { children: ReactNode; onUn
 
   const hasDomain = Boolean(data?.domain)
 
+
   if (me && !me.mfaEnabled && location.pathname !== "/activate-mfa") {
     return <Navigate to="/activate-mfa" replace />
   }
 
-  if (me?.mfaEnabled) {
+  if (me?.mfaEnabled && isProduction) {
     if (!hasDomain && location.pathname !== "/setup-domain") {
       return <Navigate to="/setup-domain" replace />
     }
-
     if (hasDomain && location.pathname === "/setup-domain") {
       return <Navigate to="/" replace />
     }

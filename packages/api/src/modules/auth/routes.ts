@@ -28,6 +28,7 @@ const PUBLIC_PATHS = new Set([
   // Indique seulement si un 1er compte doit être créé (aucune info sensible) :
   // l'écran de login doit pouvoir le savoir AVANT d'être authentifié.
   "/api/auth/needs-bootstrap",
+  "/api/system/environment",
 ]);
 
 const MFA_SETUP_PATHS = new Set([
