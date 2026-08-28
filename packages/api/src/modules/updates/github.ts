@@ -115,7 +115,10 @@ export class GitHubReleasesService {
     return tag.replace(/^v/, "")
   }
 
-  /** Liste les releases du canal demandé, triées par version décroissante.
+  /** Liste les releases du canal demandé, triées par date de publication
+   *  décroissante (départage semver). Une pre-release publiée APRÈS une stable
+   *  du même numéro (ex. stable 1.2.4 le 08/08 puis beta.6 le 27/08) est donc
+   *  considérée plus récente, et "latest" n'annonce plus une stable désuète.
    *  "all" renvoie stable + beta (le filtre pre-release est un client-side). */
   async listReleases(channel: Channel = "stable", limit = 20): Promise<GitHubRelease[]> {
     const key = `${channel}:${limit}`
@@ -151,7 +154,19 @@ export class GitHubReleasesService {
         notes: r.body ?? "",
       }))
       .filter((r) => r.tag !== "")
-      .sort((a, b) => compareVersions(b.version, a.version))
+      .sort((a, b) => {
+        // Tri principal : date de publication décroissante. Une pre-release
+        // récente prime sur une stable plus ancienne du même numéro (semver
+        // pur dirait l'inverse) — c'est la release réellement "à jour" qu'on
+        // veut en premier. Dates absentes/invalides → les releases, au pire.
+        const da = a.publishedAt ? Date.parse(a.publishedAt) : NaN
+        const db = b.publishedAt ? Date.parse(b.publishedAt) : NaN
+        const sa = Number.isNaN(da) ? -Infinity : da
+        const sb = Number.isNaN(db) ? -Infinity : db
+        if (sa !== sb) return sb - sa
+        // Départage : semver décroissant (stabilité de l'ordre à date égale).
+        return compareVersions(b.version, a.version)
+      })
 
     this.cache.set(key, { at: Date.now(), releases })
     return releases

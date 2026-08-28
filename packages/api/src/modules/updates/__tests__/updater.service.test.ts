@@ -771,4 +771,62 @@ describe("UpdaterService", () => {
       )
     })
   })
+
+  describe("current", () => {
+    it("resynchronise une version RÉELLE périmée en base vers le tag déployé", async () => {
+      // DB seedée avec une ancienne version réelle (ex : image upgradée
+      // beta.5 → beta.6 sans passer par le flux apply qui, lui, réécrirait
+      // currentVersion).
+      mockPrisma.systemInfo.findUnique.mockResolvedValue({
+        id: "singleton",
+        currentVersion: "1.2.4-beta.5",
+        updateChannel: "beta",
+        lastCheckAt: null,
+        lastCheckResult: null,
+        updatedAt: now,
+      })
+      // Le service api tourne réellement sur beta.6 (source de vérité).
+      mockDocker.currentSystemTag.mockResolvedValue("1.2.4-beta.6")
+      mockPrisma.systemInfo.update.mockResolvedValue({
+        id: "singleton",
+        currentVersion: "1.2.4-beta.6",
+        updateChannel: "beta",
+        lastCheckAt: null,
+        lastCheckResult: null,
+        updatedAt: now,
+      })
+
+      const result = await updaterService.current()
+
+      // La version périmée est resynchronisée vers le tag réellement déployé.
+      expect(result.currentVersion).toBe("1.2.4-beta.6")
+      expect(mockPrisma.systemInfo.update).toHaveBeenCalledWith({
+        where: { id: "singleton" },
+        data: { currentVersion: "1.2.4-beta.6", updateChannel: "beta" },
+      })
+    })
+
+    it("préserve une version réelle si la version effective est un placeholder", async () => {
+      // DB seedée avec une version réelle stable.
+      mockPrisma.systemInfo.findUnique.mockResolvedValue({
+        id: "singleton",
+        currentVersion: "1.2.2",
+        updateChannel: "stable",
+        lastCheckAt: null,
+        lastCheckResult: null,
+        updatedAt: now,
+      })
+      // docker injoignable + pas d'IMAGE_TAG → version effective "unknown"
+      // (placeholder). On ne fait JAMAIS descendre une version réelle vers
+      // un placeholder.
+      mockDocker.currentSystemTag.mockRejectedValue(new Error("docker down"))
+      delete process.env.IMAGE_TAG
+
+      const result = await updaterService.current()
+
+      expect(result.currentVersion).toBe("1.2.2")
+      expect(mockPrisma.systemInfo.update).not.toHaveBeenCalled()
+      expect(mockPrisma.systemInfo.create).not.toHaveBeenCalled()
+    })
+  })
 })

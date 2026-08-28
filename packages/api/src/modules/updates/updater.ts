@@ -56,38 +56,62 @@ export class UpdaterService {
 
   /**
    * Infos de l'instance (singleton SystemInfo, seedé au boot depuis IMAGE_TAG).
-   * Auto-répare les placeholders "latest"/"unknown" : ces valeurs cassent la
-   * détection d'update (comparaison lexicographique en fallback : "latest" >
-   * "1.2.3") → on les résout vers la version réellement déployée (tag du
-   * service api dans Swarm, puis env IMAGE_TAG, sinon "unknown").
+   * La version effective déployée (tag du service api dans Swarm, puis env
+   * IMAGE_TAG) est la SOURCE DE VÉRITÉ : toute version stockée qui s'en écarte
+   * est resynchronisée — qu'il s'agisse d'un placeholder ("latest"/"unknown",
+   * qui cassent la comparaison semver) ou d'une version réelle périmée (ex :
+   * tag ancien en base après un upgrade d'image). On ne fait JAMAIS descendre
+   * une version réelle vers un placeholder (docker indisponible) : dans ce cas
+   * on préserve la valeur stockée.
    */
   async current() {
     const placeholder = new Set(["latest", "unknown"]);
     const existing = await prisma.systemInfo.findUnique({
       where: { id: "singleton" },
     });
-    if (existing && !placeholder.has(existing.currentVersion)) return existing;
+
     const tag = await this.effectiveCurrentVersion();
-    
+
+    // Version effective = placeholder (docker injoignable + pas d'IMAGE_TAG) :
+    // on ne peut pas trancher → on préserve un currentVersion réel existant.
+    if (placeholder.has(tag)) {
+      if (existing && !placeholder.has(existing.currentVersion)) return existing;
+      return (
+        existing ??
+        prisma.systemInfo.create({
+          data: {
+            id: "singleton",
+            currentVersion: tag,
+            updateChannel: "stable",
+          },
+        })
+      );
+    }
+
     // Détecter automatiquement le canal depuis le tag de version
     // Si le tag contient "beta" ou "alpha", c'est le canal beta, sinon stable
     const inferredChannel = /-(beta|alpha)/i.test(tag) ? "beta" : "stable";
-    
+
     if (existing) {
-      if (existing.currentVersion === tag && existing.updateChannel === inferredChannel) return existing;
+      if (
+        existing.currentVersion === tag &&
+        existing.updateChannel === inferredChannel
+      ) {
+        return existing;
+      }
       return prisma.systemInfo.update({
         where: { id: "singleton" },
-        data: { 
+        data: {
           currentVersion: tag,
-          updateChannel: inferredChannel
+          updateChannel: inferredChannel,
         },
       });
     }
     return prisma.systemInfo.create({
-      data: { 
-        id: "singleton", 
+      data: {
+        id: "singleton",
         currentVersion: tag,
-        updateChannel: inferredChannel
+        updateChannel: inferredChannel,
       },
     });
   }
