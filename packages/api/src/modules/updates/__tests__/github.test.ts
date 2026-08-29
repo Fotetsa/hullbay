@@ -153,6 +153,27 @@ describe("GitHubReleasesService", () => {
     expect(releases.map((r) => r.version)).toEqual(["1.0.0"])
   })
 
+  it("classe par date de publication décroissante : une pre-release récente prime sur une stable antérieure du même numéro", async () => {
+    process.env.GHCR_OWNER = "fotetsa"
+    const service = new GitHubReleasesService(
+      mockFetch([
+        // stable 1.2.4 publiée le 08/08, puis pre-release beta.6 publiée le 27/08 :
+        // tri semver pur mettrait stable 1.2.4 en premier → updateAvailable trompeur.
+        { tag_name: "v1.2.4", prerelease: false, draft: false, published_at: "2026-08-08T00:00:00Z", html_url: "u", body: "n" },
+        { tag_name: "v1.2.4-beta.6", prerelease: true, draft: false, published_at: "2026-08-27T00:00:00Z", html_url: "u", body: "n" },
+      ]),
+    )
+
+    const releases = await service.listReleases("beta")
+
+    expect(releases.map((r) => r.version)).toEqual(["1.2.4-beta.6", "1.2.4"])
+    // La release réellement la plus récente publiée.
+    expect((await service.latest("beta"))?.version).toBe("1.2.4-beta.6")
+    // Instance à jour sur beta.6 : aucune mise à jour annoncée, même si la
+    // stable 1.2.4 est semver-supérieure.
+    expect(service.isUpdateAvailable("1.2.4-beta.6", "1.2.4-beta.6")).toBe(false)
+  })
+
   it("isUpdateAvailable compare la version courante à la cible", async () => {
     const service = new GitHubReleasesService(mockFetch([]))
     expect(service.isUpdateAvailable("1.2.2", "1.2.3")).toBe(true)
