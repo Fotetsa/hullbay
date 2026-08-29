@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { Button, Container, Heading, Text, Badge, Table } from "@medusajs/ui";
 import {
-  ArrowLeft,
+  ArrowDownLeft,
   ServerSolid,
   ArrowUpMini,
   ArrowDownMini,
@@ -126,7 +126,7 @@ export function ClusterDetailPage() {
           size="small"
           onClick={() => navigate("/clusters")}
         >
-          <ArrowLeft /> {t("clusters.detail.back")}
+          <ArrowDownLeft /> {t("clusters.detail.back")}
         </Button>
       </div>
 

@@ -2,69 +2,31 @@ import { useEffect, useRef, useState } from "react"
 import { Handle, Position, type NodeProps } from "@xyflow/react"
 import type { NodeType, ActualState } from "@hullbay/shared"
 import { NODE_META } from "./node-meta"
+import { colorForSwarmNode, TAG_CLASSES } from "../lib/clusterNodeColors"
+import NodeStackWrapper from "./NodeStackWrapper"
+import type { NodePlacement } from "../lib/useOpsSocket"
 
-/**
- * Nœud custom du canvas. Icône cohérente par type (NODE_META) + pastille d'état
- * live (running=vert, exited=rouge, missing=gris). Les Handle permettent de tirer
- * des liens entre nœuds. Pour un conteneur multi-replicas, un effet "pile" (cartes
- * décalées derrière la carte principale) + badge ×N rendent visible le scaling —
- * le nombre affiché vient du RUNTIME live (tasks réellement up), pas de la config
- * désirée, pour rester vrai pendant un rolling update ou un crash loop.
- */
 export type OpsNodeData = {
   label: string
   nodeType: NodeType
   actualState?: ActualState | null
-  /** Config désirée (replicas) — fallback tant qu'aucune mesure live n'est arrivée. */
   desiredReplicas?: number
-  /** Nombre de tasks RUNNING réel, poussé par l'observer (event "node.replicas"). */
   runningReplicas?: number
-  /**
-   * Noms des volumes reliés à ce conteneur (UNIQUEMENT pour le rendu : le modèle
-   * de données réel reste Edge(kind="volume") + Node(type="volume") inchangé,
-   * voir CanvasPage.tsx). Affiché en badge "emboîté" plutôt qu'en nœud séparé +
-   * ligne visible, sur demande explicite ("je veux que ce soit emboîté").
-   */
   attachedVolumes?: { id: string; name: string; mountPath?: string }[]
-  /**
-   * Écart désiré-vs-réel : "pending" = jamais déployé, "drift" = projet partiel/erreur,
-   * "deployed" = conforme. Sert au badge "à déployer" (cf. CanvasPage/validate.ts).
-   */
   deployState?: "deployed" | "pending" | "drift"
-  /**
-   * Drop d'un item palette "volume" directement sur CE conteneur — crée le couple
-   * Node(volume)+Edge en une seule action. `undefined` pour les nœuds non-conteneur.
-   */
   onVolumeDrop?: () => void
-  /**
-   * PASSERELLE uniquement — la route Caddy n'a pas de cycle de vie conteneur, on
-   * affiche donc un état dérivé (cf. validate.ts/gatewayState) + le mapping exposé.
-   */
   gatewayState?: "online" | "offline" | "pending"
-  /** Domaine exposé (config.domain) affiché sous le libellé de la passerelle. */
   gatewayDomain?: string
-  /** Port cible de l'upstream (config.targetPort), affiché en :port. */
   gatewayTargetPort?: number
-  /**
-   * CONTENEUR — ports publiés sur l'hôte (host:container). S'il y en a, le conteneur
-   * est joignable depuis l'extérieur sur ces ports ; sinon il n'est joignable qu'en
-   * interne par les autres conteneurs du réseau (DNS). Sert à l'indicateur d'accès.
-   */
   publishedPorts?: { host: number; container: number }[]
-  /** CONTENEUR — relié à au moins un réseau (sinon isolé). */
   onNetwork?: boolean
-  /** Ouvre l'inspecteur du volume embarqué (édition) comme s'il était un nœud libre. */
   onVolumeClick?: (volumeId: string) => void
-  /**
-   * BASE DE DONNÉES — résumé compact du nœud managé (moteur · mode · membres),
-   * affiché sous le libellé comme le mapping d'une passerelle. Le détail complet
-   * des ressources générées / endpoints vit dans l'inspecteur (DatabasePreviewPanel).
-   */
   dbSummary?: { engine: string; mode: string; replicas: number; consensus?: number }
+  placements?: NodePlacement[]
+  clusterNodeOrder?: string[]
 }
 
-/** Pastille d'état spécifique passerelle : libellé + couleur façon santé upstream. */
-const GATEWAY_STATE: Record<
+const GATEWAY_STATE: Record <
   NonNullable<OpsNodeData["gatewayState"]>,
   { label: string; dot: string; text: string; title: string }
 > = {
@@ -88,7 +50,6 @@ const GATEWAY_STATE: Record<
   },
 }
 
-/** Libellé court de l'état (lisible, en plus de la couleur — WCAG : pas que la couleur). */
 const STATE_LABEL: Record<string, string> = {
   running: "actif",
   exited: "arrêté",
@@ -98,8 +59,6 @@ const STATE_LABEL: Record<string, string> = {
   dead: "mort",
 }
 
-/** MIME custom posé par Palette.tsx pendant le drag — lisible via `dataTransfer.types`
- *  (pas `getData`, bloqué jusqu'au drop) pour détecter QUEL type est en train d'être glissé. */
 const VOLUME_DRAG_MIME = "application/bozando-node-type-volume"
 
 const STATE_COLOR: Record<string, string> = {
@@ -109,10 +68,31 @@ const STATE_COLOR: Record<string, string> = {
   paused: "bg-ui-tag-orange-icon",
 }
 
-/**
- * Couleur par NATURE de lien (pas par type de nœud) : permet de reconnaître au
- * premier coup d'œil quel handle accepte quoi, façon GNS3 (ports typés).
- */
+const NODE_ICON_STYLE: Record<NodeType, string> = {
+  // Use neutral black background for all node icons to reduce chromatic
+  // noise in the canvas. Icons themselves remain visible in white.
+  container: "bg-black text-white",
+  network: "bg-black text-white",
+  volume: "bg-black text-white",
+  gateway: "bg-black text-white",
+  database: "bg-black text-white",
+}
+
+const STATE_CHIP: Record<string, { bg: string; text: string; dot: string }> = {
+  running: { bg: "bg-ui-tag-green-bg", text: "text-ui-tag-green-text", dot: "bg-ui-tag-green-icon" },
+  exited: { bg: "bg-ui-tag-red-bg", text: "text-ui-tag-red-text", dot: "bg-ui-tag-red-icon" },
+  missing: { bg: "bg-ui-tag-neutral-bg", text: "text-ui-fg-muted", dot: "bg-ui-tag-neutral-icon" },
+  paused: { bg: "bg-ui-tag-orange-bg", text: "text-ui-tag-orange-text", dot: "bg-ui-tag-orange-icon" },
+}
+const GATEWAY_CHIP: Record <
+  NonNullable<OpsNodeData["gatewayState"]>,
+  { bg: string; text: string; dot: string }
+> = {
+  online: { bg: "bg-ui-tag-green-bg", text: "text-ui-tag-green-text", dot: "bg-ui-tag-green-icon" },
+  offline: { bg: "bg-ui-tag-orange-bg", text: "text-ui-tag-orange-text", dot: "bg-ui-tag-orange-icon" },
+  pending: { bg: "bg-ui-tag-neutral-bg", text: "text-ui-fg-muted", dot: "bg-ui-tag-neutral-icon" },
+}
+
 const HANDLE_COLOR: Record<"net-link" | "vol-link" | "gw-link" | "db-link", string> = {
   "net-link": "!bg-ui-tag-blue-icon",
   "vol-link": "!bg-ui-tag-orange-icon",
@@ -122,8 +102,7 @@ const HANDLE_COLOR: Record<"net-link" | "vol-link" | "gw-link" | "db-link", stri
 
 const HANDLE_SIZE = "!h-2.5 !w-2.5 !border-2 !border-ui-bg-base"
 
-/** Combien de cartes décalées dessiner derrière la carte principale (plafonné, sinon ça déborde). */
-const MAX_STACK_LAYERS = 2
+const MAX_STACK_LAYERS = 4
 
 export function OpsNode({ data, selected }: NodeProps) {
   const d = data as OpsNodeData
@@ -132,19 +111,13 @@ export function OpsNode({ data, selected }: NodeProps) {
     ? STATE_COLOR[d.actualState] ?? "bg-ui-tag-neutral-icon"
     : "bg-ui-tag-neutral-icon"
 
-  // Passerelle : état dérivé propre (route + santé upstream), libellé/couleur dédiés.
   const isGateway = d.nodeType === "gateway"
   const gw = GATEWAY_STATE[d.gatewayState ?? "pending"]
 
-  // Replicas : live si connu (mesuré sur les tasks réelles), sinon la config
-  // désirée en attendant la première mesure (évite un "×1" trompeur au chargement
-  // d'un service qu'on sait avoir 3 replicas configurés).
   const replicas = d.runningReplicas ?? d.desiredReplicas ?? 1
   const isStack = d.nodeType === "container" && replicas > 1
   const stackLayers = Math.min(replicas - 1, MAX_STACK_LAYERS)
 
-  // Flash d'accent sur le badge quand le compte live change (autoscale ou crash) —
-  // courte transition (~300ms) plutôt qu'un changement de chiffre sec.
   const [flash, setFlash] = useState(false)
   const prevReplicas = useRef(d.runningReplicas)
   useEffect(() => {
@@ -157,18 +130,15 @@ export function OpsNode({ data, selected }: NodeProps) {
     prevReplicas.current = d.runningReplicas
   }, [d.runningReplicas])
 
-  // Highlight de drop : surligné dès l'ENTRÉE du drag d'un volume sur ce nœud
-  // (détection DOM native React Flow, pas un calcul manuel de bounding box).
-  // dragCounter compense le bug classique navigateur où dragenter/dragleave se
-  // déclenchent aussi sur les enfants du nœud (icône, label...), ce qui sinon
-  // ferait clignoter le highlight pendant le survol.
   const [dropHighlight, setDropHighlight] = useState(false)
   const dragCounter = useRef(0)
   const canReceiveVolume = d.nodeType === "container" && !!d.onVolumeDrop
 
+  const clusterNodeOrder = d.clusterNodeOrder ?? []
+
   return (
     <div
-      className="relative"
+      className="group relative"
       onDragEnter={
         canReceiveVolume
           ? (e) => {
@@ -210,38 +180,22 @@ export function OpsNode({ data, selected }: NodeProps) {
           : undefined
       }
     >
-      {isStack &&
-        Array.from({ length: stackLayers }, (_, i) => (
-          <div
-            key={i}
-            aria-hidden
-            className="absolute inset-0 rounded-lg border border-ui-border-base bg-ui-bg-subtle transition-all duration-300"
-            style={{
-              top: (i + 1) * 4,
-              left: (i + 1) * 4,
-              zIndex: -(i + 1),
-            }}
-          />
-        ))}
-      {isStack && (
-        <span
-          className={`absolute -right-2 -top-2 z-10 flex h-5 min-w-5 items-center justify-center rounded-full px-1 text-[10px] font-semibold text-ui-fg-on-color transition-colors duration-300 ${
-            flash ? "bg-ui-tag-blue-icon" : "bg-ui-fg-subtle"
-          }`}
-          title={`${replicas} replicas`}
-        >
-          ×{replicas}
-        </span>
-      )}
-      <div
-        className={`min-w-[128px] max-w-[200px] rounded-md border bg-ui-bg-base px-2 py-1.5 shadow-elevation-card-rest transition-[border-color,box-shadow] duration-150 ${
-          dropHighlight
-            ? "border-ui-tag-orange-icon ring-2 ring-ui-tag-orange-icon"
-            : selected
-              ? "border-ui-border-interactive"
-              : "border-ui-border-base"
-        }`}
+      <NodeStackWrapper
+        replicas={replicas}
+        placements={d.placements}
+        clusterNodeOrder={clusterNodeOrder}
+        flash={flash}
       >
+        <div
+          className={`min-w-[160px] max-w-[220px] border bg-ui-bg-base p-3 shadow-elevation-card-rest transition-all duration-150 hover:shadow-elevation-card-hover ${
+            dropHighlight
+              ? "border-ui-tag-orange-icon ring-2 ring-ui-tag-orange-icon"
+              : selected
+                ? "border-ui-border-interactive ring-1 ring-ui-border-interactive"
+                : "border-ui-border-base"
+          }`}
+          style={{ borderRadius: "16px" }}
+        >
       {d.nodeType === "container" ? (
         <>
           <Handle
@@ -274,25 +228,13 @@ export function OpsNode({ data, selected }: NodeProps) {
           />
         </>
       ) : d.nodeType === "network" ? (
-        <>
-          <Handle
-            type="target"
-            id="net-link"
-            position={Position.Left}
-            className={`${HANDLE_SIZE} ${HANDLE_COLOR["net-link"]}`}
-            title="Réseau"
-          />
-          {/* Ancrage visuel des liaisons « base de données » routées par ce
-              réseau (rendu seul : la règle CONNECTION_RULES interdit toute
-              connexion manuelle network↔database). */}
-          <Handle
-            type="source"
-            id="db-link"
-            position={Position.Right}
-            className={`${HANDLE_SIZE} ${HANDLE_COLOR["db-link"]}`}
-            title="Base de données (dépendance applicative)"
-          />
-        </>
+        <Handle
+          type="target"
+          id="net-link"
+          position={Position.Left}
+          className={`${HANDLE_SIZE} ${HANDLE_COLOR["net-link"]}`}
+          title="Réseau"
+        />
       ) : d.nodeType === "volume" ? (
         <Handle
           type="target"
@@ -318,15 +260,15 @@ export function OpsNode({ data, selected }: NodeProps) {
           title="Passerelle"
         />
       )}
-      <div className="flex items-center gap-1.5">
-        <span className="shrink-0 text-ui-fg-subtle [&_svg]:h-4 [&_svg]:w-4">
+      <div className="flex items-start gap-2.5">
+        <span
+          className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg [&_svg]:h-4 [&_svg]:w-4 ${NODE_ICON_STYLE[d.nodeType]}`}
+        >
           <Icon />
         </span>
-        <div className="min-w-0 flex-1">
-          <div className="truncate text-xs font-medium text-ui-fg-base">{d.label}</div>
+        <div className="min-w-0 flex-1 pt-0.5">
+          <div className="truncate text-[13px] font-semibold leading-tight text-ui-fg-base">{d.label}</div>
           {isGateway && d.gatewayDomain ? (
-            // Passerelle : on montre le mapping exposé (domaine -> :port cible)
-            // directement sur le nœud, façon GNS3/Azure (le lien porte ses ports).
             <div
               className="truncate text-[10px] leading-tight text-ui-fg-subtle"
               title={`${d.gatewayDomain}${d.gatewayTargetPort ? ` -> :${d.gatewayTargetPort}` : ""}`}
@@ -335,8 +277,6 @@ export function OpsNode({ data, selected }: NodeProps) {
               {d.gatewayTargetPort ? ` :${d.gatewayTargetPort}` : ""}
             </div>
           ) : d.nodeType === "database" && d.dbSummary ? (
-            // Base de données : compact résumé du service managé (moteur · mode).
-            // Le détail des ressources/endpoints est dans l'inspecteur.
             <div
               className="truncate text-[10px] leading-tight text-ui-fg-subtle"
               title={
@@ -358,15 +298,17 @@ export function OpsNode({ data, selected }: NodeProps) {
           )}
         </div>
         {isGateway ? (
-          // État LOGIQUE de la route (en ligne / cible hors-ligne / à déployer),
-          // pas le cycle de vie conteneur : une route Caddy n'est jamais "actif".
           <span
             className="inline-flex items-center gap-1"
             aria-label={`Passerelle : ${gw.label}`}
             title={gw.title}
           >
             <span className={`inline-block h-2 w-2 rounded-full ${gw.dot}`} />
-            <span className={`text-[10px] leading-tight ${gw.text}`}>{gw.label}</span>
+            {/* Avoid duplicating the bottom 'à déployer' badge: when gateway is
+                pending we only show the dot (no repeated label). */}
+            {gw.label !== "à déployer" && (
+              <span className={`text-[10px] leading-tight ${gw.text}`}>{gw.label}</span>
+            )}
           </span>
         ) : (
           <span
@@ -380,15 +322,14 @@ export function OpsNode({ data, selected }: NodeProps) {
           </span>
         )}
       </div>
-
-      {/* Écart désiré-vs-réel : badge explicite "à déployer" (pas seulement une
-          couleur). Inutile pour la passerelle : sa pastille porte déjà son état. */}
-      {!isGateway && (d.deployState === "pending" || d.deployState === "drift") && (
+      {( (!isGateway && (d.deployState === "pending" || d.deployState === "drift")) || (isGateway && d.gatewayState === "pending") ) && (
         <div className="mt-1.5">
           <span
             className="inline-flex items-center gap-1 rounded-full bg-ui-tag-orange-bg px-1.5 py-0.5 text-[10px] font-medium text-ui-tag-orange-text"
             title={
-              d.deployState === "pending"
+              isGateway
+                ? "Route pas encore appliquée dans Caddy."
+                : d.deployState === "pending"
                 ? "Présent dans le projet mais pas encore déployé"
                 : "Le déploiement diverge du désiré"
             }
@@ -398,7 +339,6 @@ export function OpsNode({ data, selected }: NodeProps) {
           </span>
         </div>
       )}
-      {/* Accès (conteneur) : publié sur l'hôte (joignable navigateur) vs interne seul. */}
       {d.nodeType === "container" && (
         d.publishedPorts?.length ? (
           <div className="mt-1.5 flex flex-wrap gap-1">
@@ -452,6 +392,7 @@ export function OpsNode({ data, selected }: NodeProps) {
         </div>
       )}
       </div>
+      </NodeStackWrapper>
     </div>
   )
 }

@@ -14,16 +14,16 @@ import {
   type FinalConnectionState,
 } from "@xyflow/react"
 import { useQuery, useQueryClient, keepPreviousData } from "@tanstack/react-query"
-import { Navigate, useNavigate, useParams, Link } from "react-router-dom"
-import { Button, Heading, Text, StatusBadge, toast, usePrompt } from "@medusajs/ui"
-import { PlaySolid, Trash, ExclamationCircle, Spinner, XMark } from "@medusajs/icons"
+import { Navigate, useNavigate, useParams } from "react-router-dom"
+import { Button, Heading, StatusBadge, Text, toast, usePrompt } from "@medusajs/ui"
+import { ArrowDownLeft, PlaySolid, Trash, ExclamationCircle, Spinner, XMark } from "@medusajs/icons"
 import type { NodeType, ActualState, Node, Edge, DatabaseConfig } from "@hullbay/shared"
 // Sous-chemin node-config : évite de tirer labels.ts (node:crypto) dans le bundle navigateur.
 import { isConnectionAllowed, edgeKindForPair } from "@hullbay/shared/node-config"
 import { api } from "../lib/api"
 import { useMe } from "../lib/useMe"
 import { useMutationToast } from "../lib/useMutationToast"
-import { useOpsSocket } from "../lib/useOpsSocket"
+import { useOpsSocket, type NodePlacement } from "../lib/useOpsSocket"
 import { OpsNode, type OpsNodeData } from "../canvas/OpsNode"
 import { Palette } from "../canvas/Palette"
 import { DbNetInfoPanel, type DbNetInfoData, type DbNetLinkRow } from "../canvas/DbNetPanel"
@@ -33,6 +33,8 @@ import { EdgeInspector } from "../canvas/EdgeInspector"
 import { DeployPlanModal } from "../canvas/DeployPlanModal"
 import { nodeDeployState, gatewayState } from "../canvas/validate"
 import { useTranslation } from "react-i18next"
+import { ClusterNodesBar } from "../canvas/ClusterNodesBar"
+import { colorForSwarmNode } from "../lib/clusterNodeColors"
 
 /** Mappe la nature d'un lien persisté (edge.kind) sur l'id du handle correspondant. */
 const KIND_TO_HANDLE: Record<string, string> = {
@@ -80,6 +82,7 @@ function CanvasInner({ projectId }: { projectId: string }) {
   const prompt = usePrompt()
   const { can } = useMe()
   const canDeploy = can("operator")
+  const [backOpen, setBackOpen] = useState(false)
   
   const {
     data: graph,
@@ -91,11 +94,25 @@ function CanvasInner({ projectId }: { projectId: string }) {
     placeholderData: keepPreviousData,
   })
 
-  const { data: placement } = useQuery({
+    const { data: placement } = useQuery({
     queryKey: ["project-placement", projectId],
     queryFn: () => api.projectPlacement(projectId),
     refetchInterval: 15_000,
   })
+  // Santé du cluster (nœuds Swarm + services) — SOURCE UNIQUE pour : le nom du
+  // cluster affiché dans le header, la barre de nœuds (ClusterNodesBar) et la
+  // couleur par nœud des piles de replicas (OpsNode). Une seule requête, trois
+  // usages, pour que la même couleur soit garantie partout pour un même nœud.
+  const { data: health } = useQuery({
+    queryKey: ["health-cluster"],
+    queryFn: api.clusterHealth,
+    refetchInterval: 15_000,
+  })
+  const cluster = useMemo(
+    () => health?.clusters.find((c) => c.clusterId === graph?.clusterId),
+    [health, graph?.clusterId]
+  )
+  const orderedSwarmNodeIds = useMemo(() => cluster?.nodes.map((n) => n.swarmNodeId) ?? [], [cluster])
 
   // Récupération du nom lisible du cluster pour le header
   const { data: clusters } = useQuery({
@@ -107,6 +124,9 @@ function CanvasInner({ projectId }: { projectId: string }) {
   const [rfNodes, setRfNodes] = useState<RFNode[]>([])
   const [liveState, setLiveState] = useState<Record<string, ActualState>>({})
   const [liveReplicas, setLiveReplicas] = useState<Record<string, number>>({})
+  // Détail par nœud Swarm de chaque replica RUNNING (event "node.placements") —
+  // alimente la couleur des couches de la pile 3D dans OpsNode.tsx.
+  const [livePlacements, setLivePlacements] = useState<Record<string, NodePlacement[]>>({})
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null)
   const [selectedDbNetEdgeId, setSelectedDbNetEdgeId] = useState<string | null>(null)
@@ -350,9 +370,18 @@ function CanvasInner({ projectId }: { projectId: string }) {
               nodeType: n.type,
               actualState: resolvedState,
               desiredReplicas: (n.config as { replicas?: number } | null)?.replicas ?? 1,
-              runningReplicas: existing
+                            runningReplicas: existing
                 ? (existing.data as OpsNodeData).runningReplicas
                 : liveReplicas[n.id],
+              // Détail par nœud Swarm (pile 3D colorée) : même logique "garder le
+              // live existant, sinon repartir de ce qu'on a déjà reçu" que
+              // runningReplicas ci-dessus. clusterNodeOrder vient de la requête
+              // clusterHealth levée plus haut dans CanvasInner (même valeur pour
+              // tous les nœuds, cf. ClusterNodesBar pour la même source).
+              placements: existing
+                ? (existing.data as OpsNodeData).placements
+                : livePlacements[n.id],
+              clusterNodeOrder: orderedSwarmNodeIds,
               attachedVolumes: n.type === "container" ? volumeEdgesByContainer.get(n.id) : undefined,
               ...(n.type === "container"
                 ? {
@@ -408,7 +437,7 @@ function CanvasInner({ projectId }: { projectId: string }) {
     })
   }, [liveState, gatewayTargetByGateway])
 
-  useEffect(() => {
+    useEffect(() => {
     setRfNodes((prev) =>
       prev.map((n) => {
         const replicas = liveReplicas[n.id]
@@ -419,6 +448,29 @@ function CanvasInner({ projectId }: { projectId: string }) {
       })
     )
   }, [liveReplicas])
+
+  // Idem pour le détail par nœud Swarm (pile 3D colorée) + l'ordre des nœuds du
+  // cluster (recalculé quand `health` change, ex: nœud ajouté/retiré du Swarm) —
+  // deux sources différentes mais le même nœud React Flow à mettre à jour.
+  useEffect(() => {
+    setRfNodes((prev) =>
+      prev.map((n) => {
+        const placements = livePlacements[n.id]
+        const d = n.data as OpsNodeData
+        const placementsChanged = placements !== undefined && placements !== d.placements
+        const orderChanged = orderedSwarmNodeIds !== d.clusterNodeOrder
+        if (!placementsChanged && !orderChanged) return n
+        return {
+          ...n,
+          data: {
+            ...d,
+            placements: placements ?? d.placements,
+            clusterNodeOrder: orderedSwarmNodeIds,
+          },
+        }
+      })
+    )
+  }, [livePlacements, orderedSwarmNodeIds])
 
   const rfEdges: RFEdge[] = useMemo(
     () =>
@@ -456,8 +508,10 @@ function CanvasInner({ projectId }: { projectId: string }) {
   const onNodeReplicas = useCallback((p: { nodeId: string; runningReplicas: number }) => {
     setLiveReplicas((prev) => ({ ...prev, [p.nodeId]: p.runningReplicas }))
   }, [])
-  const { connected } = useOpsSocket(projectId, onNodeState, onNodeReplicas)
-
+  const onNodePlacements = useCallback((p: { nodeId: string; placements: NodePlacement[] }) => {
+    setLivePlacements((prev) => ({ ...prev, [p.nodeId]: p.placements }))
+  }, [])
+  const { connected } = useOpsSocket(projectId, onNodeState, onNodeReplicas, onNodePlacements)
   const onNodesChange = useCallback((changes: NodeChange[]) => {
     setRfNodes((nds) => applyNodeChanges(changes, nds))
     for (const c of changes) {
@@ -681,36 +735,55 @@ function CanvasInner({ projectId }: { projectId: string }) {
 
   return (
     <div className="flex h-full flex-col">
-      {/* Header épuré : Fil d'Ariane + Titre + Badge Live uniquement */}
-      <div className="flex items-center justify-between border-b border-ui-border-base bg-ui-bg-base px-4 py-3">
-        <div className="flex items-center gap-3">
-          {/* Fil d'Ariane */}
-          <div className="flex items-center gap-1">
-            <Link to="/" className="txt-compact-small text-ui-fg-muted hover:text-ui-fg-base">
-              Projets
-            </Link>
-            <Text className="text-ui-fg-muted">/</Text>
-          </div>
-          
-          {/* Titre + Cluster */}
-          <div className="flex flex-col">
-            <Heading level="h2">{graph?.name ?? "…"}</Heading>
-            <Text size="small" className="text-ui-fg-subtle">
-              Cluster : {clusterName ?? "..."}
-              {placement && placement.servers.length > 0 && (
-                <> · {placement.servers.join(", ")}</>
-              )}
-            </Text>
-          </div>
-
-          {/* Badge unique : Connexion temps réel */}
+      {/* Header en 3 zones (grid) : Live à gauche, nom du projet + cluster
+          CENTRÉS au milieu, actions de déploiement à droite — plus de fil
+          d'Ariane ni de badge de statut projet, juste le strict nécessaire
+          pour "respirer". */}
+      <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-4 border-b border-ui-border-base bg-ui-bg-base px-6 py-5">
+        <div className="flex items-center gap-2">
+          <Button variant="transparent" size="small" onClick={() => setBackOpen(true)} title={t('projects.pageTitle')}>
+            <ArrowDownLeft />
+          </Button>
           <StatusBadge color={connected ? "green" : "orange"}>
-            {connected ? "Live" : "Reconnexion..."}
+            {connected ? "Live" : "Reconnexion…"}
           </StatusBadge>
         </div>
 
-        {/* Boutons Déployer/Détruire */}
-        <div className="flex items-center gap-2">
+        {backOpen && (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center">
+            <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setBackOpen(false)} />
+            <div className="relative z-10 w-full max-w-md rounded-lg bg-ui-bg-base p-6 shadow-elevation-flyout ring-1 ring-ui-border-base">
+              <div className="flex items-start justify-between">
+                <Heading level="h3">Retour aux projets</Heading>
+                <button
+                  type="button"
+                  aria-label="Fermer"
+                  className="text-ui-fg-subtle hover:text-ui-fg-base"
+                  onClick={() => setBackOpen(false)}
+                >
+                  <XMark />
+                </button>
+              </div>
+              <Text className="mt-3 text-ui-fg-subtle">Retourner à la liste des projets ? Les modifications non sauvegardées seront perdues.</Text>
+              <div className="mt-6 flex justify-end gap-2">
+                <Button variant="secondary" onClick={() => setBackOpen(false)}>{t('projects.actions.cancel')}</Button>
+                <Button onClick={() => { setBackOpen(false); navigate('/'); }}>{t('projects.pageTitle')}</Button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        <div className="flex flex-col items-center text-center">
+          <Heading level="h2">{graph?.name ?? "…"}</Heading>
+          <Text size="small" className="text-ui-fg-subtle">
+            Cluster : {cluster?.clusterName ?? "…"}
+            {placement && placement.servers.length > 0 && (
+              <> · {placement.servers.join(", ")}</>
+            )}
+          </Text>
+        </div>
+
+        <div className="flex items-center justify-end gap-2">
           {activityLog && (
             <Button variant="transparent" size="small" onClick={() => setActivityOpen((v) => !v)}>
               Activité
@@ -790,7 +863,10 @@ function CanvasInner({ projectId }: { projectId: string }) {
             <Controls />
           </ReactFlow>
 
+          {/* Palette flottante (overlay gauche) + barre des nœuds Swarm (bas-gauche,
+              à côté des Controls React Flow). */}
           <Palette onAdd={onAddNode} />
+          <ClusterNodesBar cluster={cluster} />
 
           {graph && graph.nodes.length === 0 && (
             <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
