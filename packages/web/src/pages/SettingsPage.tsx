@@ -47,20 +47,20 @@ export function SettingsPage() {
 
   return (
     <PageContainer size="2xl">
-      <PageHeader title={t("settings.pageTitle")} />
+      <PageHeader title={t('settings.pageTitle')} />
 
       {/* Profil */}
       <Container className="mb-4 p-6">
         <Heading level="h3" className="mb-3">
-          {t("settings.account.title")}
+          {t('settings.account.title')}
         </Heading>
         <div className="flex flex-col gap-2">
           <div>
-            <Label size="small">{t("settings.account.emailLabel")}</Label>
+            <Label size="small">{t('settings.account.emailLabel')}</Label>
             <Text>{me?.email ?? "…"}</Text>
           </div>
           <div>
-            <Label size="small">{t("settings.account.roleLabel")}</Label>
+            <Label size="small">{t('settings.account.roleLabel')}</Label>
             <Text className="capitalize">{me?.role ?? "…"}</Text>
           </div>
         </div>
@@ -69,15 +69,15 @@ export function SettingsPage() {
       {/* Langue */}
       <Container className="mb-4 p-6">
         <Heading level="h3" className="mb-3">
-          {t("settings.language.title")}
+          {t('settings.language.title')}
         </Heading>
         <div className="flex flex-col gap-2">
-          <Label size="small">{t("settings.language.selectLabel")}</Label>
+          <Label size="small">{t('settings.language.selectLabel')}</Label>
           <div className="w-48">
             <LanguageSwitch />
           </div>
           <Text size="xsmall" className="text-ui-fg-muted">
-            {t("settings.language.hint")}
+            {t('settings.language.hint')}
           </Text>
         </div>
       </Container>
@@ -85,11 +85,11 @@ export function SettingsPage() {
       {/* Mot de passe */}
       <Container className="mb-4 p-6">
         <Heading level="h3" className="mb-3">
-          {t("settings.password.title")}
+          {t('settings.password.title')}
         </Heading>
         <div className="flex flex-col gap-3">
           <div>
-            <Label size="small">{t("settings.password.currentLabel")}</Label>
+            <Label size="small">{t('settings.password.currentLabel')}</Label>
             <Input
               type="password"
               value={currentPassword}
@@ -98,22 +98,22 @@ export function SettingsPage() {
             />
           </div>
           <div>
-            <Label size="small">{t("settings.password.newLabel")}</Label>
+            <Label size="small">{t('settings.password.newLabel')}</Label>
             <Input
               type="password"
               value={newPassword}
               onChange={(e) => setNewPassword(e.target.value)}
               autoComplete="new-password"
-              placeholder={t("settings.password.newPlaceholder")}
+              placeholder={t('settings.password.newPlaceholder')}
             />
             {pwTooShort && (
               <Text size="xsmall" className="mt-1 text-ui-fg-error">
-                {t("settings.password.tooShortError")}
+                {t('settings.password.tooShortError')}
               </Text>
             )}
           </div>
           <div>
-            <Label size="small">{t("settings.password.confirmLabel")}</Label>
+            <Label size="small">{t('settings.password.confirmLabel')}</Label>
             <Input
               type="password"
               value={confirmPassword}
@@ -122,7 +122,7 @@ export function SettingsPage() {
             />
             {pwMismatch && (
               <Text size="xsmall" className="mt-1 text-ui-fg-error">
-                {t("settings.password.mismatchError")}
+                {t('settings.password.mismatchError')}
               </Text>
             )}
           </div>
@@ -132,7 +132,7 @@ export function SettingsPage() {
             disabled={!canSubmitPw}
             className="self-start"
           >
-            {t("settings.password.submitButton")}
+            {t('settings.password.submitButton')}
           </Button>
         </div>
       </Container>
@@ -140,13 +140,13 @@ export function SettingsPage() {
       {!isProduction && (
         <Container className="mb-4 p-6">
           <Heading level="h3" className="mb-3">
-            {t("settings.domain.title")}
+            {t('settings.domain.title')}
           </Heading>
           <Text size="small" className="text-ui-fg-subtle mb-3">
-            {t("settings.domain.hint")}
+            {t('settings.domain.hint')}
           </Text>
           <Button variant="secondary" onClick={() => navigate("/setup-domain")}>
-            {t("settings.domain.configureButton")}
+            {t('settings.domain.configureButton')}
           </Button>
         </Container>
       )}

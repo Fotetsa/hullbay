@@ -112,6 +112,12 @@ async function req<T>(path: string, init: RequestInit = {}): Promise<T> {
   return (text ? JSON.parse(text) : undefined) as T;
 }
 
+function normalizeEnvironment(value: unknown): Environment {
+  const v = typeof value === "string" ? value.toLocaleLowerCase().trim() : "";
+  if (v === "development" || v === "test") return v;
+  return "production";
+}
+
 export const api = {
   // Onboarding / Auth
   needsBootstrap: () =>
@@ -389,12 +395,14 @@ export const api = {
 
   // Système
   getEnvironment: () =>
-    req<{ environment: "development" | "test" | "production" }>(
-      "/api/system/environment",
-    ),
+    req<{ environment: unknown }>("/api/system/environment").then((r) => ({
+      environment: normalizeEnvironment(r.environment),
+    })),
 };
 
 // ── Types ──────────────────────────────────────────────────────────────────
+
+export type Environment = "development" | "test" | "production";
 
 export type Cluster = {
   id: string;

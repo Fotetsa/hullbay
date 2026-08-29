@@ -6,7 +6,7 @@ export type Environment = "development" | "test" | "production";
  * inattendue.
  */
 export function resolveEnvironment(): Environment {
-  const raw = process.env.NODE_ENV;
+  const raw = process.env.NODE_ENV?.toLowerCase().trim();
   if (raw === "development" || raw === "test" || raw === "production")
     return raw;
   return "production";
