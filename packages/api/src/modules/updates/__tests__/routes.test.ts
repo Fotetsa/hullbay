@@ -28,7 +28,9 @@ const { mockUpdaterService, mockClusterService, mockResolveEnvironment } =
       })),
       list: vi.fn(),
     },
-    mockResolveEnvironment: vi.fn(() => "production" as const),
+    mockResolveEnvironment: vi.fn(
+      (): "development" | "test" | "production" => "production",
+    ),
   }));
 
 vi.mock("../updater", () => ({
