@@ -98,6 +98,7 @@ else
   [ -n "$PUBLIC_HOST" ] && PUBLIC_URL_DEFAULT="https://${PUBLIC_HOST}"
   cat > .env <<EOF
 # Généré par install.sh le $(date -u +%FT%TZ). NE PAS committer.
+NODE_ENV=production
 GHCR_OWNER=${GHCR_OWNER}
 IMAGE_TAG=${IMAGE_TAG}
 PUBLIC_HOST=${PUBLIC_HOST}

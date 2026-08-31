@@ -2,6 +2,7 @@ import type { FastifyInstance } from "fastify"
 import { z } from "zod"
 import { updaterService } from "./updater"
 import { currentUser, requireRole } from "../auth/rbac"
+import { resolveEnvironment } from "../system/service"
 
 /**
  * Routes de mise à jour du système — OWNER uniquement (actions infra sensibles).
@@ -67,6 +68,12 @@ export async function registerUpdatesRoutes(app: FastifyInstance) {
       },
     },
     async (req, reply) => {
+      if (resolveEnvironment() !== "production") {
+        return reply.code(409).send({
+          error:
+            "Les mises à jour automatiques ne sont disponibles qu'en environnement de production.",
+        });
+      }
       const { channel } = req.body as { channel: "stable" | "beta" }
       await updaterService.setChannel(channel)
       return reply.code(200).send({ ok: true, channel })
@@ -128,6 +135,12 @@ export async function registerUpdatesRoutes(app: FastifyInstance) {
       },
     },
     async (req, reply) => {
+      // Les mises à jour n'ont de sens qu'en production, c'est pour cela que nous devons d'abord verifier avant d'appeller 
+      if (resolveEnvironment() !== "production") {
+        return reply.code(409).send({
+          error: "Les mises à jour automatiques ne sont disponibles qu'en environnement de production.",
+        })
+      }
       const { channel, version } = req.body as { channel?: "stable" | "beta"; version?: string }
       const user = currentUser(req)
       try {
@@ -160,6 +173,11 @@ export async function registerUpdatesRoutes(app: FastifyInstance) {
       },
     },
     async (req, reply) => {
+      if (resolveEnvironment() !== "production") {
+        return reply.code(409).send({
+          error: "Les mises à jour automatiques ne sont disponibles qu'en environnement de production.",
+        })
+      }
       const { id } = req.params as { id: string }
       const user = currentUser(req)
       try {

@@ -429,6 +429,11 @@
   },
   "settings": {
     "pageTitle": "Settings",
+    "domain": {
+      "title": "Domain name",
+      "hint": "Optional outside production — configure a public domain if you want to test automatic HTTPS.",
+      "configureButton": "Configure domain"
+    },
     "account": {
       "title": "Account",
       "emailLabel": "Email",

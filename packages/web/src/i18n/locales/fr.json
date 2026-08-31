@@ -433,6 +433,11 @@
   },
   "settings": {
     "pageTitle": "Paramètres",
+    "domain": {
+      "title": "Nom de domaine",
+      "hint": "Facultatif hors production — configure un domaine public si tu veux tester le HTTPS automatique.",
+      "configureButton": "Configurer le domaine"
+    },
     "account": {
       "title": "Compte",
       "emailLabel": "Email",

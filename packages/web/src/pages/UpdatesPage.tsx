@@ -32,6 +32,10 @@ const SHOW_MANUAL_CHECK = false
 const HISTORY_PAGE_SIZE = 20
 
 export function UpdatesPage() {
+  // Les mises a jour ont de sens qu'en production.
+  const { data: envData } = useQuery({ queryKey: ["environment"], queryFn: api.getEnvironment })
+  const isProduction = envData?.environment === "production"
+
   const updates = useUpdatesCheck()
   const [modalOpen, setModalOpen] = useState(false)
   const [historyStatus, setHistoryStatus] = useState("all")
@@ -218,7 +222,14 @@ export function UpdatesPage() {
     return () => window.removeEventListener("beforeunload", onBeforeUnload)
   }, [running])
 
-  const currentVersion = updates.data?.currentVersion ?? "…"
+  const rawVersion = updates.data?.currentVersion
+  const currentVersion = !rawVersion
+    ? "..."
+    : rawVersion === "unknown"
+      ? isProduction
+        ? "inconnue" 
+        : "développement (source locale)"
+      : rawVersion
   const activeChannel = updates.data?.updateChannel ?? "stable"
 
   return (
@@ -232,10 +243,16 @@ export function UpdatesPage() {
               <Switch
                 id="updates-beta-toggle"
                 checked={activeChannel === "beta"}
-                disabled={running || setChannel.isPending}
-                onCheckedChange={(checked) => setChannel.mutate(checked ? "beta" : "stable")}
+                disabled={!isProduction || running || setChannel.isPending}
+                onCheckedChange={(checked) =>
+                  setChannel.mutate(checked ? "beta" : "stable")
+                }
               />
-              <Label htmlFor="updates-beta-toggle" size="small" className="text-ui-fg-base">
+              <Label
+                htmlFor="updates-beta-toggle"
+                size="small"
+                className="text-ui-fg-base"
+              >
                 Version bêta
               </Label>
             </div>
@@ -243,8 +260,8 @@ export function UpdatesPage() {
               <Button
                 variant="secondary"
                 onClick={() => {
-                  refetchHistory()
-                  updates.refetch()
+                  refetchHistory();
+                  updates.refetch();
                 }}
                 isLoading={updates.isFetching || historyFetching}
               >
@@ -256,6 +273,16 @@ export function UpdatesPage() {
         }
       />
 
+      {!isProduction && (
+        <Alert variant="info" className="mb-4">
+          <Text size="small">
+            Les mises à jour automatique ne sont disponible qu'en producti.
+            Cette instance tourne actuellement en environnement, la page reste
+            consultatble, mais l'installation d'une mise à jour est désactivée.
+          </Text>
+        </Alert>
+      )}
+
       {/* ── Carte installation : état courant OU pipeline live ───────────── */}
       <UpdatesHero
         data={updates.data}
@@ -265,12 +292,16 @@ export function UpdatesPage() {
         connected={connected}
         onUpdate={() => openConfirm()}
         onCloseLive={() => setActiveId(null)}
+        updatesDisabled={!isProduction}
       />
 
       {/* Pendant l'update : tout le reste est verrouillé et atténué. */}
       <div
         aria-busy={running}
-        className={clx("flex flex-col gap-4", running && "pointer-events-none select-none opacity-60")}
+        className={clx(
+          "flex flex-col gap-4",
+          running && "pointer-events-none select-none opacity-60",
+        )}
       >
         {/* ── Onglets : versions publiées (défaut) / historique ──────────── */}
         <div className="flex justify-start">
@@ -285,7 +316,7 @@ export function UpdatesPage() {
                 { value: "history", label: "Historique" },
               ] as const
             ).map((t) => {
-              const active = activeTab === t.value
+              const active = activeTab === t.value;
               return (
                 <button
                   key={t.value}
@@ -302,7 +333,7 @@ export function UpdatesPage() {
                 >
                   {t.label}
                 </button>
-              )
+              );
             })}
           </div>
         </div>
@@ -314,7 +345,9 @@ export function UpdatesPage() {
             filter={releaseFilter}
             onFilterChange={setReleaseFilter}
             expandedTag={expandedTag}
-            onToggle={(tag) => setExpandedTag((cur) => (cur === tag ? null : tag))}
+            onToggle={(tag) =>
+              setExpandedTag((cur) => (cur === tag ? null : tag))
+            }
             currentVersion={currentVersion}
             running={running}
             onInstall={(version) => openConfirm(version)}
@@ -328,8 +361,8 @@ export function UpdatesPage() {
             offset={historyOffset}
             status={historyStatus}
             onStatusChange={(s) => {
-              setHistoryStatus(s)
-              setHistoryOffset(0)
+              setHistoryStatus(s);
+              setHistoryOffset(0);
             }}
             running={running}
             trackedId={trackedId}
@@ -342,34 +375,54 @@ export function UpdatesPage() {
       </div>
 
       {/* ── Popover : simple confirmation de la dernière version du canal ── */}
-      <Prompt open={modalOpen} onOpenChange={(o) => { setModalOpen(o); if (!o) setTargetVersionOverride(null) }} variant="confirmation">
+      <Prompt
+        open={modalOpen}
+        onOpenChange={(o) => {
+          setModalOpen(o);
+          if (!o) setTargetVersionOverride(null);
+        }}
+        variant="confirmation"
+      >
         <Prompt.Content>
           <Prompt.Header>
             <Prompt.Title>Confirmer la mise à jour</Prompt.Title>
             <Prompt.Description>
               Installer la version{" "}
-              <span className="font-mono text-ui-fg-base">{confirmVersion ?? "…"}</span> sur le
-              canal {CHANNEL_LABELS[activeChannel].label.toLowerCase()}.
+              <span className="font-mono text-ui-fg-base">
+                {confirmVersion ?? "…"}
+              </span>{" "}
+              sur le canal {CHANNEL_LABELS[activeChannel].label.toLowerCase()}.
             </Prompt.Description>
           </Prompt.Header>
           <div className="flex flex-col gap-2 px-6 text-sm text-ui-fg-subtle">
             {targetVersionOverride && (
-              <Badge className="w-fit" size="small">Version intermédiaire</Badge>
+              <Badge className="w-fit" size="small">
+                Version intermédiaire
+              </Badge>
             )}
             <Text size="small">
               La mise à jour est automatique et réversible :
             </Text>
             <ul className="flex flex-col gap-1.5">
               <li className="flex items-start gap-2">
-                <CircleCheckSolid className="mt-0.5 h-4 w-4 shrink-0 text-ui-fg-success" aria-hidden />
+                <CircleCheckSolid
+                  className="mt-0.5 h-4 w-4 shrink-0 text-ui-fg-success"
+                  aria-hidden
+                />
                 Sauvegarde de la base avant toute manipulation.
               </li>
               <li className="flex items-start gap-2">
-                <CircleCheckSolid className="mt-0.5 h-4 w-4 shrink-0 text-ui-fg-success" aria-hidden />
+                <CircleCheckSolid
+                  className="mt-0.5 h-4 w-4 shrink-0 text-ui-fg-success"
+                  aria-hidden
+                />
                 Redéploiement progressif (coupure de 2-3 s).
               </li>
               <li className="flex items-start gap-2">
-                <CircleCheckSolid className="mt-0.5 h-4 w-4 shrink-0 text-ui-fg-success" aria-hidden />
+                <CircleCheckSolid
+                  className="mt-0.5 h-4 w-4 shrink-0 text-ui-fg-success"
+                  aria-hidden
+                />
                 Retour arrière automatique en cas d'échec.
               </li>
             </ul>
@@ -387,8 +440,13 @@ export function UpdatesPage() {
               size="small"
               variant="primary"
               isLoading={apply.isPending}
-              disabled={!confirmVersion || running}
-              onClick={() => apply.mutate({ channel: activeChannel, version: targetVersionOverride ?? undefined })}
+              disabled={!confirmVersion || running || !isProduction}
+              onClick={() =>
+                apply.mutate({
+                  channel: activeChannel,
+                  version: targetVersionOverride ?? undefined,
+                })
+              }
             >
               Confirmer la mise à jour
             </Button>
@@ -396,5 +454,5 @@ export function UpdatesPage() {
         </Prompt.Content>
       </Prompt>
     </PageContainer>
-  )
+  );
 }
