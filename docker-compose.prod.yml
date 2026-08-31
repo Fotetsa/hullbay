@@ -70,6 +70,7 @@ services:
       socket-proxy:
         condition: service_started
     environment:
+      NODE_ENV: ${NODE_ENV:-production}
       DATABASE_URL: postgresql://${POSTGRES_USER:-ops}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-hullbay}
       REDIS_URL: redis://redis:6379
       API_HOST: 0.0.0.0

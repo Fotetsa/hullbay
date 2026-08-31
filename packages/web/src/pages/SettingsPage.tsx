@@ -6,6 +6,7 @@ import { useMutationToast } from "../lib/useMutationToast"
 import { PageHeader, PageContainer } from "../components/PageHeader"
 import { useTranslation } from "react-i18next"
 import { LanguageSwitch } from "../components/LanguageSwitch"
+import { useNavigate } from "react-router-dom";
 
 /**
  * Page Paramètres utilisateur : profil + activation de la MFA (TOTP).
@@ -29,6 +30,13 @@ export function SettingsPage() {
       setConfirmPassword("")
     },
   })
+
+  const navigate = useNavigate();
+  const { data: envData } = useQuery({
+    queryKey: ["environment"],
+    queryFn: api.getEnvironment,
+  });
+  const isProduction = envData?.environment === "production";
 
   const pwMismatch = newPassword.length > 0 && newPassword !== confirmPassword
   const pwTooShort = newPassword.length > 0 && newPassword.length < 8
@@ -128,6 +136,20 @@ export function SettingsPage() {
           </Button>
         </div>
       </Container>
+
+      {!isProduction && (
+        <Container className="mb-4 p-6">
+          <Heading level="h3" className="mb-3">
+            {t('settings.domain.title')}
+          </Heading>
+          <Text size="small" className="text-ui-fg-subtle mb-3">
+            {t('settings.domain.hint')}
+          </Text>
+          <Button variant="secondary" onClick={() => navigate("/setup-domain")}>
+            {t('settings.domain.configureButton')}
+          </Button>
+        </Container>
+      )}
     </PageContainer>
-  )
+  );
 }
