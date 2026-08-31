@@ -16,7 +16,7 @@ import {
   Switch,
   toast,
 } from "@medusajs/ui";
-import { Plus, CubeSolid, Trash } from "@medusajs/icons";
+import { Plus, DecisionProcess, Trash } from "@medusajs/icons";
 import { api } from "../lib/api";
 import { useMutationToast } from "../lib/useMutationToast";
 import { useProvisionLog } from "../lib/useProvisionLog";
@@ -170,7 +170,7 @@ export function ClustersPage() {
       ) : clusters?.length === 0 ? (
         <Container className="p-0">
           <EmptyState
-            icon={CubeSolid}
+            icon={DecisionProcess}
             title={t("clusters.empty.title")}
             description={t("clusters.empty.description")}
             action={
@@ -198,7 +198,7 @@ export function ClustersPage() {
                 onClick={() => navigate(`/clusters/${cluster.id}`)}
                 className="flex flex-1 items-center gap-3 text-left"
               >
-                <CubeSolid />
+                <DecisionProcess />
                 <div>
                   <div className="flex items-center gap-2">
                     <Heading level="h3">{cluster.name}</Heading>
@@ -252,7 +252,7 @@ export function ClustersPage() {
             <ModalForm
               size="lg"
               onSubmit={(e?: React.FormEvent) => {
-                e?.preventDefault?.(); 
+                e?.preventDefault?.();
                 if (canSubmit) provision.mutate();
               }}
             >
@@ -390,7 +390,6 @@ export function ClustersPage() {
         </FocusModal.Content>
       </FocusModal>
 
-      
       <FocusModal
         open={!!deleteTarget}
         onOpenChange={(o) => !o && setDeleteTarget(null)}

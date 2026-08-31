@@ -4,33 +4,41 @@ import { registerUpdatesRoutes } from "../routes";
 import { registerAuthGuard } from "../../auth/routes";
 import { authService } from "../../auth/service";
 
-const { mockUpdaterService, mockClusterService } = vi.hoisted(() => ({
-  mockUpdaterService: {
-    check: vi.fn(),
-    current: vi.fn(),
-    history: vi.fn(),
-    status: vi.fn(),
-    apply: vi.fn(),
-    rollback: vi.fn(),
-    setChannel: vi.fn(),
-  },
-  mockClusterService: {
-    get: vi.fn(),
-    getOrThrow: vi.fn(),
-    getDefault: vi.fn(async () => ({
-      id: "default-cluster",
-      name: "Default",
-      isDefault: true,
-      dockerHost: "tcp://socket-proxy:2375",
-      caddyAdminUrl: "http://caddy:2019",
-      status: "ready",
-    })),
-    list: vi.fn(),
-  },
-}));
+const { mockUpdaterService, mockClusterService, mockResolveEnvironment } =
+  vi.hoisted(() => ({
+    mockUpdaterService: {
+      check: vi.fn(),
+      current: vi.fn(),
+      history: vi.fn(),
+      status: vi.fn(),
+      apply: vi.fn(),
+      rollback: vi.fn(),
+      setChannel: vi.fn(),
+    },
+    mockClusterService: {
+      get: vi.fn(),
+      getOrThrow: vi.fn(),
+      getDefault: vi.fn(async () => ({
+        id: "default-cluster",
+        name: "Default",
+        isDefault: true,
+        dockerHost: "tcp://socket-proxy:2375",
+        caddyAdminUrl: "http://caddy:2019",
+        status: "ready",
+      })),
+      list: vi.fn(),
+    },
+    mockResolveEnvironment: vi.fn(
+      (): "development" | "test" | "production" => "production",
+    ),
+  }));
 
 vi.mock("../updater", () => ({
   updaterService: mockUpdaterService,
+}));
+
+vi.mock("../../system/service", () => ({
+  resolveEnvironment: mockResolveEnvironment,
 }));
 
 vi.mock("../../../lib/event-bus", () => ({
@@ -63,6 +71,7 @@ describe("Routes /api/updates", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mockResolveEnvironment.mockReturnValue("production");
     vi.mocked(authService.verifyToken).mockImplementation((token: string) => {
       if (token === ownerToken) return { sub: "owner-id", role: "owner", mfaEnabled: true };
       if (token === operatorToken) return { sub: "op-id", role: "operator", mfaEnabled: true };
@@ -282,5 +291,46 @@ describe("Routes /api/updates", () => {
 
     expect(res.statusCode).toBe(400);
     expect(res.json()).toEqual({ error: "déjà rollbacké" });
+  });
+
+  it("POST /api/updates/apply → 409 hors production, même pour un owner", async () => {
+    mockResolveEnvironment.mockReturnValue("development");
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/updates/apply",
+      headers: { authorization: `Bearer ${ownerToken}` },
+      payload: {},
+    });
+
+    expect(res.statusCode).toBe(409);
+    expect(mockUpdaterService.apply).not.toHaveBeenCalled();
+  });
+
+  it("PUT /api/updates/channel → 409 hors production", async () => {
+    mockResolveEnvironment.mockReturnValue("development");
+
+    const res = await app.inject({
+      method: "PUT",
+      url: "/api/updates/channel",
+      headers: { authorization: `Bearer ${ownerToken}` },
+      payload: { channel: "beta" },
+    });
+
+    expect(res.statusCode).toBe(409);
+    expect(mockUpdaterService.setChannel).not.toHaveBeenCalled();
+  });
+
+  it("POST /api/updates/:id/rollback → 409 hors production", async () => {
+    mockResolveEnvironment.mockReturnValue("development");
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/updates/update-9/rollback",
+      headers: { authorization: `Bearer ${ownerToken}` },
+    });
+
+    expect(res.statusCode).toBe(409);
+    expect(mockUpdaterService.rollback).not.toHaveBeenCalled();
   });
 });
