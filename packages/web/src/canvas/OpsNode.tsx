@@ -24,6 +24,7 @@ export type OpsNodeData = {
   dbSummary?: { engine: string; mode: string; replicas: number; consensus?: number }
   placements?: NodePlacement[]
   clusterNodeOrder?: string[]
+  isDbLinkedNetwork?: boolean
 }
 
 const GATEWAY_STATE: Record <
@@ -228,13 +229,32 @@ export function OpsNode({ data, selected }: NodeProps) {
           />
         </>
       ) : d.nodeType === "network" ? (
-        <Handle
-          type="target"
-          id="net-link"
-          position={Position.Left}
-          className={`${HANDLE_SIZE} ${HANDLE_COLOR["net-link"]}`}
-          title="Réseau"
-        />
+        d.isDbLinkedNetwork ? (
+          <>
+            <Handle
+              type="target"
+              id="db-link"
+              position={Position.Left}
+              className={`${HANDLE_SIZE} ${HANDLE_COLOR["db-link"]}`}
+              title="Base de données (dépendance applicative)"
+            />
+            <Handle
+              type="source"
+              id="db-link"
+              position={Position.Right}
+              className={`${HANDLE_SIZE} ${HANDLE_COLOR["db-link"]}`}
+              title="Base de données (dépendance applicative)"
+            />
+          </>
+        ) : (
+          <Handle
+            type="target"
+            id="net-link"
+            position={Position.Left}
+            className={`${HANDLE_SIZE} ${HANDLE_COLOR["net-link"]}`}
+            title="Réseau"
+          />
+        )
       ) : d.nodeType === "volume" ? (
         <Handle
           type="target"
@@ -322,7 +342,7 @@ export function OpsNode({ data, selected }: NodeProps) {
           </span>
         )}
       </div>
-      {( (!isGateway && (d.deployState === "pending" || d.deployState === "drift")) || (isGateway && d.gatewayState === "pending") ) && (
+      {((!isGateway && !d.isDbLinkedNetwork && (d.deployState === "pending" || d.deployState === "drift")) || (isGateway && d.gatewayState === "pending")) && (
         <div className="mt-1.5">
           <span
             className="inline-flex items-center gap-1 rounded-full bg-ui-tag-orange-bg px-1.5 py-0.5 text-[10px] font-medium text-ui-tag-orange-text"
