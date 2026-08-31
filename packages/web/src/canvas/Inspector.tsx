@@ -26,13 +26,19 @@ export function Inspector({
   onClose,
   onSaved,
   onDeleted,
+  linkedNetworkId = null,
+  isLinkedDbNetwork = false,
 }: {
-    node: Node
+  node: Node
   projectId: string
   clusterId: string | null
   onClose: () => void
   onSaved: () => void
   onDeleted: () => void
+  /** Id du réseau créé avec cette base (cascade de suppression). */
+  linkedNetworkId?: string | null
+  /** Vrai si ce nœud est un réseau lié à une base (non supprimable seul). */
+  isLinkedDbNetwork?: boolean
 }) {
   const prompt = usePrompt()
   const [name, setName] = useState(node.name)
@@ -75,6 +81,14 @@ export function Inspector({
   }
 
   async function remove() {
+    // Un réseau accompagnant une base ne se supprime pas seul : sa vie est
+    // liée à celle de la base (créé avec elle au drop, supprimé avec elle).
+    if (isLinkedDbNetwork) {
+      toast.error("Suppression refusée", {
+        description: "Ce réseau accompagne une base de données. Supprimez la base pour le retirer.",
+      })
+      return
+    }
     const ok = await prompt({
       title: "Supprimer ce nœud ?",
       description: `« ${node.name} » (${node.type}) sera retiré du projet. S'il est déployé, détruis/redéploie le projet pour appliquer le changement à Docker.`,
@@ -85,6 +99,10 @@ export function Inspector({
     if (!ok) return
     try {
       await api.deleteNode(node.id)
+      // Une base emporte son réseau avec elle (créés ensemble au drop).
+      if (linkedNetworkId) {
+        await api.deleteNode(linkedNetworkId).catch(() => {})
+      }
       toast.success("Nœud supprimé")
       onDeleted()
     } catch (e) {
