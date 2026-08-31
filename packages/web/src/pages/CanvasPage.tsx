@@ -15,8 +15,8 @@ import {
 } from "@xyflow/react"
 import { useQuery, useQueryClient, keepPreviousData } from "@tanstack/react-query"
 import { Navigate, useNavigate, useParams } from "react-router-dom"
-import { Button, Heading, Text, toast, usePrompt } from "@medusajs/ui"
-import { PlaySolid, Trash, ArrowLeft, ExclamationCircle, Spinner, XMark } from "@medusajs/icons"
+import { Button, Heading, Text, toast, usePrompt, StatusBadge } from "@medusajs/ui"
+import { PlaySolid, Trash, ArrowDownLeft, ExclamationCircle, Spinner, XMark } from "@medusajs/icons"
 import type { NodeType, ActualState, Node, Edge, DatabaseConfig, ProjectGraph } from "@hullbay/shared"
 // Sous-chemin node-config : évite de tirer labels.ts (node:crypto) dans le bundle navigateur.
 import { isConnectionAllowed, edgeKindForPair } from "@hullbay/shared/node-config"

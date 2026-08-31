@@ -12,6 +12,10 @@ export type OpsNodeData = {
   actualState?: ActualState | null
   desiredReplicas?: number
   runningReplicas?: number
+  /** Ordre des nœuds Swarm du cluster (ids) pour l'alignement des replicas */
+  clusterNodeOrder?: string[]
+  /** Emplacements reportés depuis le socket (optionnel, containers) */
+  placements?: NodePlacement[]
   attachedVolumes?: { id: string; name: string; mountPath?: string }[]
   deployState?: "deployed" | "pending" | "drift"
   onVolumeDrop?: () => void
