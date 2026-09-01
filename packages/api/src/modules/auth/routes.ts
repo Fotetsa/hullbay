@@ -406,7 +406,7 @@ export async function registerAuthRoutes(app: FastifyInstance) {
         total,
         limit,
         offset,
-        entries: rows.map((r) => ({
+        entries: rows.map((r: any) => ({
           id: r.id,
           action: r.action,
           userEmail: r.user?.email ?? null,

@@ -55,7 +55,7 @@ export class ClusterService {
         throw err;
       }
       try {
-        return await prisma.$transaction(async (tx) => {
+        return await prisma.$transaction(async (tx: any) => {
           await tx.server.deleteMany({ where: { clusterId: existing.id } });
           await tx.cluster.delete({ where: { id: existing.id } });
           return tx.cluster.create({
@@ -81,10 +81,7 @@ export class ClusterService {
     }
   }
   private friendlyNameCollisionError(err: unknown, name: string): Error {
-    if (
-      err instanceof Prisma.PrismaClientKnownRequestError &&
-      err.code === "P2002"
-    ) {
+    if ((err as any)?.code === "P2002") {
       const friendly = new Error(
         `un cluster nommé "${name}" vient d'être créé par une autre requête — réessaie avec un autre nom`,
       );
@@ -199,7 +196,7 @@ export class ClusterService {
     });
     await eventBus.emit("cluster.delete.requested", {
       clusterId: id,
-      serverIds: servers.map((s) => s.id),
+      serverIds: servers.map((s: any) => s.id),
     });
 
     return { removedServers: servers.length, status: "deleting" };

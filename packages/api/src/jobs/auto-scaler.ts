@@ -43,10 +43,11 @@ type RawService = {
 /** Un tick d'auto-scaling sur tous les services gérés éligibles. */
 export async function runAutoScale(): Promise<void> {
   const clusters = await prisma.cluster.findMany({ select: { id: true } })
+  const clusterIds: string[] = clusters.map((c: { id: string }) => c.id)
   const { items, totalMs } = await runWithConcurrency(
-    clusters.map((c) => c.id),
+    clusterIds,
     CLUSTER_CONCURRENCY,
-    (clusterId) => runAutoScaleForCluster(clusterId),
+    (clusterId: string) => runAutoScaleForCluster(clusterId),
   )
   for (const it of items) {
     if (it.status === "rejected") {

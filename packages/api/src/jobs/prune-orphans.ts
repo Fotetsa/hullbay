@@ -38,7 +38,7 @@ function labelsOf(r: { Spec?: { Labels?: Record<string, string> }; Labels?: Reco
 
 /** Un projet est "connu" si son id figure dans la table Project. */
 async function knownProjectIds(): Promise<Set<string>> {
-  const rows = await prisma.project.findMany({ select: { id: true } })
+  const rows: { id: string }[] = await prisma.project.findMany({ select: { id: true } })
   return new Set(rows.map((r) => r.id))
 }
 
@@ -51,8 +51,8 @@ export interface PruneDeps {
 
 export async function pruneOrphans(apply = false, deps: PruneDeps = {}): Promise<PruneResult> {
   const known = await (deps.knownProjectIds ?? knownProjectIds)();
-  const clusters = await (deps.clusterIds ?? (async () => {
-    const rows = await prisma.cluster.findMany({ select: { id: true } });
+    const clusters = await (deps.clusterIds ?? (async () => {
+    const rows: { id: string }[] = await prisma.cluster.findMany({ select: { id: true } });
     return rows.map((r) => r.id);
   }))();
 

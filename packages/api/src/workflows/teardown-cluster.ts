@@ -35,7 +35,7 @@ export async function teardownClusterWorkflow(clusterId: string, serverIds: stri
      * sinon aucun moyen de retrouver quels serveurs appartenaient à ce cluster si le teardown 
      * avait besoin d'un retry
      */
-    await prisma.$transaction(async (tx) => {
+    await prisma.$transaction(async (tx: any) => {
         await tx.server.deleteMany({ where: { clusterId } })
         await tx.cluster.delete({ where: { id: clusterId } })
     })

@@ -207,7 +207,7 @@ async function seedSystemInfo() {
       create: { id: "singleton", currentVersion: version },
       update: {},
     })
-    .catch((err) => {
+    .catch((err: any) => {
       console.warn(`[updates] seed SystemInfo ignoré (DB indisponible ?): ${err}`);
     });
 }

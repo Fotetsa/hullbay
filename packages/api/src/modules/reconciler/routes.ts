@@ -256,10 +256,11 @@ export async function registerReconcilerRoutes(app: FastifyInstance) {
     },
     async () => {
       const clusters = await prisma.cluster.findMany({ select: { id: true } })
+      const clusterIds: string[] = clusters.map((c: { id: string }) => c.id)
       const { items, totalMs } = await runWithConcurrency(
-        clusters.map((c) => c.id),
+        clusterIds,
         CLUSTER_CONCURRENCY,
-        (clusterId) => rebuildFromDocker(clusterId),
+        (clusterId: string) => rebuildFromDocker(clusterId),
       )
       let total = { projects: 0, nodes: 0, edges: 0, degraded: 0 }
       for (const it of items) {

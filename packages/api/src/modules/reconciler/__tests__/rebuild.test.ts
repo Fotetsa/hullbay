@@ -109,7 +109,7 @@ describe("rebuildFromDocker — nœud database parent depuis les labels (S10-02)
 
     // Nœud database parent persisté avec la config parent encodée, type database.
     const nodeCalls = vi.mocked(prisma.node.upsert).mock.calls;
-    const parentCall = nodeCalls.find((c) => c[0].where.id === "n_db");
+    const parentCall = nodeCalls.find((c: any) => c[0].where.id === "n_db");
     expect(parentCall).toBeDefined();
     expect(parentCall![0].update.type).toBe("database");
     expect(parentCall![0].update.name).toBe("Catalog");
@@ -118,7 +118,7 @@ describe("rebuildFromDocker — nœud database parent depuis les labels (S10-02)
     expect(parentCall![0].update.desiredHash).toContain("sha256:");
 
     // Aucun membre synthétique persisté (pas de nœud "catalog-1").
-    const persistedIds = nodeCalls.map((c) => c[0].where.id);
+    const persistedIds = nodeCalls.map((c: any) => c[0].where.id);
     expect(persistedIds).not.toContain("db::n_db::member::0");
 
     // Nœud applicatif persisté.
@@ -146,7 +146,7 @@ describe("rebuildFromDocker — nœud database parent depuis les labels (S10-02)
 
     const result = await rebuildFromDocker("cluster-1");
     const parentCall = vi.mocked(prisma.node.upsert).mock.calls.find(
-      (c) => c[0].where.id === "n_db",
+      (c: any) => c[0].where.id === "n_db",
     );
     // Conservateur : config illisible → on ne touche PAS à la config en base
     // (update sans config ni hash) pour ne pas détruire un état valide.
@@ -185,11 +185,11 @@ describe("rebuildFromDocker — nœud database parent depuis les labels (S10-02)
     const result = await rebuildFromDocker("cluster-1");
 
     const nodeCalls = vi.mocked(prisma.node.upsert).mock.calls;
-    const parentCalls = nodeCalls.filter((c) => c[0].where.id === "n_db");
+    const parentCalls = nodeCalls.filter((c: any) => c[0].where.id === "n_db");
     expect(parentCalls).toHaveLength(1);
     // Aucun SYNTHÉTIQUE persisté malgré 3 ressources.
-    const persistedIds = nodeCalls.map((c) => c[0].where.id);
-    expect(persistedIds.filter((id) => (id ?? "").startsWith("db::"))).toHaveLength(0);
+    const persistedIds = nodeCalls.map((c: any) => c[0].where.id);
+    expect(persistedIds.filter((id: any) => (id ?? "").startsWith("db::"))).toHaveLength(0);
     expect(result.nodes).toBe(1);
   });
 });
@@ -292,7 +292,7 @@ describe("rebuild → /plan cohérent + sécurité des labels (S10-03, S10-04)",
 
     // 3. Config parent reconstruite = config originale (roundtrip exact).
     const parentCall = vi.mocked(prisma.node.upsert).mock.calls.find(
-      (c) => c[0].where.id === "n_db",
+      (c: any) => c[0].where.id === "n_db",
     );
     expect(parentCall).toBeDefined();
     expect(parentCall![0].update.config).toEqual(dbConfig);

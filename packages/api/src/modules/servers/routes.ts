@@ -37,14 +37,14 @@ export async function registerServersRoutes(app: FastifyInstance) {
     },
     async () => {
       const servers = await serversService.list();
-      const clusterIds = [...new Set(servers.map((s) => s.clusterId))];
+      const clusterIds = Array.from(new Set(servers.map((s: any) => s.clusterId))) as string[];
       let totalNodes = 0;
       let checkedAny = false;
       const managersAgg = { total: 0, reachable: 0, quorumOk: true };
       const { items, totalMs } = await runWithConcurrency(
         clusterIds,
         CLUSTER_CONCURRENCY,
-        async (clusterId) => {
+        async (clusterId: string) => {
           const engine = await DockerEngineService.forCluster(clusterId);
           return {
             nodes: await engine.listNodes(),

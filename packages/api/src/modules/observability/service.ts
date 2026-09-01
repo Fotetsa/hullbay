@@ -178,7 +178,7 @@ export async function systemHealth(): Promise<ClusterHealth[]> {
   const { items, totalMs } = await runWithConcurrency(
     clusters,
     CLUSTER_CONCURRENCY,
-    async (c) => (await ObservabilityService.forCluster(c.id)).clusterHealth(),
+    async (c: { id: string; name: string }) => (await ObservabilityService.forCluster(c.id)).clusterHealth(),
   );
   const results: ClusterHealth[] = [];
   for (const it of items) {

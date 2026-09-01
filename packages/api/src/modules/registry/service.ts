@@ -30,7 +30,7 @@ export class RegistryService {
   /** Liste sans révéler les tokens. */
   async list() {
     const creds = await prisma.registryCredential.findMany()
-    return creds.map((c) => ({ id: c.id, registry: c.registry, username: c.username }))
+    return creds.map((c: any) => ({ id: c.id, registry: c.registry, username: c.username }))
   }
 
   async remove(id: string) {
@@ -53,7 +53,7 @@ export class RegistryService {
   /** Tous les registres configurés pour `docker login` au provisioning (tokens déchiffrés). */
   async listForLogin(): Promise<{ username: string; token: string; registry: string }[]> {
     const creds = await prisma.registryCredential.findMany()
-    return creds.map((c) => ({
+    return creds.map((c: any) => ({
       username: c.username,
       token: decryptSecret(c.tokenEnc),
       registry: c.registry,

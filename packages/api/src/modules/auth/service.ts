@@ -169,7 +169,7 @@ export class AuthService {
   /** Liste les comptes (jamais le hash ni le secret MFA) — gestion des utilisateurs. */
   async listUsers() {
     const users = await prisma.user.findMany({ orderBy: { createdAt: "asc" } })
-    return users.map((u) => ({
+    return users.map((u: any) => ({
       id: u.id,
       email: u.email,
       role: u.role,
