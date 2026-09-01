@@ -43,8 +43,19 @@ const ETCD_DATA_MOUNT_PATH = "/etcd-data"
 /** Défauts de ressources par défaut quand la config n'en précise pas. */
 const POSTGRES_DEFAULT_RESOURCES = { cpus: 0.5, memMb: 512 }
 
-/** Images — tags déterminés à valider au lab live (S4-07/08). */
-const PATRONI_IMAGE = { image: "bitnami/patroni", tag: "3.3.0" }
+/**
+ * Images — image Patroni custom hullbay (GHCR), une image par version majeure PG.
+ * Tag aligné sur la release hullbay + major PG, ex : `1.2.4-pg16`.
+ * `HULLBAY_RELEASE` est INJECTÉ par la CI au build de l'API (ARG → ENV du Dockerfile),
+ * depuis le même tag release-please qui tague l'image patroni — une seule source
+ * de vérité, aucune valeur à bumper à la main (postgres.ts:54).
+ */
+const PATRONI_IMAGE = { image: "ghcr.io/fotetsa/hullbay/patroni" }
+/**
+ * Version de release hullbay courante — injectée par la CI au build de l'API
+ * (même valeur `base` qui tague `patroni:<release>-pg<major>`), fallback dev.
+ */
+const HULLBAY_RELEASE = process.env.HULLBAY_RELEASE ?? "1.2.4"
 const ETCD_IMAGE = { image: "quay.io/coreos/etcd", tag: "v3.5.16" }
 const HAPROXY_IMAGE = { image: "haproxy", tag: "2.9-alpine" }
 
@@ -295,60 +306,11 @@ function haproxyReaderConfig(config: DatabaseConfig, ctx: ExpansionContext): str
 }
 
 /**
- * Commande du membre : wrapper qui démarre l'entrypoint Patroni en arrière-plan,
- * attend que postgres (superuser) accepte les connexions locales PUIS qu'il ne
- * soit plus en recovery (`pg_is_in_recovery()=f`) avant de créer la base
- * applicative (Patroni n'en crée que postgres/template*). Le gate recovery évite
- * la fenêtre crash-recovery/standby où `pg_isready` est déjà vrai ; les réplicas
- * (recovery permanent) no-op. L'échec du CREATE est LOGE (jamais `|| true` muet).
- * Le mot de passe n'est jamais dans la cmd : PGPASSWORD lu depuis le fichier
- * secret monté (/run/secrets/<ref>).
+ * Membre Patroni (un service Docker par membre — DNS individuel requis).
+ * Le démarrage (entrypoint), l'attente postgres et la création de la base
+ * applicative vivent dans l'image custom (packages/patroni/entrypoint.sh) — le
+ * provider n'a plus de `cmd` (défini à undefined, l'ENTRYPOINT de l'image gère).
  */
-function patroniMemberCmd(config: DatabaseConfig, ctx: ExpansionContext, restapiSecret: string): string {
-  const superuser = config.credentials.username
-  const database = config.credentials.database
-  const pwFile = `/run/secrets/${config.credentials.passwordSecretRef!}`
-  return [
-    "set -eu",
-    'ENTRY="/opt/bitnami/scripts/patroni/entrypoint.sh"',
-    'RUN="/opt/bitnami/scripts/patroni/run.sh"',
-    // Basic-auth REST Patroni : la valeur vit dans le config-secret monté
-    // (/run/secrets/<restapiSecret>), jamais dans l'env du service. On l'exporte
-    // ici, dans le conteneur, AVANT de lancer l'entrypoint — Patroni la lit comme
-    // toute autre env var (aucune variante *_FILE n'est garantie pour celle-ci).
-    `export PATRONI_RESTAPI_PASSWORD="\$(cat '/run/secrets/${restapiSecret}')"`,
-    'if [ -x "$ENTRY" ] && [ -x "$RUN" ]; then',
-    '  "$ENTRY" "$RUN" &',
-    "else",
-    '  echo "patroni: entrypoint introuvable ($ENTRY)" >&2',
-    "  exit 1",
-    "fi",
-    "PATRONI_PID=$!",
-    'trap \'kill "$PATRONI_PID" 2>/dev/null || true\' EXIT',
-    `export PGPASSWORD="\$(cat '${pwFile}')"`,
-    "for _ in $(seq 1 240); do",
-    "  kill -0 \"$PATRONI_PID\" 2>/dev/null || exit 1",
-    `  if pg_isready -h 127.0.0.1 -p 5432 -U "${superuser}" >/dev/null 2>&1; then break; fi`,
-    "  sleep 2",
-    "done",
-    // Gate primauté : un standby ou un membre en crash-recovery répond pg_isready
-    // sans être writable — CREATE DATABASE sur un standby échoue ("cannot run
-    // during recovery"). On ne tente la création QUE sur le primaire.
-    `if psql -h 127.0.0.1 -p 5432 -U "${superuser}" -d postgres -Atqc "SELECT pg_is_in_recovery()" 2>/dev/null | grep -qx "f"; then`,
-    `  if ! psql -h 127.0.0.1 -p 5432 -U "${superuser}" -d postgres -Atqc "SELECT 1 FROM pg_database WHERE datname='${database}'" | grep -q 1; then`,
-    `    if psql -h 127.0.0.1 -p 5432 -U "${superuser}" -d postgres -qc 'CREATE DATABASE "${database}" OWNER "${superuser}"'; then`,
-    `      echo "patroni: base '${database}' créée"`,
-    "    else",
-    `      echo "patroni: ÉCHEC création base '${database}'" >&2`,
-    "    fi",
-    "  fi",
-    "fi",
-    "unset PGPASSWORD",
-    'wait "$PATRONI_PID"',
-  ].join("\n")
-}
-
-/** Membre Patroni (un service Docker par membre — DNS individuel requis). */
 function patroniMember(
   config: DatabaseConfig,
   ctx: ExpansionContext,
@@ -358,10 +320,13 @@ function patroniMember(
   replicationSecret: string,
   restapiSecret: string,
 ): GeneratedResource {
-  // `version` du contrat (jamais "latest") : bitnami/patroni choisit la version
-  // de PostgreSQL via POSTGRESQL_VERSION ; sans elle, l'image épinglée Patroni
-  // embarquerait sa version par défaut et le choix visible serait ignoré.
-  const version = config.version
+  // `version` du contrat (jamais "latest" - rejeté par Zod) détermine l'image
+  // native : on extrait la version MAJEURE pour choisir le tag GHCR
+  // `<release>-pg<major>` (ex `1.2.4-pg16`) — une image par version majeure PG,
+  // l'image EST la version. La minor exacte choisie (16.3 vs 16.8) tourne sur la
+  // minor buildée au moment du build CI — trade-off assumé (PLAN_PATRONI_CUSTOM).
+  const pgMajor = config.version.replace(/^(\d+).*$/, "$1")
+  const patroniTag = `${HULLBAY_RELEASE}-pg${pgMajor}`
   return {
     kind: "container",
     nodeId: `db::${ctx.parentNodeId}::member::${index}`,
@@ -370,10 +335,10 @@ function patroniMember(
     index,
     config: {
       image: PATRONI_IMAGE.image,
-      tag: PATRONI_IMAGE.tag,
-      cmd: ["sh", "-c", patroniMemberCmd(config, ctx, restapiSecret)],
+      tag: patroniTag,
+      // Pas de cmd : l'ENTRYPOINT de l'image custom (entrypoint.sh) démarre
+      // Patroni, attend postgres et crée la base applicative.
       env: {
-        POSTGRESQL_VERSION: version,
         PATRONI_SCOPE: slugify(ctx.parentNode.name),
         PATRONI_NAMESPACE: ctx.projectSlug,
         PATRONI_NAME: name,
@@ -381,12 +346,14 @@ function patroniMember(
         PATRONI_RESTAPI_CONNECT_ADDRESS: `${host}:8008`,
         // Basic-auth REST : la VALEUR n'est JAMAIS dans l'env du service. Elle est
         // matérialisée en config-secret généré (catalog-patroni-restapi-<hash8>,
-        // via generatedSecrets, monté en fichier /run/secrets/) puis injectée par
-        // le cmd-wrapper (patroniMemberCmd) — le seul endroit où elle existe est
-        // l'intérieur du conteneur. Ne protège QUE les endpoints "unsafe"
-        // (POST /failover, …) — GET /health, /primary, /replica restent sans auth
-        // → healthcheck curl + checks HAProxy inchangés.
+        // via generatedSecrets, monté en fichier /run/secrets/). L'entrypoint de
+        // l'image lit ce fichier (via PATRONI_RESTAPI_PASSWORD_FILE) et exporte
+        // PATRONI_RESTAPI_PASSWORD dans le conteneur — le seul endroit où elle
+        // existe. Ne protège QUE les endpoints "unsafe" (POST /failover, …) —
+        // GET /health, /primary, /replica restent sans auth → healthcheck curl +
+        // checks HAProxy inchangés.
         PATRONI_RESTAPI_USERNAME: "patroni",
+        PATRONI_RESTAPI_PASSWORD_FILE: `/run/secrets/${restapiSecret}`,
         PATRONI_POSTGRESQL_LISTEN: "0.0.0.0:5432",
         PATRONI_POSTGRESQL_CONNECT_ADDRESS: `${host}:5432`,
         PATRONI_POSTGRESQL_DATA_DIR: DATA_MOUNT_PATH,
@@ -395,6 +362,9 @@ function patroniMember(
         PATRONI_REPLICATION_USERNAME: "replicator",
         PATRONI_REPLICATION_PASSWORD_FILE: `/run/secrets/${replicationSecret}`,
         PATRONI_ETCD_HOSTS: etcdClientHosts(config, ctx),
+        // Nom de la base applicative à créer par l'entrypoint (le provider seul
+        // le connaît ; impossible de l'encoder dans l'image statique).
+        PATRONI_DATABASE: config.credentials.database,
       },
       secrets: [
         { secretName: config.credentials.passwordSecretRef! },
