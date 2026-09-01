@@ -7,6 +7,7 @@ const mockEngine = {
   findServiceIdByNodeId: vi.fn(),
   getServiceMetrics: vi.fn(),
   listServiceIdsByDatabaseParent: vi.fn(),
+  listServiceTaskPlacements: vi.fn().mockResolvedValue([]),
 };
 
 vi.mock("../../../lib/prisma", () => ({
@@ -27,6 +28,7 @@ vi.mock("../../../modules/docker-engine/service", () => ({
     static forCluster = vi.fn(() => mockEngine);
     findServiceIdByNodeId = vi.fn().mockResolvedValue("svc-1");
     getServiceMetrics = vi.fn().mockResolvedValue({ runningReplicas: 1 });
+    listServiceTaskPlacements = vi.fn().mockResolvedValue([]);
     listManagedContainers = vi.fn().mockResolvedValue([]);
   },
 }));
@@ -256,6 +258,7 @@ describe("observer.service — recomptage replicas agrégé par parent (S3-11)",
       .mockResolvedValueOnce({ runningReplicas: 2 })
       .mockResolvedValueOnce({ runningReplicas: 3 })
       .mockResolvedValueOnce({ runningReplicas: 1 });
+    vi.mocked(mockEngine.listServiceTaskPlacements).mockResolvedValue([]);
 
     await handleContainerEvent(parentEvent("m1", "start"), mockEngine as any);
     await vi.advanceTimersByTimeAsync(801);
@@ -272,6 +275,7 @@ describe("observer.service — recomptage replicas agrégé par parent (S3-11)",
     vi.mocked(mockEngine.getServiceMetrics).mockResolvedValue({
       runningReplicas: 2,
     });
+    vi.mocked(mockEngine.listServiceTaskPlacements).mockResolvedValue([]);
 
     await handleContainerEvent(
       containerEvent("c1", "n1", "start"),
