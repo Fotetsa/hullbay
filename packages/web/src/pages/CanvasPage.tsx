@@ -15,15 +15,15 @@ import {
 } from "@xyflow/react"
 import { useQuery, useQueryClient, keepPreviousData } from "@tanstack/react-query"
 import { Navigate, useNavigate, useParams } from "react-router-dom"
-import { Button, Heading, Text, toast, usePrompt } from "@medusajs/ui"
-import { PlaySolid, Trash, ArrowLeft, ExclamationCircle, Spinner, XMark } from "@medusajs/icons"
+import { Button, Heading, StatusBadge, Text, toast, usePrompt } from "@medusajs/ui"
+import { ArrowDownLeft, PlaySolid, Trash, ExclamationCircle, Spinner, XMark } from "@medusajs/icons"
 import type { NodeType, ActualState, Node, Edge, DatabaseConfig, ProjectGraph } from "@hullbay/shared"
 // Sous-chemin node-config : évite de tirer labels.ts (node:crypto) dans le bundle navigateur.
 import { isConnectionAllowed, edgeKindForPair } from "@hullbay/shared/node-config"
 import { api } from "../lib/api"
 import { useMe } from "../lib/useMe"
 import { useMutationToast } from "../lib/useMutationToast"
-import { useOpsSocket } from "../lib/useOpsSocket"
+import { useOpsSocket, type NodePlacement } from "../lib/useOpsSocket"
 import { OpsNode, type OpsNodeData } from "../canvas/OpsNode"
 import { Palette } from "../canvas/Palette"
 import { DbNetInfoPanel, type DbNetInfoData, type DbNetLinkRow } from "../canvas/DbNetPanel"
@@ -33,6 +33,8 @@ import { EdgeInspector } from "../canvas/EdgeInspector"
 import { DeployPlanModal } from "../canvas/DeployPlanModal"
 import { nodeDeployState, gatewayState } from "../canvas/validate"
 import { useTranslation } from "react-i18next"
+import { ClusterNodesBar } from "../canvas/ClusterNodesBar"
+import { colorForSwarmNode } from "../lib/clusterNodeColors"
 
 /** Mappe la nature d'un lien persisté (edge.kind) sur l'id du handle correspondant. */
 const KIND_TO_HANDLE: Record<string, string> = {
@@ -131,8 +133,6 @@ const DEFAULT_CONFIG: Record<NodeType, Record<string, unknown>> = {
     mode: "single",
     topology: { replicas: 1 },
     storage: { sizeGb: 20 },
-    // Pas de secret par défaut : un nœud neuf est un état de travail valide,
-    // le déploiement exige le choix d'un secret (provider.validate).
     credentials: { username: "app", database: "app" },
     retainDataOnDelete: true,
   },
@@ -145,12 +145,8 @@ function CanvasInner({ projectId }: { projectId: string }) {
   const prompt = usePrompt()
   const { can } = useMe()
   const canDeploy = can("operator")
-  // `placeholderData: keepPreviousData` : pendant un refetch (invalidateQueries
-  // après deploy/destroy/edit), garde l'ancien graphe affiché au lieu de repasser
-  // par `undefined` — sans ça, `rfEdges` (dérivé direct de `graph?.edges ?? []`,
-  // pas un state comme `rfNodes`) retombait à `[]` pendant la fenêtre de refetch,
-  // et tout le canvas (nœuds + liens) pouvait clignoter/disparaître visuellement
-  // entre deux cycles destroy/deploy — c'était la cause de l'instabilité observée.
+  const [backOpen, setBackOpen] = useState(false)
+  
   const {
     data: graph,
     isLoading: graphLoading,
@@ -160,16 +156,40 @@ function CanvasInner({ projectId }: { projectId: string }) {
     queryFn: () => api.getProject(projectId),
     placeholderData: keepPreviousData,
   })
-  // Sur quel(s) serveur(s) ce projet tourne réellement (placement Swarm).
-  const { data: placement } = useQuery({
+
+    const { data: placement } = useQuery({
     queryKey: ["project-placement", projectId],
     queryFn: () => api.projectPlacement(projectId),
     refetchInterval: 15_000,
   })
+  // Santé du cluster (nœuds Swarm + services) — SOURCE UNIQUE pour : le nom du
+  // cluster affiché dans le header, la barre de nœuds (ClusterNodesBar) et la
+  // couleur par nœud des piles de replicas (OpsNode). Une seule requête, trois
+  // usages, pour que la même couleur soit garantie partout pour un même nœud.
+  const { data: health } = useQuery({
+    queryKey: ["health-cluster"],
+    queryFn: api.clusterHealth,
+    refetchInterval: 15_000,
+  })
+  const cluster = useMemo(
+    () => health?.clusters.find((c) => c.clusterId === graph?.clusterId),
+    [health, graph?.clusterId]
+  )
+  const orderedSwarmNodeIds = useMemo(() => cluster?.nodes.map((n) => n.swarmNodeId) ?? [], [cluster])
+
+  // Récupération du nom lisible du cluster pour le header
+  const { data: clusters } = useQuery({
+    queryKey: ["clusters"],
+    queryFn: api.listClusters,
+  })
+  const clusterName = clusters?.find((c) => c.id === graph?.clusterId)?.name
 
   const [rfNodes, setRfNodes] = useState<RFNode[]>([])
   const [liveState, setLiveState] = useState<Record<string, ActualState>>({})
   const [liveReplicas, setLiveReplicas] = useState<Record<string, number>>({})
+  // Détail par nœud Swarm de chaque replica RUNNING (event "node.placements") —
+  // alimente la couleur des couches de la pile 3D dans OpsNode.tsx.
+  const [livePlacements, setLivePlacements] = useState<Record<string, NodePlacement[]>>({})
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null)
   // Liaison "réseau DB" sélectionnée (custom edge, panneau dédié lecture seule).
@@ -178,18 +198,11 @@ function CanvasInner({ projectId }: { projectId: string }) {
   // le panneau. Le network d'une base n'est pas éditable en soi.
   const [selectedDbNetNodeId, setSelectedDbNetNodeId] = useState<string | null>(null)
   const [planOpen, setPlanOpen] = useState(false)
-  // Journal de la dernière opération (deploy/destroy) — affiché dans un panneau
-  // déroulant `aria-live` au lieu d'un toast tronqué.
   const [activityLog, setActivityLog] = useState<string[] | null>(null)
   const [activityOpen, setActivityOpen] = useState(false)
   const wrapperRef = useRef<HTMLDivElement>(null)
   const { screenToFlowPosition, getNode } = useReactFlow()
 
-  // Volumes "emboîtés" : un volume relié à EXACTEMENT un conteneur (cas du drop
-  // direct sur le nœud) est affiché en badge sur ce conteneur plutôt qu'en nœud
-  // libre + ligne visible — purement visuel, le modèle Node/Edge(kind="volume")
-  // ne change pas (un volume relié à plusieurs conteneurs, ou créé par drop libre
-  // sur le canvas, reste affiché comme nœud séparé classique).
   const { volumeEdgesByContainer, embeddedVolumeNodeIds } = useMemo(() => {
     const byContainer = new Map<string, { id: string; name: string; mountPath?: string }[]>()
     const embedded = new Set<string>()
@@ -224,9 +237,6 @@ function CanvasInner({ projectId }: { projectId: string }) {
     return { volumeEdgesByContainer: byContainer, embeddedVolumeNodeIds: embedded }
   }, [graph])
 
-  // Passerelle -> conteneur cible : map gatewayNodeId -> containerNodeId, à partir
-  // de l'edge kind="gateway". Sert à dériver l'état "en ligne / cible hors-ligne"
-  // de la route depuis la santé live du conteneur upstream (cf. validate.gatewayState).
   const gatewayTargetByGateway = useMemo(() => {
     const map = new Map<string, string>()
     if (!graph) return map
@@ -240,8 +250,6 @@ function CanvasInner({ projectId }: { projectId: string }) {
     return map
   }, [graph])
 
-  // Conteneurs reliés à au moins un réseau (edge kind="network") : sert à l'indicateur
-  // d'accès du nœud (un conteneur sans réseau ni port publié est isolé).
   const networkedContainers = useMemo(() => {
     const set = new Set<string>()
     if (!graph) return set
@@ -344,8 +352,6 @@ function CanvasInner({ projectId }: { projectId: string }) {
     }
   }, [graph, selectedDbNetNodeId])
 
-  // Drop d'un volume DIRECTEMENT sur un conteneur (pas sur le canvas vide) :
-  // crée le couple Node(volume)+Edge(kind="volume") en une seule action utilisateur.
   const onContainerVolumeDrop = useCallback(
     async (containerNodeId: string) => {
       try {
@@ -369,18 +375,10 @@ function CanvasInner({ projectId }: { projectId: string }) {
     [projectId, qc]
   )
 
-  // Reconstruction COMPLÈTE seulement quand le graphe lui-même change (nœud
-  // ajouté/déplacé/supprimé) — PAS à chaque event "node.state". Recréer tout le
-  // tableau `rfNodes` à chaque event temps réel (un par conteneur en rafale
-  // pendant un deploy/destroy) faisait perdre à React Flow le lien entre les
-  // edges et leurs Handle internes (ré-enregistrement async des Handle sur
-  // changement de référence de `nodes`), d'où les liens qui disparaissaient
-  // visuellement pile au moment où l'état passait au vert.
   useEffect(() => {
     if (!graph) return
     setRfNodes((prev) => {
       const prevById = new Map(prev.map((n) => [n.id, n]))
-      // État actuel (live si connu) de chaque nœud, pour résoudre la cible des passerelles.
       const stateById = new Map<string, ActualState | null | undefined>(
         graph.nodes.map((n) => {
           const ex = prevById.get(n.id)
@@ -394,8 +392,6 @@ function CanvasInner({ projectId }: { projectId: string }) {
           const isGw = n.type === "gateway"
           const gwCfg = isGw ? (n.config as { domain?: string; targetPort?: number } | null) : null
           const targetId = isGw ? gatewayTargetByGateway.get(n.id) : undefined
-          // Base de données : résumé compact (moteur · mode · membres) affiché sur
-          // le nœud ; le détail généré vit dans l'inspecteur (DatabasePreviewPanel).
           const dbCfg = n.type === "database" ? (n.config as DatabaseConfig | null) : null
           const dbSummary = dbCfg
             ? {
@@ -409,10 +405,6 @@ function CanvasInner({ projectId }: { projectId: string }) {
                 consensus: dbCfg.topology?.consensusReplicas,
               }
             : undefined
-          // Conteneur : on garde l'état caché/live (l'observer le pousse en continu,
-          // éviter le flicker pendant un rolling update). Réseau/volume/passerelle
-          // n'émettent AUCUN event live -> on fait confiance à l'actualState fraîchement
-          // refetch du graphe (sinon leur voyant resterait gris : bug observé).
           const liveDriven = n.type === "container"
           const resolvedState = liveDriven
             ? existing
@@ -432,9 +424,18 @@ function CanvasInner({ projectId }: { projectId: string }) {
                 ? { isDbLinkedNetwork: isLinkedDbNetwork(n, graph) }
                 : {}),
               desiredReplicas: (n.config as { replicas?: number } | null)?.replicas ?? 1,
-              runningReplicas: existing
+                            runningReplicas: existing
                 ? (existing.data as OpsNodeData).runningReplicas
                 : liveReplicas[n.id],
+              // Détail par nœud Swarm (pile 3D colorée) : même logique "garder le
+              // live existant, sinon repartir de ce qu'on a déjà reçu" que
+              // runningReplicas ci-dessus. clusterNodeOrder vient de la requête
+              // clusterHealth levée plus haut dans CanvasInner (même valeur pour
+              // tous les nœuds, cf. ClusterNodesBar pour la même source).
+              placements: existing
+                ? (existing.data as OpsNodeData).placements
+                : livePlacements[n.id],
+              clusterNodeOrder: orderedSwarmNodeIds,
               attachedVolumes: n.type === "container" ? volumeEdgesByContainer.get(n.id) : undefined,
               ...(n.type === "container"
                 ? {
@@ -468,19 +469,13 @@ function CanvasInner({ projectId }: { projectId: string }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [graph, embeddedVolumeNodeIds, volumeEdgesByContainer, onContainerVolumeDrop, gatewayTargetByGateway, networkedContainers])
 
-  // Mise à jour INCRÉMENTALE : un event "node.state"/"node.replicas" ne touche
-  // QUE le nœud concerné, en mutant son `data` en place plutôt qu'en recréant
-  // tout le tableau (cf. commentaire ci-dessus — même piège React Flow/Handle).
   useEffect(() => {
     setRfNodes((prev) => {
-      // 1) Met à jour l'état propre de chaque nœud conteneur dont l'event est arrivé.
       const next = prev.map((n) => {
         const state = liveState[n.id]
         if (state === undefined || (n.data as OpsNodeData).actualState === state) return n
         return { ...n, data: { ...(n.data as OpsNodeData), actualState: state } }
       })
-      // 2) Recalcule l'état des passerelles : il dépend de la santé du conteneur
-      // CIBLE, pas de la passerelle elle-même (qui n'émet aucun event live).
       const stateById = new Map(next.map((n) => [n.id, (n.data as OpsNodeData).actualState]))
       return next.map((n) => {
         const d = n.data as OpsNodeData
@@ -496,7 +491,7 @@ function CanvasInner({ projectId }: { projectId: string }) {
     })
   }, [liveState, gatewayTargetByGateway])
 
-  useEffect(() => {
+    useEffect(() => {
     setRfNodes((prev) =>
       prev.map((n) => {
         const replicas = liveReplicas[n.id]
@@ -508,6 +503,29 @@ function CanvasInner({ projectId }: { projectId: string }) {
     )
   }, [liveReplicas])
 
+  // Idem pour le détail par nœud Swarm (pile 3D colorée) + l'ordre des nœuds du
+  // cluster (recalculé quand `health` change, ex: nœud ajouté/retiré du Swarm) —
+  // deux sources différentes mais le même nœud React Flow à mettre à jour.
+  useEffect(() => {
+    setRfNodes((prev) =>
+      prev.map((n) => {
+        const placements = livePlacements[n.id]
+        const d = n.data as OpsNodeData
+        const placementsChanged = placements !== undefined && placements !== d.placements
+        const orderChanged = orderedSwarmNodeIds !== d.clusterNodeOrder
+        if (!placementsChanged && !orderChanged) return n
+        return {
+          ...n,
+          data: {
+            ...d,
+            placements: placements ?? d.placements,
+            clusterNodeOrder: orderedSwarmNodeIds,
+          },
+        }
+      })
+    )
+  }, [livePlacements, orderedSwarmNodeIds])
+
   const rfEdges: RFEdge[] = useMemo(
     () => {
       // Oriente correctement les edges "network" impliquant une base : la base
@@ -518,11 +536,8 @@ function CanvasInner({ projectId }: { projectId: string }) {
       return (graph?.edges ?? [])
         .filter(
           (e) =>
-            // Les volumes emboîtés ne dessinent pas leur ligne (cf. plus haut).
             !embeddedVolumeNodeIds.has(e.sourceNodeId) &&
             !embeddedVolumeNodeIds.has(e.targetNodeId) &&
-            // Le lien database est rendu via la custom edge "dbnet" (pilule
-            // réseau overlay) : l'edge persisté reste le modèle, pas le visuel.
             e.kind !== "database"
         )
         .map((e) => {
@@ -584,8 +599,10 @@ function CanvasInner({ projectId }: { projectId: string }) {
   const onNodeReplicas = useCallback((p: { nodeId: string; runningReplicas: number }) => {
     setLiveReplicas((prev) => ({ ...prev, [p.nodeId]: p.runningReplicas }))
   }, [])
-  const { connected } = useOpsSocket(projectId, onNodeState, onNodeReplicas)
-
+  const onNodePlacements = useCallback((p: { nodeId: string; placements: NodePlacement[] }) => {
+    setLivePlacements((prev) => ({ ...prev, [p.nodeId]: p.placements }))
+  }, [])
+  const { connected } = useOpsSocket(projectId, onNodeState, onNodeReplicas, onNodePlacements)
   const onNodesChange = useCallback((changes: NodeChange[]) => {
     setRfNodes((nds) => applyNodeChanges(changes, nds))
     for (const c of changes) {
@@ -643,8 +660,6 @@ function CanvasInner({ projectId }: { projectId: string }) {
       try {
         await api.createEdge(projectId, { sourceNodeId: sourceId, targetNodeId: targetId, kind })
         qc.invalidateQueries({ queryKey: ["project", projectId] })
-        // Confirmation explicite pour la liaison base de données : l'utilisateur
-        // ne voit pas le réseau généré avant déploiement — le toast lui annonce.
         if (kind === "database") {
           const dbId = sourceId === targetId ? sourceId : graph?.nodes.find((n) => n.id === targetId)?.type === "database" ? targetId : sourceId
           const dbName = graph?.nodes.find((n) => n.id === dbId)?.name
@@ -659,8 +674,6 @@ function CanvasInner({ projectId }: { projectId: string }) {
     [projectId, qc, getNode, graph]
   )
 
-  // GNS3-like : bloque au moment du drag les paires de nœuds qui n'ont pas de sens
-  // (ex: volume <-> gateway), via la même matrice que le back (zéro dérive).
   const isValidConnection = useCallback<IsValidConnection>(
     (conn) => {
       const c = conn as Connection
@@ -695,8 +708,6 @@ function CanvasInner({ projectId }: { projectId: string }) {
     []
   )
 
-  // Création d'un nœud à une position canvas donnée. Factorisé pour servir au
-  // drop (position curseur) ET au fallback clavier/clic de la palette (centre).
   const createNodeAt = useCallback(
     async (type: NodeType, pos: { x: number; y: number }) => {
       try {
@@ -733,7 +744,6 @@ function CanvasInner({ projectId }: { projectId: string }) {
     [projectId, qc]
   )
 
-  // Drop d'un élément de la palette -> création du nœud à la position du curseur.
   const onDrop = useCallback(
     async (e: React.DragEvent) => {
       e.preventDefault()
@@ -745,8 +755,6 @@ function CanvasInner({ projectId }: { projectId: string }) {
     [screenToFlowPosition, createNodeAt]
   )
 
-  // Fallback NON-drag (clic/clavier) : ajoute le nœud au centre du canvas visible.
-  // Indispensable pour l'accessibilité (drag HTML5 inutilisable au clavier).
   const onAddNode = useCallback(
     (type: NodeType) => {
       const rect = wrapperRef.current?.getBoundingClientRect()
@@ -783,8 +791,6 @@ function CanvasInner({ projectId }: { projectId: string }) {
     },
   })
 
-  // Garde-fou destroy : récapitule ce qui sera détruit avant d'appliquer (action
-  // irréversible sur des ressources réelles). Pas de "destroy au clic" sec.
   const onDestroy = useCallback(async () => {
     const services = graph?.nodes.filter((n) => n.type === "container" && n.dockerId).length ?? 0
     const ok = await prompt({
@@ -800,12 +806,10 @@ function CanvasInner({ projectId }: { projectId: string }) {
     if (ok) destroyMut.mutate()
   }, [graph, prompt, destroyMut])
 
-  // Suppression clavier (Del/Backspace) du nœud ou du lien sélectionné.
   const onKeyDown = useCallback(
     async (e: React.KeyboardEvent) => {
       if (e.key !== "Delete" && e.key !== "Backspace") return
       const target = e.target as HTMLElement
-      // Ne pas intercepter la frappe dans un champ de saisie (inspecteur ouvert).
       if (["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName) || target.isContentEditable) return
       if (selectedEdgeId) {
         const ok = await prompt({
@@ -877,35 +881,55 @@ function CanvasInner({ projectId }: { projectId: string }) {
 
   return (
     <div className="flex h-full flex-col">
-      {/* Header allégé : retour + titre + actions de déploiement. */}
-      <div className="flex items-center justify-between border-b border-ui-border-base bg-ui-bg-base px-4 py-3">
-        <div className="flex items-center gap-3">
-          <Button variant="transparent" onClick={() => navigate("/")} aria-label="Retour aux projets">
-            <ArrowLeft />
-          </Button>
-          <div>
-            <Heading level="h2">{graph?.name ?? "…"}</Heading>
-            <Text size="small" className="text-ui-fg-subtle">
-              {graph?.slug} · {graph?.status}
-              {placement && placement.servers.length > 0 && (
-                <> · Tourne sur : {placement.servers.join(", ")}</>
-              )}
-            </Text>
-          </div>
-          {/* Indicateur temps réel : l'opérateur sait si le canvas reflète le réel. */}
-          <span
-            className="ml-1 inline-flex items-center gap-1.5 rounded-full border border-ui-border-base px-2 py-0.5"
-            title={connected ? "Mises à jour en temps réel actives" : "Reconnexion au flux temps réel…"}
-          >
-            <span
-              className={`h-1.5 w-1.5 rounded-full ${connected ? "bg-ui-tag-green-icon" : "bg-ui-tag-orange-icon"}`}
-            />
-            <Text size="xsmall" className="text-ui-fg-subtle">
-              {connected ? "Live" : "Reconnexion…"}
-            </Text>
-          </span>
-        </div>
+      {/* Header en 3 zones (grid) : Live à gauche, nom du projet + cluster
+          CENTRÉS au milieu, actions de déploiement à droite — plus de fil
+          d'Ariane ni de badge de statut projet, juste le strict nécessaire
+          pour "respirer". */}
+      <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-4 border-b border-ui-border-base bg-ui-bg-base px-6 py-5">
         <div className="flex items-center gap-2">
+          <Button variant="transparent" size="small" onClick={() => setBackOpen(true)} title={t('projects.pageTitle')}>
+            <ArrowDownLeft />
+          </Button>
+          <StatusBadge color={connected ? "green" : "orange"}>
+            {connected ? "Live" : "Reconnexion…"}
+          </StatusBadge>
+        </div>
+
+        {backOpen && (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center">
+            <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setBackOpen(false)} />
+            <div className="relative z-10 w-full max-w-md rounded-lg bg-ui-bg-base p-6 shadow-elevation-flyout ring-1 ring-ui-border-base">
+              <div className="flex items-start justify-between">
+                <Heading level="h3">Retour aux projets</Heading>
+                <button
+                  type="button"
+                  aria-label="Fermer"
+                  className="text-ui-fg-subtle hover:text-ui-fg-base"
+                  onClick={() => setBackOpen(false)}
+                >
+                  <XMark />
+                </button>
+              </div>
+              <Text className="mt-3 text-ui-fg-subtle">Retourner à la liste des projets ? Les modifications non sauvegardées seront perdues.</Text>
+              <div className="mt-6 flex justify-end gap-2">
+                <Button variant="secondary" onClick={() => setBackOpen(false)}>{t('projects.actions.cancel')}</Button>
+                <Button onClick={() => { setBackOpen(false); navigate('/'); }}>{t('projects.pageTitle')}</Button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        <div className="flex flex-col items-center text-center">
+          <Heading level="h2">{graph?.name ?? "…"}</Heading>
+          <Text size="small" className="text-ui-fg-subtle">
+            Cluster : {cluster?.clusterName ?? "…"}
+            {placement && placement.servers.length > 0 && (
+              <> · {placement.servers.join(", ")}</>
+            )}
+          </Text>
+        </div>
+
+        <div className="flex items-center justify-end gap-2">
           {activityLog && (
             <Button variant="transparent" size="small" onClick={() => setActivityOpen((v) => !v)}>
               Activité
@@ -915,8 +939,6 @@ function CanvasInner({ projectId }: { projectId: string }) {
             <>
               <Button
                 onClick={() => {
-                  // Ferme l'inspecteur de nœud/lien ouvert : on déploie l'état
-                  // enregistré, pas une édition en cours — éviter toute ambiguïté.
                   setSelectedId(null)
                   setSelectedEdgeId(null)
                   setPlanOpen(true)
@@ -939,8 +961,7 @@ function CanvasInner({ projectId }: { projectId: string }) {
         </div>
       </div>
 
-      {/* Canvas plein écran ; palette (gauche) et inspecteur (droit) flottent
-          par-dessus en overlay sans rétrécir le canvas. */}
+      {/* Canvas plein écran */}
       <div className="flex flex-1 overflow-hidden">
         <div
           className="relative flex-1 outline-none"
@@ -1012,10 +1033,11 @@ function CanvasInner({ projectId }: { projectId: string }) {
             <Controls />
           </ReactFlow>
 
-          {/* Palette flottante (overlay gauche). */}
+          {/* Palette flottante (overlay gauche) + barre des nœuds Swarm (bas-gauche,
+              à côté des Controls React Flow). */}
           <Palette onAdd={onAddNode} />
+          <ClusterNodesBar cluster={cluster} />
 
-          {/* État vide guidé : un projet neuf affiche une consigne au centre. */}
           {graph && graph.nodes.length === 0 && (
             <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
               <div className="rounded-xl border border-dashed border-ui-border-strong bg-ui-bg-base/80 px-6 py-4 text-center backdrop-blur">
@@ -1027,9 +1049,6 @@ function CanvasInner({ projectId }: { projectId: string }) {
             </div>
           )}
 
-          {/* Activité de déploiement : carte flottante en BAS À DROITE (à l'opposé
-              de la palette en haut à gauche), façon toast persistant. Déroulée à la
-              demande via le bouton « Activité » du header ; fermable. */}
           {activityOpen && activityLog && (
             <div
               className="absolute bottom-4 right-4 z-10 w-[min(420px,calc(100%-2rem))] overflow-hidden rounded-xl border border-ui-border-base bg-ui-bg-base shadow-elevation-flyout"
@@ -1078,7 +1097,6 @@ function CanvasInner({ projectId }: { projectId: string }) {
               onClose={() => setSelectedDbNetNodeId(null)}
               onDeleteLink={async (edgeId) => {
                 await api.deleteEdge(edgeId).catch(() => {})
-                // Dernière liaison de la base : plus de réseau, on referme.
                 const remaining = selectedDbNet.links.filter((l) => l.edgeId !== edgeId)
                 if (remaining.length === 0) setSelectedDbNetNodeId(null)
                 qc.invalidateQueries({ queryKey: ["project", projectId] })
@@ -1114,7 +1132,6 @@ function CanvasInner({ projectId }: { projectId: string }) {
   )
 }
 
-/** Wrapper pour fournir le contexte React Flow (requis par screenToFlowPosition). */
 export function CanvasPage() {
   const { projectId } = useParams<{ projectId: string }>()
   if (!projectId) return <Navigate to="/" replace />

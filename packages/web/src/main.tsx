@@ -2,7 +2,7 @@ import React from "react"
 import ReactDOM from "react-dom/client"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { BrowserRouter } from "react-router-dom"
-import { Toaster } from "@medusajs/ui"
+import { Toaster, TooltipProvider } from "@medusajs/ui"
 import "@xyflow/react/dist/style.css"
 import "./index.css"
 import { App } from "./App"
@@ -27,9 +27,11 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <ErrorBoundary>
       <QueryClientProvider client={queryClient}>
-        <BrowserRouter>
-          <App />
-        </BrowserRouter>
+        <TooltipProvider>
+          <BrowserRouter>
+            <App />
+          </BrowserRouter>
+        </TooltipProvider>
         <Toaster />
       </QueryClientProvider>
     </ErrorBoundary>
