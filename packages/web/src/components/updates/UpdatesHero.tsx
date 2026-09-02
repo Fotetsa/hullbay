@@ -286,6 +286,7 @@ export function UpdatesHero({
   connected,
   onUpdate,
   onCloseLive,
+  updatesDisabled = false,
 }: {
   data: UpdatesCheck | undefined
   isError: boolean
@@ -294,11 +295,16 @@ export function UpdatesHero({
   connected: boolean
   onUpdate: () => void
   onCloseLive: () => void
+  updatesDisabled?: boolean
 }) {
   const liveView = !!live
   const updateTerminal =
     liveView && ["success", "failed", "rolled_back"].includes(live!.status)
-  const currentVersion = data?.currentVersion ?? "…"
+  const currentVersion = !data?.currentVersion
+    ? "…"
+    : data.currentVersion === "unknown"
+      ? "développement"
+      : data.currentVersion;
   const activeChannel = data?.updateChannel ?? "stable"
   const lastCheckLabel = data
     ? `Dernière vérification : ${new Date(data.lastCheckAt).toLocaleString()}`
@@ -381,7 +387,7 @@ export function UpdatesHero({
 
               <div className="flex flex-wrap items-center gap-3">
                 {data?.updateAvailable && (
-                  <Button variant="primary" disabled={running} onClick={onUpdate}>
+                  <Button variant="primary" disabled={running || updatesDisabled} onClick={onUpdate}>
                     <CloudArrowDown />
                     Mettre à jour
                   </Button>

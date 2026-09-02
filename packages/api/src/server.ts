@@ -31,6 +31,7 @@ import fastify, { type FastifyInstance } from "fastify";
 import { stopTunnelCleanup, closeAllTunnels } from "./lib/ssh-tunnel";
 import { registerClustersRoutes } from "./modules/clusters/routes";
 import { registerClusterSubscribers } from "./subscribers/clusters";
+import { registerSystemRoutes } from "./modules/system/routes";
 
 
 
@@ -149,6 +150,7 @@ app.setErrorHandler((error: FastifyError, request, reply) => {
   // Routes métier.
   if (!skipRoutes) {
     await registerAuthRoutes(app);
+    await registerSystemRoutes(app);
     await registerProjectRoutes(app);
     await registerReconcilerRoutes(app);
     await registerRegistryRoutes(app);

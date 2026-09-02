@@ -337,6 +337,10 @@ const CONNECTION_RULES: { a: NodeType; b: NodeType; kind: EdgeKindLiteral }[] = 
   { a: "container", b: "gateway", kind: "gateway" },
   // Dépendance applicative app→base : l'expansion injectera env + edge réseau.
   { a: "container", b: "database", kind: "database" },
+  // Une base arrive TOUJOURS avec son réseau (créé au drop) : la paire est donc
+  // légitime. Inerte au déploiement (networkNamesFor ne concerne que les
+  // conteneurs ; l'expansion db génère son propre overlay interne).
+  { a: "database", b: "network", kind: "network" },
 ]
 
 const RULE_BY_PAIR = new Map<string, EdgeKindLiteral>(

@@ -22,8 +22,18 @@ export type OpsNodeData = {
   onNetwork?: boolean
   onVolumeClick?: (volumeId: string) => void
   dbSummary?: { engine: string; mode: string; replicas: number; consensus?: number }
+<<<<<<< HEAD
   placements?: NodePlacement[]
   clusterNodeOrder?: string[]
+=======
+  /**
+   * NETWORK — vrai si ce nœud est le RÉSEAU d'une base (créé au drop de la base,
+   * edge kind="network" vers un nœud database). Un tel réseau n'est pas un réseau
+   * normal : son point de liaison devient le handle VERT "db-link" (la connexion
+   * y aboutit à une relation database, pas à une liaison réseau classique).
+   */
+  isDbLinkedNetwork?: boolean
+>>>>>>> upstream/master
 }
 
 const GATEWAY_STATE: Record <
@@ -228,6 +238,7 @@ export function OpsNode({ data, selected }: NodeProps) {
           />
         </>
       ) : d.nodeType === "network" ? (
+<<<<<<< HEAD
         <Handle
           type="target"
           id="net-link"
@@ -235,6 +246,37 @@ export function OpsNode({ data, selected }: NodeProps) {
           className={`${HANDLE_SIZE} ${HANDLE_COLOR["net-link"]}`}
           title="Réseau"
         />
+=======
+        d.isDbLinkedNetwork ? (
+          <>
+            {/* Réseau d'une base : point de connexion VERT — connecter ici
+                crée la relation database avec la base liée (edge database
+                conteneur↔base), pas un edge réseau conteneur↔network. */}
+            <Handle
+              type="target"
+              id="db-link"
+              position={Position.Left}
+              className={`${HANDLE_SIZE} ${HANDLE_COLOR["db-link"]}`}
+              title="Base de données (dépendance applicative)"
+            />
+            <Handle
+              type="source"
+              id="db-link"
+              position={Position.Right}
+              className={`${HANDLE_SIZE} ${HANDLE_COLOR["db-link"]}`}
+              title="Base de données (dépendance applicative)"
+            />
+          </>
+        ) : (
+          <Handle
+            type="target"
+            id="net-link"
+            position={Position.Left}
+            className={`${HANDLE_SIZE} ${HANDLE_COLOR["net-link"]}`}
+            title="Réseau"
+          />
+        )
+>>>>>>> upstream/master
       ) : d.nodeType === "volume" ? (
         <Handle
           type="target"
@@ -322,7 +364,14 @@ export function OpsNode({ data, selected }: NodeProps) {
           </span>
         )}
       </div>
+<<<<<<< HEAD
       {( (!isGateway && (d.deployState === "pending" || d.deployState === "drift")) || (isGateway && d.gatewayState === "pending") ) && (
+=======
+
+      {/* Écart désiré-vs-réel : badge explicite "à déployer" (pas seulement une
+          couleur). Inutile pour la passerelle : sa pastille porte déjà son état. */}
+      {!isGateway && !d.isDbLinkedNetwork && (d.deployState === "pending" || d.deployState === "drift") && (
+>>>>>>> upstream/master
         <div className="mt-1.5">
           <span
             className="inline-flex items-center gap-1 rounded-full bg-ui-tag-orange-bg px-1.5 py-0.5 text-[10px] font-medium text-ui-tag-orange-text"

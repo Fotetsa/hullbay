@@ -154,6 +154,15 @@ describe("EdgeKind et matrice de connexion", () => {
     expect(isConnectionAllowed("database", "volume")).toBe(false)
   })
 
+  it("paire database↔network autorisée (le réseau naît avec la base)", () => {
+    // Une base est créée au drop AVEC son réseau (edge auto kind="network") :
+    // la paire doit être légitime pour que le back accepte l'edge. Le réseau
+    // reste inerte au déploiement (les bases passent par l'expansion interne).
+    expect(edgeKindForPair("database", "network")).toBe("network")
+    expect(edgeKindForPair("network", "database")).toBe("network")
+    expect(isConnectionAllowed("database", "network")).toBe(true)
+  })
+
   it("les paires existantes sont préservées", () => {
     expect(edgeKindForPair("container", "network")).toBe("network")
     expect(edgeKindForPair("container", "volume")).toBe("volume")

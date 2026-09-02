@@ -70,19 +70,38 @@ export function App() {
 }
 
 function DomainGate({ children, onUnauthenticated }: { children: ReactNode; onUnauthenticated: () => void }) {
-  const location = useLocation()
-  const { data, isLoading, isError: domainError, error: domainErrorObj } = useQuery<{ domain: string }>({
+  const location = useLocation();
+
+  const { data: envData, isLoading: envLoading } = useQuery({
+    queryKey: ["environment"],
+    queryFn: () => api.getEnvironment(),
+    staleTime: Infinity,
+  });
+  const isProduction = envData?.environment === "production";
+
+  const {
+    data,
+    isLoading,
+    isError: domainError,
+    error: domainErrorObj,
+  } = useQuery<{ domain: string }>({
     queryKey: ["domain"],
     queryFn: () => api.getDomain(),
     staleTime: 0,
-  })
+    enabled: isProduction,
+  });
 
-  const { me, isLoading: meLoading, isError: meError, error: meErrorObj } = useMe()
+  const {
+    me,
+    isLoading: meLoading,
+    isError: meError,
+    error: meErrorObj,
+  } = useMe();
 
   const isAuthError = (err: unknown) => {
-    if (!err || typeof err !== "object") return false
-    const status = (err as { status?: number }).status
-    const code = (err as { code?: string }).code
+    if (!err || typeof err !== "object") return false;
+    const status = (err as { status?: number }).status;
+    const code = (err as { code?: string }).code;
     return (
       status === 401 ||
       status === 403 ||
@@ -90,72 +109,87 @@ function DomainGate({ children, onUnauthenticated }: { children: ReactNode; onUn
       code === "forbidden" ||
       code === "unauthenticated" ||
       code === "invalid_token"
-    )
-  }
+    );
+  };
 
-  if (isLoading || meLoading) {
+  if (envLoading || meLoading || (isProduction && isLoading)) {
     return (
       <div className="flex h-full items-center justify-center bg-ui-bg-subtle">
         <Spinner className="animate-spin text-ui-fg-muted" />
       </div>
-    )
+    );
   }
 
   if (meError) {
     if (isAuthError(meErrorObj)) {
-      auth.clear()
-      onUnauthenticated()
-      return <Navigate to="/login" replace />
+      auth.clear();
+      onUnauthenticated();
+      return <Navigate to="/login" replace />;
     }
     return (
       <div className="flex h-full items-center justify-center bg-ui-bg-subtle">
         <div className="text-center">
-          <p className="mb-2 text-ui-fg-base">Impossible de charger tes informations de compte.</p>
+          <p className="mb-2 text-ui-fg-base">
+            Impossible de charger tes informations de compte.
+          </p>
           <p className="text-ui-fg-subtle">Vérifie ta connexion et réessaie.</p>
         </div>
       </div>
-    )
+    );
   }
 
-  if (domainError) {
-    const domainErr = domainErrorObj as { status?: number; code?: string } | null
-    const mfaPending = domainErr?.code === "mfa_not_enabled"
-    // 403 mfa_not_enabled ≠ session morte : l'utilisateur doit simplement passer
-    // par la MFA. On ne déconnecte PAS, on laisse la MFA-gate ci-dessous rediriger.
+  /**
+   * Hors production, aucune vérification de domaine n'est pertinente, le domaine
+   * public/HTTPS n'a de sens qu'en déploiement réel. On ignore donc qui n'a aucune
+   * incidence dans ces environnements.
+   */
+  if (isProduction && domainError) {
+    const domainErr = domainErrorObj as {
+      status?: number;
+      code?: string;
+    } | null;
+    const mfaPending = domainErr?.code === "mfa_not_enabled";
     if (!mfaPending && isAuthError(domainErr)) {
-      auth.clear()
-      onUnauthenticated()
-      return <Navigate to="/login" replace />
+      auth.clear();
+      onUnauthenticated();
+      return <Navigate to="/login" replace />;
     }
     if (!mfaPending) {
       return (
         <div className="flex h-full items-center justify-center bg-ui-bg-subtle">
           <div className="text-center">
-            <p className="mb-2 text-ui-fg-base">Impossible de charger la configuration du domaine.</p>
-            <p className="text-ui-fg-subtle">Vérifie la connexion au backend et réessaie.</p>
+            <p className="mb-2 text-ui-fg-base">
+              Impossible de charger la configuration du domaine.
+            </p>
+            <p className="text-ui-fg-subtle">
+              Vérifie la connexion au backend et réessaie.
+            </p>
           </div>
         </div>
-      )
+      );
     }
   }
 
-  const hasDomain = Boolean(data?.domain)
+  const hasDomain = Boolean(data?.domain);
 
   if (me && !me.mfaEnabled && location.pathname !== "/activate-mfa") {
-    return <Navigate to="/activate-mfa" replace />
+    return <Navigate to="/activate-mfa" replace />;
   }
 
-  if (me?.mfaEnabled) {
+  /**
+   * Le domaine n'est exigé qu'en production, en dev/test, on peut naviguer normalement sans jamais configurer
+   * de domaine public. La MFA, elle, reste toujours obligatoire quel que soit l'environnement.
+   */
+  if (me?.mfaEnabled && isProduction) {
     if (!hasDomain && location.pathname !== "/setup-domain") {
-      return <Navigate to="/setup-domain" replace />
+      return <Navigate to="/setup-domain" replace />;
     }
-
     if (hasDomain && location.pathname === "/setup-domain") {
-      return <Navigate to="/" replace />
+      return <Navigate to="/" replace />;
     }
   }
 
-  return <>{children}</>
+  return <>{children}</>;
 }
 
 function UnauthedGate({

@@ -15,14 +15,15 @@ import {
   DocumentText,
   ArrowPath,
   Sparkles,
-  CubeSolid,
+  DecisionProcess,
 } from "@medusajs/icons";
-import { auth } from "../lib/api"
+import { api, auth } from "../lib/api"
 import { useMe, type Role } from "../lib/useMe"
 import { useUpdatesCheck } from "../lib/useUpdates"
 import { ThemeToggle } from "./ThemeToggle/ThemeToggle"
 import { useTranslation } from "react-i18next"
 import { LanguageSwitch } from "./LanguageSwitch"
+import { useQuery } from "@tanstack/react-query";
 
 type NavItem = { to: string; labelKey: string; Icon: ComponentType; min: Role }
 
@@ -34,7 +35,7 @@ const NAV: NavItem[] = [
   { to: "/health", labelKey: "nav.health", Icon: ChartBar, min: "viewer" },
   { to: "/audit", labelKey: "nav.logs", Icon: DocumentText, min: "operator" },
   { to: "/servers", labelKey: "nav.servers", Icon: ServerStack, min: "owner" },
-  { to: "/clusters", labelKey: "nav.clusters", Icon: CubeSolid, min: "owner" },
+  { to: "/clusters", labelKey: "nav.clusters", Icon: DecisionProcess, min: "owner" },
   { to: "/registries", labelKey: "nav.registries", Icon: CircleStack, min: "owner" },
   { to: "/secrets", labelKey: "nav.secrets", Icon: Key, min: "operator" },
   { to: "/users", labelKey: "nav.users", Icon: Users, min: "owner" },
@@ -56,6 +57,12 @@ export function AppLayout({ onLogout }: { onLogout: () => void }) {
   const navigate = useNavigate()
   const [mobileOpen, setMobileOpen] = useState(false)
   const { me, can } = useMe()
+
+  const { data: envData } = useQuery({
+    queryKey: ["environment"],
+    queryFn: api.getEnvironment,
+  });
+  const environment = envData?.environment;
 
   const isOwner = can("owner")
   const updates = useUpdatesCheck(isOwner)
@@ -108,7 +115,7 @@ export function AppLayout({ onLogout }: { onLogout: () => void }) {
           variant="transparent"
           size="small"
           className="md:hidden"
-          aria-label={t('nav.closeMenu')}
+          aria-label={t("nav.closeMenu")}
           onClick={() => setMobileOpen(false)}
         >
           <XMark />
@@ -116,15 +123,30 @@ export function AppLayout({ onLogout }: { onLogout: () => void }) {
       </div>
       <div className="flex items-center gap-2 px-4 pt-1">
         <Text size="small" className="text-ui-fg-muted">
-          {currentVersion === "unknown" ? t('nav.versionUnknown') : `${currentVersion}`}
+          {currentVersion === "unknown"
+            ? t("nav.versionUnknown")
+            : `${currentVersion}`}
         </Text>
-        <Badge color={updateChannel === "beta" ? "purple" : "green"} size="2xsmall">
-          {updateChannel === "beta" ? t('nav.channelBeta') : t('nav.channelStable')}
+        <Badge
+          color={updateChannel === "beta" ? "purple" : "green"}
+          size="2xsmall"
+        >
+          {updateChannel === "beta"
+            ? t("nav.channelBeta")
+            : t("nav.channelStable")}
         </Badge>
+        {environment && environment !== "production" && (
+          <Badge color="orange" size="2xsmall">
+            {environment === "development" ? "DEV" : "TEST"}
+          </Badge>
+        )}
       </div>
 
       <div className="mx-3 mt-3 border-t border-ui-border-base" />
-      <nav className="flex flex-1 flex-col gap-1 px-2 pt-4" aria-label={t('nav.mainNavigation')}>
+      <nav
+        className="flex flex-1 flex-col gap-1 px-2 pt-4"
+        aria-label={t("nav.mainNavigation")}
+      >
         {visibleNav.map(({ to, labelKey, Icon }) => (
           <NavLink
             key={to}
@@ -136,7 +158,7 @@ export function AppLayout({ onLogout }: { onLogout: () => void }) {
                 "flex items-center gap-3 rounded-md px-3 py-2 text-ui-fg-subtle transition-colors",
                 "hover:bg-ui-bg-base-hover hover:text-ui-fg-base",
                 "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ui-border-interactive",
-                isActive && "bg-ui-bg-base-pressed text-ui-fg-base"
+                isActive && "bg-ui-bg-base-pressed text-ui-fg-base",
               )
             }
           >
@@ -145,9 +167,13 @@ export function AppLayout({ onLogout }: { onLogout: () => void }) {
               {t(labelKey)}
             </Text>
             {to === "/updates" && updateAvailable && isKnownVersion && (
-              <Badge color="blue" size="2xsmall" className="ml-auto animate-pulse capitalize motion-reduce:animate-none">
+              <Badge
+                color="blue"
+                size="2xsmall"
+                className="ml-auto animate-pulse capitalize motion-reduce:animate-none"
+              >
                 <Sparkles />
-                {t('nav.updateAvailable')}
+                {t("nav.updateAvailable")}
               </Badge>
             )}
           </NavLink>
@@ -157,14 +183,17 @@ export function AppLayout({ onLogout }: { onLogout: () => void }) {
       <div className="flex flex-col gap-1 border-t border-ui-border-base p-2">
         {me && (
           <div className="flex items-center justify-between px-3 py-1">
-            <Text size="xsmall" className="truncate text-ui-fg-muted" title={me.email}>
+            <Text
+              size="xsmall"
+              className="truncate text-ui-fg-muted"
+              title={me.email}
+            >
               {me.email}
             </Text>
             <Badge size="2xsmall" className="capitalize">
               {me.role}
             </Badge>
           </div>
-      
         )}
         <ThemeToggle />
         {/* Sélecteur de langue */}
@@ -178,11 +207,11 @@ export function AppLayout({ onLogout }: { onLogout: () => void }) {
           onClick={logout}
         >
           <ArrowRightOnRectangle />
-          {t('nav.logout')}
+          {t("nav.logout")}
         </Button>
       </div>
     </div>
-  )
+  );
 
   return (
     <div className="flex h-screen bg-ui-bg-subtle">
