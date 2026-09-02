@@ -95,7 +95,7 @@ jobs:
           file: packages/patroni/Dockerfile
           push: true
           build-args: PG_VERSION=${{ matrix.pg }}
-          # Tag ALIGNÉ sur la release hullbay + major PG, ex `1.2.4-pg17` (sans le
-          # `v` du git tag) — même `base` que celle injectée dans l'API via
-          # HULLBAY_RELEASE, une seule source de vérité. Pas de latest : fixe par release.
-          tags: ghcr.io/${{ github.repository }}/patroni:${{ steps.tagbase.outputs.base }}-pg${{ matrix.pg }}
+          # Tag ALIGNÉ sur la release hullbay + major PG, ex `v1.2.4-pg17` — préfixe
+          # `v` cohérent avec api/web (tags GitHub bruts ghcr). Même source de
+          # vérité que HULLBAY_RELEASE injectée dans l'API. Pas de latest : fixe par release.
+          tags: ghcr.io/${{ github.repository }}/patroni:v${{ steps.tagbase.outputs.base }}-pg${{ matrix.pg }}

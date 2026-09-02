@@ -45,7 +45,8 @@ const POSTGRES_DEFAULT_RESOURCES = { cpus: 0.5, memMb: 512 }
 
 /**
  * Images — image Patroni custom hullbay (GHCR), une image par version majeure PG.
- * Tag aligné sur la release hullbay + major PG, ex : `1.2.4-pg16`.
+ * Tag aligné sur la release hullbay + major PG, ex : `v1.2.4-pg16` (préfixe `v`
+ * cohérent avec la convention ghcr, comme l'API `v1.2.4`).
  * `HULLBAY_RELEASE` est INJECTÉ par la CI au build de l'API (ARG → ENV du Dockerfile),
  * depuis le même tag release-please qui tague l'image patroni — une seule source
  * de vérité, aucune valeur à bumper à la main (postgres.ts:54).
@@ -322,11 +323,14 @@ function patroniMember(
 ): GeneratedResource {
   // `version` du contrat (jamais "latest" - rejeté par Zod) détermine l'image
   // native : on extrait la version MAJEURE pour choisir le tag GHCR
-  // `<release>-pg<major>` (ex `1.2.4-pg16`) — une image par version majeure PG,
-  // l'image EST la version. La minor exacte choisie (16.3 vs 16.8) tourne sur la
+  // `<release>-pg<major>` avec préfixe `v` (ex `v1.2.4-pg16`) — une image par
+  // version majeure PG, l'image EST la version. La minor exacte choisie
+  // (16.3 vs 16.8) tourne sur la
   // minor buildée au moment du build CI — trade-off assumé (PLAN_PATRONI_CUSTOM).
   const pgMajor = config.version.replace(/^(\d+).*$/, "$1")
-  const patroniTag = `${HULLBAY_RELEASE}-pg${pgMajor}`
+  // Préfixe `v` reconstruit : cohérent avec la convention ghcr (les images sont
+  // publiées sous leur tag GitHub brut `v1.2.4-pg17`), voir imageRef() de l'updater.
+  const patroniTag = `v${HULLBAY_RELEASE}-pg${pgMajor}`
   return {
     kind: "container",
     nodeId: `db::${ctx.parentNodeId}::member::${index}`,
