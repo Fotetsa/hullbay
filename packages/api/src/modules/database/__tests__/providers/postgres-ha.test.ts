@@ -151,27 +151,24 @@ describe("expandPostgres HA (S4 §12-13)", () => {
     expect(env.PATRONI_RESTAPI_USERNAME).toBe("patroni")
     // La VALEUR restapi n'est plus dans l'env du service : jamais en clair.
     expect(env.PATRONI_RESTAPI_PASSWORD).toBeUndefined()
-    // … mais montée en config-secret généré et injectée par le cmd-wrapper.
+    // C'est un CHEMIN de fichier (secret monté) — l'entrypoint de l'image lit ce
+    // fichier et exporte PATRONI_RESTAPI_PASSWORD dans le conteneur.
+    expect(env.PATRONI_RESTAPI_PASSWORD_FILE).toMatch(/^\/run\/secrets\/catalog-patroni-restapi-/)
+    // Base applicative : le provider seul la connaît → transmise à l'entrypoint.
+    expect(env.PATRONI_DATABASE).toBe("catalog_db")
+    // … le secret restapi est monté en config-secret généré (valeur, pas chemin).
     const restapiSecret = exp.generatedSecrets.find((s) => s.name.startsWith("catalog-patroni-restapi-"))!
     expect(restapiSecret.data).toMatch(/^[0-9a-f]{24}$/)
     expect(member!.config.secrets!.map((s) => s.secretName)).toContain(restapiSecret.name)
+    // Membre : PAS de cmd — l'entrypoint de l'image gère démarrage + création base.
+    expect(member!.config.cmd).toBeUndefined()
     // Le secret réplication (sa VALEUR) ne peut apparaître que via _FILE : jamais
     // d'URL, de mot de passe ou de valeur dérivée en clair dans l'env.
     expect(env.PATRONI_ETCD_HOSTS).toMatch(/^boz_proj-a_catalog-etcd-1:2379,boz_proj-a_catalog-etcd-2:2379,boz_proj-a_catalog-etcd-3:2379$/)
-    // cmd wrapper membre : gate recovery + kill -0 + logs d'échec, sans la valeur
-    // des secrets réplication/restapi (uniquement le cat du fichier monté).
-    const mc = member!.config.cmd!.join(" ")
-    expect(mc).toMatch(/^sh -c set -eu/)
-    expect(mc).toContain("/opt/bitnami/scripts/patroni/entrypoint.sh")
-    expect(mc).toContain(`CREATE DATABASE "catalog_db" OWNER "catalog"`)
-    expect(mc).toContain("pg_is_in_recovery")
-    expect(mc).toContain('kill -0 "$PATRONI_PID"')
-    expect(mc).toContain("ÉCHEC création base 'catalog_db'")
-    expect(mc).toContain("/run/secrets/db_catalog_secret")
-    expect(mc).toContain(`export PATRONI_RESTAPI_PASSWORD="$(cat '/run/secrets/${restapiSecret.name}')"`)
     const rep = exp.generatedSecrets.find((s) => s.name.startsWith("catalog-replication-"))!
-    expect(mc).not.toContain(rep.data)
-    expect(mc).not.toContain(restapiSecret.data)
+    const envBlob = JSON.stringify(env)
+    expect(envBlob).not.toContain(rep.data)
+    expect(envBlob).not.toContain(restapiSecret.data)
     // etcd : wrapper (existing si datadir OU cluster vivant, new sinon), pas de
     // `new`/`existing` en dur et pas de méta-token.
     const [etcd] = byRole(exp, "consensus")
@@ -258,7 +255,8 @@ describe("expandPostgres HA (S4 §12-13)", () => {
     const exp = expandPostgres(cfg({}), ctx)
     const [member] = byRole(exp, "member")
     const parsed = ContainerConfigSchema.parse(member!.config)
-    expect(parsed.image).toBe("bitnami/patroni")
+    expect(parsed.image).toBe("ghcr.io/fotetsa/hullbay/patroni")
+    expect(parsed.tag).toBe("1.2.4-pg16")
     expect(parsed.env.PATRONI_SCOPE).toBe("catalog")
   })
 
@@ -312,11 +310,18 @@ describe("expandPostgres HA (S4 §12-13)", () => {
     expect(JSON.stringify(a)).toBe(snapshot)
   })
 
-  it("version du contrat honorée en HA : POSTGRESQL_VERSION = config.version", () => {
+  it("version du contrat honorée en HA : le tag image suit la version MAJEURE (16.3 → 1.2.4-pg16)", () => {
     const exp = expandPostgres(cfg({ version: "16.3" }), ctx)
     const member = byRole(exp, "member")[0]!
-    const env = member.config.env as Record<string, string>
-    expect(env.POSTGRESQL_VERSION).toBe("16.3")
+    expect(member.config.image).toBe("ghcr.io/fotetsa/hullbay/patroni")
+    expect(member.config.tag).toBe("1.2.4-pg16")
+  })
+
+  it("version majeure seule (17) → tag 1.2.4-pg17 ; pas de POSTGRESQL_VERSION runtime", () => {
+    const exp = expandPostgres(cfg({ version: "17" }), ctx)
+    const member = byRole(exp, "member")[0]!
+    expect(member.config.tag).toBe("1.2.4-pg17")
+    expect(member.config.env).not.toHaveProperty("POSTGRESQL_VERSION")
   })
 
   it("placement HA sans contrainte node.role==worker (déployable sur mono-nœud)", () => {
