@@ -35,6 +35,12 @@ export const ENGINE_DEFAULTS: Record<
   redis: { version: "7.4", haReplicas: [2, 3, 4, 5], hasConsensus: true },
 }
 
+/** Versions PostgreSQL proposées en mode HA (figées) : seules ces majeures ont
+ *  une image custom buildée (hullbay/patroni) — en HA l'utilisateur ne peut pas
+ *  taper n'importe quoi (le pull échouerait au déploiement). En mode single le
+ *  champ reste libre (toute image postgres:<version> Docker Hub existe). */
+export const POSTGRES_HA_VERSIONS = ["16.3", "17"] as const
+
 /** Petite section de formulaire : titre + contenu, cohérente avec l'inspecteur. */
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
@@ -65,6 +71,11 @@ export function DatabaseForm({
       patch.topology = { replicas: 1 }
     } else {
       patch.topology = { replicas: engineMeta.haReplicas[0] }
+      // HA postgres : réintègre une version figée de la liste (l'utilisateur
+      // pouvait avoir tapé librement n'importe quoi en mode single).
+      if (engine === "postgres" && !(POSTGRES_HA_VERSIONS as readonly string[]).includes(config.version ?? "")) {
+        patch.version = engineMeta.version
+      }
     }
     onChange(patch)
   }
@@ -122,15 +133,41 @@ export function DatabaseForm({
 
       {/* Version */}
       <Section title="Version">
-        <Input
-          value={config.version ?? ""}
-          onChange={(e) => set({ version: e.target.value })}
-          placeholder={engineMeta.version}
-          aria-invalid={config.version === "latest"}
-        />
-        <Text size="xsmall" className="text-ui-fg-muted">
-          Version explicite — jamais « latest » en production.
-        </Text>
+        {mode === "ha" && engine === "postgres" ? (
+          <>
+            <Select
+              value={config.version ?? engineMeta.version}
+              onValueChange={(v) => set({ version: v })}
+            >
+              <Select.Trigger>
+                <Select.Value />
+              </Select.Trigger>
+              <Select.Content className="z-[60]">
+                {POSTGRES_HA_VERSIONS.map((v) => (
+                  <Select.Item key={v} value={v}>
+                    PostgreSQL {v}
+                  </Select.Item>
+                ))}
+              </Select.Content>
+            </Select>
+            <Text size="xsmall" className="text-ui-fg-muted">
+              En HA, versions figées : aucune autre image patroni custom n'est
+              buildée (échec de déploiement sinon).
+            </Text>
+          </>
+        ) : (
+          <>
+            <Input
+              value={config.version ?? ""}
+              onChange={(e) => set({ version: e.target.value })}
+              placeholder={engineMeta.version}
+              aria-invalid={config.version === "latest"}
+            />
+            <Text size="xsmall" className="text-ui-fg-muted">
+              Version explicite — jamais « latest » en production.
+            </Text>
+          </>
+        )}
       </Section>
 
       {/* Mode */}
