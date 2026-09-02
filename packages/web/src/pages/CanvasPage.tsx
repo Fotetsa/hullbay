@@ -15,15 +15,9 @@ import {
 } from "@xyflow/react"
 import { useQuery, useQueryClient, keepPreviousData } from "@tanstack/react-query"
 import { Navigate, useNavigate, useParams } from "react-router-dom"
-<<<<<<< HEAD
 import { Button, Heading, StatusBadge, Text, toast, usePrompt } from "@medusajs/ui"
 import { ArrowDownLeft, PlaySolid, Trash, ExclamationCircle, Spinner, XMark } from "@medusajs/icons"
-import type { NodeType, ActualState, Node, Edge, DatabaseConfig } from "@hullbay/shared"
-=======
-import { Button, Heading, Text, toast, usePrompt } from "@medusajs/ui"
-import { PlaySolid, Trash, ArrowLeft, ExclamationCircle, Spinner, XMark } from "@medusajs/icons"
 import type { NodeType, ActualState, Node, Edge, DatabaseConfig, ProjectGraph } from "@hullbay/shared"
->>>>>>> upstream/master
 // Sous-chemin node-config : évite de tirer labels.ts (node:crypto) dans le bundle navigateur.
 import { isConnectionAllowed, edgeKindForPair } from "@hullbay/shared/node-config"
 import { api } from "../lib/api"
@@ -198,15 +192,11 @@ function CanvasInner({ projectId }: { projectId: string }) {
   const [livePlacements, setLivePlacements] = useState<Record<string, NodePlacement[]>>({})
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null)
-<<<<<<< HEAD
-  const [selectedDbNetEdgeId, setSelectedDbNetEdgeId] = useState<string | null>(null)
-=======
   // Liaison "réseau DB" sélectionnée (custom edge, panneau dédié lecture seule).
   // Nœud RÉSEAU de base sélectionné (panneau dédié des liaisons) — porté par le
   // nœud, pas par un edge : une base fraîche sans liaison doit quand même ouvrir
   // le panneau. Le network d'une base n'est pas éditable en soi.
   const [selectedDbNetNodeId, setSelectedDbNetNodeId] = useState<string | null>(null)
->>>>>>> upstream/master
   const [planOpen, setPlanOpen] = useState(false)
   const [activityLog, setActivityLog] = useState<string[] | null>(null)
   const [activityOpen, setActivityOpen] = useState(false)
@@ -272,47 +262,16 @@ function CanvasInner({ projectId }: { projectId: string }) {
     return set
   }, [graph])
 
-<<<<<<< HEAD
-=======
   // Lien « réseau DB » : chaque edge persisté kind="database" (conteneur↔base)
   // est rendu comme un trait pointillé CONTENEUR → RÉSEAU DE LA BASE. Une base
   // naît avec son réseau (edge kind="network" base↔réseau, dessiné en pointillé
   // dans rfEdges) : visuellement, tout conteneur qui se connecte à la base passe
   // donc par SON réseau, jamais par la base directement. Base sans réseau
   // (projet antérieur) : fallback en ligne directe conteneur→base.
->>>>>>> upstream/master
   const dbNetEdges: RFEdge[] = useMemo(() => {
     if (!graph) return []
     const typeById = new Map(graph.nodes.map((n) => [n.id, n.type]))
 
-<<<<<<< HEAD
-    const netNeighbors = new Map<string, string[]>()
-    for (const e of graph.edges) {
-      if (e.kind !== "network") continue
-      const netId =
-        typeById.get(e.sourceNodeId) === "network"
-          ? e.sourceNodeId
-          : typeById.get(e.targetNodeId) === "network"
-            ? e.targetNodeId
-            : null
-      if (!netId) continue
-      const other = netId === e.sourceNodeId ? e.targetNodeId : e.sourceNodeId
-      if (typeById.get(other) === "network") continue
-      const list = netNeighbors.get(other)
-      if (list) list.push(netId)
-      else netNeighbors.set(other, [netId])
-    }
-
-    const centerById = new Map(
-      rfNodes.map((n) => {
-        const w = n.measured?.width ?? n.width ?? 150
-        const h = n.measured?.height ?? n.height ?? 70
-        return [n.id, { x: n.position.x + w / 2, y: n.position.y + h / 2 }]
-      })
-    )
-
-=======
->>>>>>> upstream/master
     return graph.edges.flatMap((e): RFEdge[] => {
       if (e.kind !== "database") return []
       const cId = typeById.get(e.sourceNodeId) === "container" ? e.sourceNodeId : e.targetNodeId
@@ -320,32 +279,11 @@ function CanvasInner({ projectId }: { projectId: string }) {
       if (!cId || !dbId || cId === dbId) return []
       if (typeById.get(cId) !== "container" || typeById.get(dbId) !== "database") return []
 
-<<<<<<< HEAD
-      let source = cId
-      const mid = {
-        x: ((centerById.get(cId)?.x ?? 0) + (centerById.get(dbId)?.x ?? 0)) / 2,
-        y: ((centerById.get(cId)?.y ?? 0) + (centerById.get(dbId)?.y ?? 0)) / 2,
-      }
-      const seen = new Set<string>()
-      const candidates = [...(netNeighbors.get(cId) ?? []), ...(netNeighbors.get(dbId) ?? [])].filter(
-        (id) => centerById.has(id) && !seen.has(id) && seen.add(id)
-      )
-      if (candidates.length) {
-        const dist = (id: string) => {
-          const c = centerById.get(id)!
-          return (c.x - mid.x) ** 2 + (c.y - mid.y) ** 2
-        }
-        source = candidates.reduce((best, id) =>
-          dist(id) < dist(best) || (dist(id) === dist(best) && id < best) ? id : best
-        )
-      }
-=======
       // Le conteneur se connecte au RÉSEAU de la base (celui créé au drop).
       const dbNode = graph.nodes.find((n) => n.id === dbId)!
       const linked = dbNetworkFor(dbNode, graph)
       const target = linked?.networkId ?? dbId
       const source = cId
->>>>>>> upstream/master
 
       return [
         {
@@ -362,14 +300,11 @@ function CanvasInner({ projectId }: { projectId: string }) {
     })
   }, [graph])
 
-<<<<<<< HEAD
-=======
   // Données du panneau lecture seule : UNE base peut être reliée à PLUSIEURS
   // conteneurs — le panneau liste TOUTES les liaisons de la base cliquée (via
   // son RÉSEAU : le clic porte sur le nœud network, pas sur un edge — une base
   // fraîche sans liaison ouvre quand même le panneau), chacune supprimable
   // indépendamment. Résolu depuis le graphe persisté.
->>>>>>> upstream/master
   const selectedDbNet: DbNetInfoData | null = useMemo(() => {
     if (!graph || !selectedDbNetNodeId) return null
     const typeById = new Map(graph.nodes.map((n) => [n.id, n.type]))
@@ -684,8 +619,6 @@ function CanvasInner({ projectId }: { projectId: string }) {
       const tType = (getNode(conn.target)?.data as OpsNodeData | undefined)?.nodeType
       let kind = sType && tType ? edgeKindForPair(sType, tType) : null
       if (!kind) return
-<<<<<<< HEAD
-=======
 
       // Connexion conteneur ↔ RÉSEAU de base (handle vert) : on relie en réalité
       // le conteneur à la BASE (relation database), pas au réseau lui-même — le
@@ -714,7 +647,6 @@ function CanvasInner({ projectId }: { projectId: string }) {
       // Dédup front : un couple de nœuds ne porte qu'UN lien par nature (sens
       // indifférent). Sans ça, re-tirer un lien database existant créait un
       // doublon invisible — le visuel ne changeait pas et l'entrée se polluait.
->>>>>>> upstream/master
       const exists = graph?.edges.some(
         (e) =>
           e.kind === kind &&
@@ -879,24 +811,6 @@ function CanvasInner({ projectId }: { projectId: string }) {
       if (e.key !== "Delete" && e.key !== "Backspace") return
       const target = e.target as HTMLElement
       if (["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName) || target.isContentEditable) return
-<<<<<<< HEAD
-      if (selectedDbNetEdgeId) {
-        const ok = await prompt({
-          title: "Supprimer cette liaison ?",
-          description: "Le conteneur ne sera plus relié à cette base. Redéploie pour appliquer le changement à Docker.",
-          confirmText: "Supprimer",
-          cancelText: "Annuler",
-          variant: "danger",
-        })
-        if (ok) {
-          await api.deleteEdge(selectedDbNetEdgeId).catch(() => {})
-          setSelectedDbNetEdgeId(null)
-          qc.invalidateQueries({ queryKey: ["project", projectId] })
-        }
-        return
-      }
-=======
->>>>>>> upstream/master
       if (selectedEdgeId) {
         const ok = await prompt({
           title: "Supprimer ce lien ?",
@@ -1095,12 +1009,6 @@ function CanvasInner({ projectId }: { projectId: string }) {
               setSelectedDbNetNodeId(null)
             }}
             onEdgeClick={(_e, edge) => {
-<<<<<<< HEAD
-              if (graph?.edges.find((x) => x.id === edge.id)?.kind === "database") {
-                setSelectedDbNetEdgeId(edge.id)
-                setSelectedEdgeId(null)
-                setSelectedId(null)
-=======
               // Les pointillés réseau DB (conteneur→réseau, base↔réseau) sont
               // non interactifs : le panneau de détail s'ouvre UNIQUEMENT au
               // clic sur le nœud réseau de la base (toutes ses liaisons).
@@ -1108,7 +1016,6 @@ function CanvasInner({ projectId }: { projectId: string }) {
                 graph?.edges.find((x) => x.id === edge.id)?.kind === "database" ||
                 isDbNetEdge(edge, graph)
               ) {
->>>>>>> upstream/master
                 return
               }
               setSelectedEdgeId(edge.id)

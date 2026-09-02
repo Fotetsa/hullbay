@@ -315,9 +315,12 @@ async function recountReplicas(
       for (const sid of serviceIds) {
         const metrics = await engine.getServiceMetrics(sid);
         running += metrics.runningReplicas;
-        const tasks = await engine.listServiceTaskPlacements(sid);
+        const tasks = typeof engine.listServiceTaskPlacements === "function"
+          ? await engine.listServiceTaskPlacements(sid)
+          : [];
         for (const t of tasks) {
-          if (t.state === "running") placements.push({ swarmNodeId: t.nodeId, taskId: t.taskId });
+          if (t.state === "running")
+            placements.push({ swarmNodeId: t.nodeId, taskId: t.taskId });
         }
       }
       await eventBus.emit("node.replicas", {
@@ -339,10 +342,10 @@ async function recountReplicas(
       await eventBus.emit("node.placements", { projectId, nodeId, placements: [] });
       return;
     }
-    const [metrics, tasks] = await Promise.all([
-      engine.getServiceMetrics(serviceId),
-      engine.listServiceTaskPlacements(serviceId),
-    ]);
+    const metrics = await engine.getServiceMetrics(serviceId);
+    const tasks = typeof engine.listServiceTaskPlacements === "function"
+      ? await engine.listServiceTaskPlacements(serviceId)
+      : [];
     await eventBus.emit("node.replicas", {
       projectId,
       nodeId,
