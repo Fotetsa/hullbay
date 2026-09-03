@@ -36,10 +36,6 @@ jobs:
         include:
           - package: api
           - package: web
-          - package: patroni
-            pg: 17
-          - package: patroni
-            pg: 16
     steps:
       - name: Checkout release
         uses: actions/checkout@v6
@@ -52,7 +48,6 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Metadata Docker
-        if: matrix.package != 'patroni'
         id: meta
         uses: docker/metadata-action@v6
         with:
@@ -63,18 +58,12 @@ jobs:
             type=sha
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
-      - name: Compute release tag base
-        id: tagbase
-        # Tourne sur toutes les jobs matrix (pas seulement patroni) : la sortie
-        # `base` est consommée à la fois par le build api/web (env HULLBAY_RELEASE)
-        # et par le build patroni (tag <release>-pg<major>).
+      - name: Read Patroni version from Dockerfile
+        id: patroni-pin
         run: |
-          BASE="${TAG_NAME#v}"
-          echo "base=$BASE" >> "$GITHUB_OUTPUT"
-        env:
-          TAG_NAME: ${{ needs.release.outputs.tag_name }}
+          VERSION="$(grep -oP 'ARG PATRONI_VERSION=\K[0-9.]+' packages/patroni/Dockerfile)"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
       - name: Build & Push api/web
-        if: matrix.package != 'patroni'
         uses: docker/build-push-action@v7
         with:
           context: .
@@ -82,20 +71,8 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          # Injecte la release courante (sans le `v`) dans l'argument de build de l'API :
-          # même valeur `base` qui tague patroni:<release>-pgXX, une seule source
-          # de vérité (le tag release-please) — l'API cible l'image de SA release.
+          # Injecte la version de Patroni courante (pin du Dockerfile) dans l'API :
+          # c'est la valeur qui tague patroni:v<version>-pgXX (workflow dédié) —
+          # une seule source de vérité = le pin du Dockerfile Patroni.
           build-args: |
-            HULLBAY_RELEASE=${{ steps.tagbase.outputs.base }}
-      - name: Build & Push patroni
-        if: matrix.package == 'patroni'
-        uses: docker/build-push-action@v7
-        with:
-          context: .
-          file: packages/patroni/Dockerfile
-          push: true
-          build-args: PG_VERSION=${{ matrix.pg }}
-          # Tag ALIGNÉ sur la release hullbay + major PG, ex `v1.2.4-pg17` — préfixe
-          # `v` cohérent avec api/web (tags GitHub bruts ghcr). Même source de
-          # vérité que HULLBAY_RELEASE injectée dans l'API. Pas de latest : fixe par release.
-          tags: ghcr.io/${{ github.repository }}/patroni:v${{ steps.tagbase.outputs.base }}-pg${{ matrix.pg }}
+            PATRONI_VERSION=${{ steps.patroni-pin.outputs.version }}

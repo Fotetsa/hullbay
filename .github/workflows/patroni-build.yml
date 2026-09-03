@@ -1,0 +1,127 @@
+# Build & Push des images Patroni custom hullbay.
+#
+# Workflow SÉPARÉ du workflow de release hullbay : les releases de Patroni
+# suivent le rythme de Patroni upstream (zalando/patroni), pas celui de hullbay.
+# Les tags des conteneurs correspondent à la VERSION DE PATRONI embarquée, en
+# conservant l'extension qui précise la version majeure PG : `v3.3.0-pg17`.
+#
+# Déclenchement :
+#   - manuel (workflow_dispatch) : on peut forcer une version précise, ou laisser
+#     le workflow détecter la dernière version stable upstream.
+#   - Un run auto (sans `version`) qui découvre une nouvelle version Patroni ne
+#     build PAS : il ouvre une PR de bump (revue humaine), le build est fait au
+#     run suivant une fois la PR mergée (relance avec `version` précisée).
+name: Build & Push Patroni
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version Patroni à build (ex. 3.3.0). Vide = dernière upstream."
+        required: false
+        type: string
+      pg_majors:
+        description: "Version majeures PG à build, séparées par virgule (ex. 16,17)."
+        required: false
+        type: string
+permissions:
+  contents: write
+  pull-requests: write
+  packages: write
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.resolve.outputs.version }}
+      needs_bump: ${{ steps.resolve.outputs.needs_bump }}
+      pg_majors_json: ${{ steps.pg.outputs.majors_json }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+      - name: Résoudre la version Patroni (input sinon dernière upstream)
+        id: resolve
+        run: |
+          if [ -n "${{ inputs.version }}" ]; then
+            VERSION="${{ inputs.version }}"
+            NEEDS_BUMP="false"
+          else
+            # Dernière version stable Patroni (tags GitHub upstream).
+            VERSION="$(curl -fsSL \
+              'https://api.github.com/repos/zalando/patroni/releases/latest' \
+              -H 'Accept: application/vnd.github+json' \
+              | jq -r '.tag_name' | sed 's/^v//')"
+            # Garde : si la détection échoue (réseau/API), on stoppe plutôt que de
+            # publier un bump vide.
+            if [ -z "$VERSION" ]; then
+              echo "::error::Impossible de détecter la version Patroni upstream"
+              exit 1
+            fi
+            # Version actuellement pinée dans le Dockerfile (source de vérité).
+            PINNED="$(grep -oP 'ARG PATRONI_VERSION=\K[0-9.]+' \
+              packages/patroni/Dockerfile)"
+            if [ -n "$PINNED" ] && [ "$VERSION" = "$PINNED" ]; then
+              NEEDS_BUMP="false"
+            else
+              NEEDS_BUMP="true"
+            fi
+          fi
+          printf 'version=%s\n' "$VERSION" >> "$GITHUB_OUTPUT"
+          printf 'needs_bump=%s\n' "$NEEDS_BUMP" >> "$GITHUB_OUTPUT"
+      - name: Résoudre les majeures PG (liste JSON pour la matrix)
+        id: pg
+        run: |
+          MAJORS="${{ inputs.pg_majors }}"
+          if [ -z "$MAJORS" ]; then MAJORS="16,17"; fi
+          echo "$MAJORS" | jq -R 'split(",")' > /tmp/majors.json
+          echo "majors_json=$(cat /tmp/majors.json)" >> "$GITHUB_OUTPUT"
+  bump:
+    needs: prepare
+    if: needs.prepare.outputs.needs_bump == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+      - name: Bumper la version dans le Dockerfile
+        run: |
+          VERSION="${{ needs.prepare.outputs.version }}"
+          sed -i -E "s/^ARG PATRONI_VERSION=.*/ARG PATRONI_VERSION=$VERSION/" \
+            packages/patroni/Dockerfile
+      - name: Ouvrir une PR de bump (revue humaine)
+        uses: peter-evans/create-pull-request@v6
+        with:
+          branch: chore/bump-patroni-${{ needs.prepare.outputs.version }}
+          title: "chore(patroni): bump à la version ${{ needs.prepare.outputs.version }}"
+          commit-message: "chore(patroni): bump à la version ${{ needs.prepare.outputs.version }}"
+          base: master
+          labels: dependencies
+  build:
+    # Le build n'a pas lieu dans le même run que le bump : on attend que la PR de
+    # bump soit mergée, puis on relance le dispatch en précisant la `version`.
+    needs: prepare
+    if: needs.prepare.outputs.needs_bump == 'false'
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        pg: ${{ fromJson(needs.prepare.outputs.pg_majors_json) }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+      - name: Login GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+      - name: Build & Push patroni
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: packages/patroni/Dockerfile
+          push: true
+          build-args: |
+            PG_VERSION=${{ matrix.pg }}
+            PATRONI_VERSION=${{ needs.prepare.outputs.version }}
+          # Tag aligné sur la VERSION DE PATRONI + major PG (ex. v3.3.0-pg17).
+          # Préfixe `v` cohérent avec la convention ghcr. Pas de latest : fixe.
+          tags: ghcr.io/${{ github.repository }}/patroni:v${{ needs.prepare.outputs.version }}-pg${{ matrix.pg }}

@@ -1,9 +1,10 @@
 # Build de l'api ops-panel (monorepo workspaces : contexte = racine hullbay).
 FROM node:22-alpine AS base
-# Version de release hullbay injectée par la CI (release-please). Sert à cibler
-# l'image patroni (postgres.ts) — alignée sur le tag de la même release.
-ARG HULLBAY_RELEASE=1.2.4
-ENV HULLBAY_RELEASE=$HULLBAY_RELEASE
+# Version de Patroni injectée par la CI (workflow dédié patroni-build.yml).
+# Sert à cibler l'image patroni (postgres.ts) — alignée sur la version de Patroni
+# embarquée, pas sur la release hullbay.
+ARG PATRONI_VERSION=3.3.0
+ENV PATRONI_VERSION=$PATRONI_VERSION
 WORKDIR /app
 
 # postgresql-client 16 : pg_dump/pg_restore embarqués pour le backup/rollback

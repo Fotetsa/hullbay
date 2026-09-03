@@ -45,18 +45,19 @@ const POSTGRES_DEFAULT_RESOURCES = { cpus: 0.5, memMb: 512 }
 
 /**
  * Images — image Patroni custom hullbay (GHCR), une image par version majeure PG.
- * Tag aligné sur la release hullbay + major PG, ex : `v1.2.4-pg16` (préfixe `v`
- * cohérent avec la convention ghcr, comme l'API `v1.2.4`).
- * `HULLBAY_RELEASE` est INJECTÉ par la CI au build de l'API (ARG → ENV du Dockerfile),
- * depuis le même tag release-please qui tague l'image patroni — une seule source
- * de vérité, aucune valeur à bumper à la main (postgres.ts:54).
+ * Tag aligné sur la VERSION DE PATRONI embarquée + major PG, ex : `v3.3.0-pg16`
+ * (préfixe `v` cohérent avec la convention ghcr). Depuis le retrait du lien à la
+ * release hullbay, les tags suivent Patroni (workflow dédié patroni-build.yml).
+ * `PATRONI_VERSION` est INJECTÉ par la CI au build de l'API (ARG → ENV du Dockerfile),
+ * même valeur qui tague l'image patroni — une seule source de vérité (le pin du
+ * Dockerfile Patroni), aucune valeur à bumper à la main (postgres.ts:59).
  */
 const PATRONI_IMAGE = { image: "ghcr.io/fotetsa/hullbay/patroni" }
 /**
- * Version de release hullbay courante — injectée par la CI au build de l'API
- * (même valeur `base` qui tague `patroni:<release>-pg<major>`), fallback dev.
+ * Version de Patroni courante — injectée par la CI au build de l'API (même
+ * valeur `version` qui tague `patroni:v<version>-pg<major>`), fallback dev.
  */
-const HULLBAY_RELEASE = process.env.HULLBAY_RELEASE ?? "1.2.4"
+const PATRONI_VERSION = process.env.PATRONI_VERSION ?? "3.3.0"
 const ETCD_IMAGE = { image: "quay.io/coreos/etcd", tag: "v3.5.16" }
 const HAPROXY_IMAGE = { image: "haproxy", tag: "2.9-alpine" }
 
@@ -323,14 +324,14 @@ function patroniMember(
 ): GeneratedResource {
   // `version` du contrat (jamais "latest" - rejeté par Zod) détermine l'image
   // native : on extrait la version MAJEURE pour choisir le tag GHCR
-  // `<release>-pg<major>` avec préfixe `v` (ex `v1.2.4-pg16`) — une image par
-  // version majeure PG, l'image EST la version. La minor exacte choisie
-  // (16.3 vs 16.8) tourne sur la
-  // minor buildée au moment du build CI — trade-off assumé (PLAN_PATRONI_CUSTOM).
+  // `v<patroni>-pg<major>` (ex `v3.3.0-pg16`) — une image par version majeure
+  // PG, l'image EST la version. La minor exacte choisie (16.3 vs 16.8) tourne
+  // sur la minor buildée au moment du build CI — trade-off assumé (PLAN_PATRONI_CUSTOM).
   const pgMajor = config.version.replace(/^(\d+).*$/, "$1")
   // Préfixe `v` reconstruit : cohérent avec la convention ghcr (les images sont
-  // publiées sous leur tag GitHub brut `v1.2.4-pg17`), voir imageRef() de l'updater.
-  const patroniTag = `v${HULLBAY_RELEASE}-pg${pgMajor}`
+  // publiées sous leur tag GitHub brut `v3.3.0-pg17`). La version est celle de
+  // PATRONI (pas de la release hullbay) — injectée par le workflow dédié.
+  const patroniTag = `v${PATRONI_VERSION}-pg${pgMajor}`
   return {
     kind: "container",
     nodeId: `db::${ctx.parentNodeId}::member::${index}`,
