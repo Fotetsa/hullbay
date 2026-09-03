@@ -200,12 +200,43 @@ describe("UpdaterService", () => {
 
       expect(mockGithub.latest).toHaveBeenCalledWith("stable")
       expect(mockDocker.ensureImage).toHaveBeenCalledWith(
-        "ghcr.io/fotetsa/hullbay/api:1.2.3",
-        "Always",
+        "ghcr.io/fotetsa/hullbay/api:v1.2.3",
+        "IfNotPresent",
       )
       expect(mockDocker.updateSystemServiceImage).toHaveBeenCalledWith(
         "api",
-        "ghcr.io/fotetsa/hullbay/api:1.2.3",
+        "ghcr.io/fotetsa/hullbay/api:v1.2.3",
+      )
+    })
+
+    it("pull les images sous leur tag GitHub brut (préfixe v, ex. rc.2)", async () => {
+      mockDocker.currentSystemTag.mockResolvedValue("1.2.4-beta.6")
+      mockPrisma.systemInfo.update.mockResolvedValue({
+        id: "singleton",
+        currentVersion: "1.2.4-beta.6",
+        updateChannel: "beta",
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      })
+      mockGithub.latest.mockResolvedValue({ version: "1.2.4-rc.2", tag: "v1.2.4-rc.2", prerelease: true, draft: false, publishedAt: null, url: "", notes: "" })
+      mockGithub.isUpdateAvailable.mockReturnValue(true)
+      mockDocker.ensureImage.mockResolvedValue({ pulled: true })
+      mockDocker.updateSystemServiceImage.mockResolvedValue(undefined)
+
+      await updaterService.apply({ channel: "beta" }, "user-1")
+      await updaterService.waitForPending()
+
+      expect(mockDocker.ensureImage).toHaveBeenCalledWith(
+        "ghcr.io/fotetsa/hullbay/api:v1.2.4-rc.2",
+        "IfNotPresent",
+      )
+      expect(mockDocker.ensureImage).toHaveBeenCalledWith(
+        "ghcr.io/fotetsa/hullbay/web:v1.2.4-rc.2",
+        "IfNotPresent",
+      )
+      expect(mockDocker.updateSystemServiceImage).toHaveBeenCalledWith(
+        "api",
+        "ghcr.io/fotetsa/hullbay/api:v1.2.4-rc.2",
       )
     })
 
@@ -458,11 +489,11 @@ describe("UpdaterService", () => {
       })
       expect(mockDocker.updateSystemServiceImage).toHaveBeenCalledWith(
         "web",
-        "ghcr.io/fotetsa/hullbay/web:1.2.2",
+        "ghcr.io/fotetsa/hullbay/web:v1.2.2",
       )
       expect(mockDocker.updateSystemServiceImage).toHaveBeenCalledWith(
         "api",
-        "ghcr.io/fotetsa/hullbay/api:1.2.2",
+        "ghcr.io/fotetsa/hullbay/api:v1.2.2",
       )
       const restoreCall = mockSpawn.mock.calls.find(
         ([cmd, args]) => cmd === "pg_restore" && args.includes("-d"),

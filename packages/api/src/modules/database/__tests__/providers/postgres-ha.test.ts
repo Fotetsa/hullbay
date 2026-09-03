@@ -256,7 +256,7 @@ describe("expandPostgres HA (S4 §12-13)", () => {
     const [member] = byRole(exp, "member")
     const parsed = ContainerConfigSchema.parse(member!.config)
     expect(parsed.image).toBe("ghcr.io/fotetsa/hullbay/patroni")
-    expect(parsed.tag).toBe("1.2.4-pg16")
+    expect(parsed.tag).toBe("v3.3.0-pg16")
     expect(parsed.env.PATRONI_SCOPE).toBe("catalog")
   })
 
@@ -310,17 +310,17 @@ describe("expandPostgres HA (S4 §12-13)", () => {
     expect(JSON.stringify(a)).toBe(snapshot)
   })
 
-  it("version du contrat honorée en HA : le tag image suit la version MAJEURE (16.3 → 1.2.4-pg16)", () => {
+  it("version du contrat honorée en HA : le tag image suit la version MAJEURE (16.3 → v3.3.0-pg16)", () => {
     const exp = expandPostgres(cfg({ version: "16.3" }), ctx)
     const member = byRole(exp, "member")[0]!
     expect(member.config.image).toBe("ghcr.io/fotetsa/hullbay/patroni")
-    expect(member.config.tag).toBe("1.2.4-pg16")
+    expect(member.config.tag).toBe("v3.3.0-pg16")
   })
 
-  it("version majeure seule (17) → tag 1.2.4-pg17 ; pas de POSTGRESQL_VERSION runtime", () => {
+  it("version majeure seule (17) → tag v3.3.0-pg17 ; pas de POSTGRESQL_VERSION runtime", () => {
     const exp = expandPostgres(cfg({ version: "17" }), ctx)
     const member = byRole(exp, "member")[0]!
-    expect(member.config.tag).toBe("1.2.4-pg17")
+    expect(member.config.tag).toBe("v3.3.0-pg17")
     expect(member.config.env).not.toHaveProperty("POSTGRESQL_VERSION")
   })
 

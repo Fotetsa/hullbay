@@ -886,7 +886,9 @@ export class DockerEngineService {
   private async pullImage(image: string): Promise<void> {
     const authconfig = this.authResolver ? await this.authResolver(image) : null
     const opts = authconfig ? { authconfig } : {}
-    const PULL_TIMEOUT_MS = 120_000
+    // 15 min : les images api/web (~hundreds of MB) peuvent dépasser 120s sur les
+    // VMs à faible débit vers ghcr.io (le pull échouait avant la fin du download).
+    const PULL_TIMEOUT_MS = 900_000
     await new Promise<void>((resolve, reject) => {
       let settled = false
       const timer = setTimeout(() => {
