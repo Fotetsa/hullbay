@@ -476,6 +476,11 @@ export type NodeHealth = {
   state: string;
   availability: string;
   leader: boolean;
+  memoryBytes: number;
+  nanoCpus: number;
+  os: string;
+  architecture: string;
+  dockerVersion: string;
 };
 
 export type ServicePlacement = {

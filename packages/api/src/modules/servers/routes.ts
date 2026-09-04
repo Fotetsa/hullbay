@@ -2,7 +2,7 @@ import type { FastifyInstance, FastifyRequest } from "fastify"
 import { z } from "zod"
 import { serversService } from "./service"
 import { provisionServerWorkflow } from "../../workflows/provision-server"
-import { DockerEngineService } from "../docker-engine/service"
+import { DockerEngineService, LastManagerError } from "../docker-engine/service"
 import { requireRole, currentUser } from "../auth/rbac"
 import { eventBus } from "../../lib/event-bus"
 import { runWithConcurrency, CLUSTER_CONCURRENCY } from "../../lib/concurrency"
@@ -207,8 +207,30 @@ export async function registerServersRoutes(app: FastifyInstance) {
         return reply.code(404).send({ error: "serveur introuvable" });
       if (server.swarmNodeId) {
         const engine = await DockerEngineService.forCluster(server.clusterId);
-        await engine.drainNode(server.swarmNodeId).catch(() => {});
-        await engine.removeNode(server.swarmNodeId).catch(() => {});
+        // Drain puis remove. Les échecs ne sont plus avalés en sourdine (B9) :
+        // on les logge pour qu'un nœud Swarm resté fantôme reste traçable.
+        // On supprime quand même l'enregistrement : un nœud injoignable ne doit
+        // pas bloquer la suppression voulue par l'opérateur.
+        const drainErr = await engine
+          .drainNode(server.swarmNodeId)
+          .catch((e: unknown) => e);
+        if (drainErr) {
+          console.warn(
+            `[servers] drain échoué pour ${server.swarmNodeId}: ${
+              drainErr instanceof Error ? drainErr.message : String(drainErr)
+            }`,
+          );
+        }
+        const removeErr = await engine
+          .removeNode(server.swarmNodeId)
+          .catch((e: unknown) => e);
+        if (removeErr) {
+          console.warn(
+            `[servers] remove échoué pour ${server.swarmNodeId}: ${
+              removeErr instanceof Error ? removeErr.message : String(removeErr)
+            }`,
+          );
+        }
       }
       await serversService.remove(id);
       await eventBus.emit("server.removed", {
@@ -244,17 +266,22 @@ export async function registerServersRoutes(app: FastifyInstance) {
           .code(409)
           .send({ error: "nœud pas encore joint au Swarm" });
       }
+      // Parse une seule fois, hors bloc try (le handler en a besoin après).
+      const body = setRoleBody.parse(req.body);
       try {
-        const body = setRoleBody.parse(req.body);
         const engine = await DockerEngineService.forCluster(server.clusterId);
         await engine.setNodeRole(server.swarmNodeId, body.role);
       } catch (err) {
-        const status = err instanceof TunnelError ? err.statusCode : 500;
+        // Garde HA (dernier manager) = condition métier → 409 ; tunnel → son
+        // statut ; le reste = erreur serveur (500).
+        const status =
+          err instanceof LastManagerError ? 409 :
+          err instanceof TunnelError ? err.statusCode :
+          500;
         return reply
           .code(status)
           .send({ error: err instanceof Error ? err.message : String(err) });
       }
-      const body = setRoleBody.parse(req.body);
       await serversService.update(id, { role: body.role });
       await eventBus.emit("server.role.changed", {
         serverId: id,

@@ -57,7 +57,6 @@
       "confirmButton": "Confirmer l'activation"
     }
   },
-
   "nav": {
     "projects": "Projets",
     "health": "Santé",
@@ -217,7 +216,6 @@
     },
     "empty": "Aucun serveur. Le premier ajouté devient le manager du cluster."
   },
-
   "clusters": {
     "pageTitle": "Clusters",
     "loading": "Chargement…",
@@ -225,9 +223,14 @@
       "title": "Aucun cluster",
       "description": "Un cluster « Default » est normalement créé automatiquement au premier démarrage."
     },
-    "badge": { "default": "défaut" },
+    "badge": {
+      "default": "défaut"
+    },
     "serverCount": "{{count}} serveur(s)",
-    "actions": { "create": "Nouveau cluster", "delete": "Supprimer" },
+    "actions": {
+      "create": "Nouveau cluster",
+      "delete": "Supprimer"
+    },
     "deleteConfirm": {
       "title": "Supprimer ce cluster ?",
       "description": "« {{name}} » n'est pas opérationnel (statut : {{status}}) — la suppression retire aussi tout serveur qui lui serait rattaché. Action irréversible.",
@@ -270,7 +273,11 @@
       },
       "defaultBadge": "cluster par défaut",
       "clusterBadge": "cluster",
-      "tabs": { "overview": "Vue d'ensemble", "services": "Services" },
+      "addServer": "Ajouter un serveur",
+      "tabs": {
+        "overview": "Vue d'ensemble",
+        "services": "Services"
+      },
       "quorum": {
         "title": "Quorum (HA control plane)",
         "description": "{{reachable}}/{{total}} managers joignables. Recommandé : nombre impair (3 tolère 1 panne, 5 en tolère 2).",
@@ -283,7 +290,12 @@
         "demote": "Rétrograder worker",
         "remove": "Retirer du cluster",
         "leader": "leader",
-        "empty": "Aucun serveur dans ce cluster."
+        "empty": "Aucun serveur dans ce cluster.",
+        "specs": {
+          "cpus": "{{cpus}} vCPU",
+          "ram": "{{ram}} RAM",
+          "os": "{{os}} {{arch}} · Docker {{version}}"
+        }
       },
       "removeServerConfirm": {
         "title": "Retirer ce serveur ?",
@@ -302,7 +314,6 @@
       }
     }
   },
-
   "integrations": {
     "pageTitle": "Registres de conteneurs",
     "toast": {
@@ -336,7 +347,6 @@
       "saveButton": "Enregistrer"
     }
   },
-
   "secrets": {
     "pageTitle": "Secrets",
     "clusterLabel": "Cluster",
@@ -460,6 +470,159 @@
     },
     "toast": {
       "passwordChanged": "Mot de passe modifié"
+    }
+  },
+  "updates": {
+    "version": {
+      "dev": "développement (source locale)",
+      "unknown": "inconnue"
+    },
+    "verdict": {
+      "reload": "Recharger la page",
+      "failed": "La mise à jour a échoué",
+      "checkHistory": "Vérifie l'historique pour le détail.",
+      "rolledBackDesc": "hullbay est repassé à {{version}}.",
+      "rolledBack": "Mise à jour annulée (rollback)",
+      "success": "Mise à jour terminée",
+      "successDesc": "{{from}} → {{to}} — hullbay est à jour."
+    },
+    "confirm": {
+      "rollback": "Retour arrière automatique en cas d'échec.",
+      "description": "Installer la version {{version}} sur le canal {{channel}}.",
+      "backup": "Sauvegarde de la base avant toute manipulation.",
+      "confirmButton": "Confirmer la mise à jour",
+      "intermediateBadge": "Version intermédiaire",
+      "title": "Confirmer la mise à jour",
+      "autoReversible": "La mise à jour est automatique et réversible :",
+      "progressive": "Redéploiement progressif (coupure de 2-3 s)."
+    },
+    "steps": {
+      "restore": "Restauration",
+      "status": {
+        "running": "en cours",
+        "pending": "en attente",
+        "success": "réussie",
+        "failed": "échouée"
+      },
+      "pipeline": "Finalisation",
+      "web": "Interface",
+      "backup": "Sauvegarde",
+      "api": "API",
+      "version": "Version",
+      "pull": "Images"
+    },
+    "versions": {
+      "latest": "Dernière",
+      "filterAria": "Filtrer par type de version",
+      "filter": {
+        "all": "Tous",
+        "stable": "Stable",
+        "beta": "Beta",
+        "rc": "RC"
+      },
+      "loading": "Chargement…",
+      "lessDetails": "Moins de détails",
+      "internalSource": "Source : interne",
+      "install": "Installer cette version",
+      "empty": {
+        "all": "Les releases GitHub apparaîtront ici dès leur publication.",
+        "stable": "Aucune release stable sur ce dépôt pour le moment.",
+        "title": "Aucune version publiée",
+        "rc": "Aucune release candidate (RC) pour le moment.",
+        "beta": "Aucune pré-release beta pour le moment."
+      },
+      "moreDetails": "Plus de détails",
+      "badge": {
+        "rc": "RC",
+        "beta": "Beta",
+        "stable": "Stable"
+      },
+      "viewOnGithub": "Voir sur GitHub",
+      "noNotes": "Pas de notes de version.",
+      "title": "Versions publiées"
+    },
+    "toast": {
+      "channelChanged": "Canal passé en {{channel}}",
+      "applied": "Mise à jour {{version}} appliquée",
+      "failed": "Échec de la mise à jour",
+      "applyStarted": "Mise à jour lancée — suivi en direct",
+      "rollbackDesc": "hullbay est repassé à {{version}}.",
+      "rolledBack": "Mise à jour annulée (rollback)",
+      "rollbackStarted": "Rollback lancé — suivi en direct",
+      "appliedDesc": "hullbay passe de {{from}} à {{to}}."
+    },
+    "history": {
+      "filter": {
+        "running": "En cours",
+        "failed": "Échouées",
+        "all": "Tous",
+        "success": "Réussies",
+        "rolledBack": "Annulées"
+      },
+      "card": {
+        "versionFrom": "Version début",
+        "confirmRollback": "Confirmer le rollback",
+        "end": "Fin",
+        "rollback": "Rollback",
+        "start": "Début",
+        "update": "Mise à jour",
+        "versionTo": "Version fin"
+      },
+      "loadMore": "Voir plus ({{count}} restantes)",
+      "empty": {
+        "allHint": "L'historique se remplit à chaque mise à jour ou rollback lancé.",
+        "filteredTitle": "Aucune mise à jour avec ce statut",
+        "filteredHint": "Essaie un autre filtre de statut.",
+        "allTitle": "Aucune mise à jour enregistrée"
+      },
+      "title": "Historique"
+    },
+    "pipeline": {
+      "stepFailed": "Une étape a échoué",
+      "preparing": "Pipeline en préparation…"
+    },
+    "hero": {
+      "recently": "récemment",
+      "checkFailed": "Vérification impossible (GitHub ou réseau) — réessaie plus tard.",
+      "lastCheck": "Dernière vérification : {{date}}",
+      "running": "Mise à jour en cours",
+      "degraded": "GitHub {{detail}} — dernier résultat connu.",
+      "reconnecting": "Reconnexion…",
+      "updateAvailable": "Mise à jour disponible",
+      "live": "En direct",
+      "upToDate": "Vous êtes à jour — {{version}} est la dernière version du canal {{channel}}.",
+      "latestPublished": "{{version}} publiée le {{date}} sur le canal {{channel}}.",
+      "result": "Résultat",
+      "update": "Mettre à jour"
+    },
+    "status": {
+      "running": "En cours",
+      "pending": "En attente",
+      "failed": "Échec",
+      "rolled_back": "Annulé",
+      "success": "Réussi"
+    },
+    "page": {
+      "betaToggle": "Version bêta",
+      "subtitle": "Version et canal de distribution de l'instance hullbay.",
+      "checkNow": "Vérifier maintenant",
+      "title": "Mises à jour",
+      "nonProdAlert": "Les mises à jour automatiques ne sont disponibles qu'en production. Cette instance tourne actuellement dans un autre environnement : la page reste consultable, mais l'installation d'une mise à jour est désactivée."
+    },
+    "channel": {
+      "stable": {
+        "label": "Stable",
+        "hint": "Versions testées, recommandé en production."
+      },
+      "beta": {
+        "hint": "Versions en pré-publication, peut contenir des régressions.",
+        "label": "Beta"
+      }
+    },
+    "tab": {
+      "history": "Historique",
+      "releases": "Versions publiées",
+      "ariaContenu": "Contenu"
     }
   }
 }

@@ -32,6 +32,28 @@ export interface SshConnectOptions {
   onHostKey?: (fp: string) => void
 }
 
+/** Classicise une erreur SSH en un message user lisible (plutôt qu'un raw ssh2). */
+export function classifySshError(err: unknown, opts?: SshConnectOptions): Error {
+  const raw = err instanceof Error ? err.message : String(err)
+  const host = opts?.host ?? "hôte"
+  if (/authentication methods? failed|authentication failed/i.test(raw)) {
+    return new Error(`Authentification SSH refusée sur ${host} : clé/password invalide`)
+  }
+  if (/ETIMEDOUT|timed? ?out/i.test(raw) && /connect/i.test(raw)) {
+    return new Error(`Connexion SSH à ${host} : délai dépassé (hôte injoignable ?)`)
+  }
+  if (/ECONNREFUSED/i.test(raw)) {
+    return new Error(`Connexion SSH à ${host} refusée (port fermé / pare-feu ?)`)
+  }
+  if (/handshake|host[ _]?key|fingerprint|no matching|hostkey/i.test(raw)) {
+    return new Error(`Empreinte SSH de ${host} rejetée (TOFU) : vérifie l'hôte`)
+  }
+  return new Error(`SSH: ${raw}`)
+}
+
+/** Délai d'établissement de la connexion ; un hôte muet ne doit pas pendre indéfiniment. */
+const SSH_CONNECT_TIMEOUT_MS = Number(process.env.SSH_CONNECT_TIMEOUT_MS) || 15_000
+
 export class SshSession {
   private client: Client
   private disposed = false
@@ -42,9 +64,20 @@ export class SshSession {
   static connect(opts: SshConnectOptions): Promise<SshSession> {
     return new Promise((resolve, reject) => {
       const client = new Client()
+      const onErr = (err: Error) => {
+        clearTimeout(timer)
+        reject(classifySshError(err, opts))
+      }
+      const timer = setTimeout(() => {
+        client.destroy()
+        onErr(new Error("connect ETIMEDOUT — indisponible"))
+      }, SSH_CONNECT_TIMEOUT_MS)
       client
-        .on("ready", () => resolve(new SshSession(client)))
-        .on("error", (err) => reject(new Error(`SSH: ${err.message}`)))
+        .once("ready", () => {
+          clearTimeout(timer)
+          resolve(new SshSession(client))
+        })
+        .once("error", (err) => onErr(err))
         .connect({
           host: opts.host,
           port: opts.port ?? 22,

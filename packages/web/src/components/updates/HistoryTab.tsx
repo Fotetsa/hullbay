@@ -1,14 +1,16 @@
 import { Badge, Button, Container, DropdownMenu, Heading, IconButton, Text, clx } from "@medusajs/ui"
 import { ArrowPath, ArrowUpRightMini, Check, Funnel, History } from "@medusajs/icons"
+import { useTranslation } from "react-i18next"
+import type { TFunction } from "i18next"
 import type { SystemUpdateRecord } from "../../lib/api"
-import { EmptyState, STATUS_LABELS } from "./updatesShared"
+import { EmptyState, statusLabels } from "./updatesShared"
 
-const STATUS_FILTERS: { value: string; label: string }[] = [
-  { value: "all", label: "Tous" },
-  { value: "success", label: "Réussies" },
-  { value: "failed", label: "Échouées" },
-  { value: "rolled_back", label: "Annulées" },
-  { value: "running", label: "En cours" },
+const STATUS_FILTERS: { value: string; labelKey: string }[] = [
+  { value: "all", labelKey: "updates.history.filter.all" },
+  { value: "success", labelKey: "updates.history.filter.success" },
+  { value: "failed", labelKey: "updates.history.filter.failed" },
+  { value: "rolled_back", labelKey: "updates.history.filter.rolledBack" },
+  { value: "running", labelKey: "updates.history.filter.running" },
 ]
 
 type HistoryGroup =
@@ -61,6 +63,7 @@ function HistoryCard({
   rollbackPending,
   rollbackLoading,
   disabled,
+  t,
 }: {
   update: SystemUpdateRecord
   action: "update" | "rollback"
@@ -69,8 +72,9 @@ function HistoryCard({
   rollbackPending?: boolean
   rollbackLoading?: boolean
   disabled?: boolean
+  t: TFunction
 }) {
-  const status = STATUS_LABELS[update.status] ?? { label: update.status }
+  const status = statusLabels(t)[update.status] ?? { label: update.status }
   const ActionIcon = action === "rollback" ? ArrowPath : ArrowUpRightMini
   const startDate = update.startedAt ?? update.createdAt
 
@@ -89,7 +93,9 @@ function HistoryCard({
         <Badge size="small" color={action === "rollback" ? "orange" : "blue"}>
           <span className="inline-flex items-center gap-1">
             <ActionIcon className="h-3 w-3" aria-hidden />
-            {action === "rollback" ? "Rollback" : "Mise à jour"}
+            {action === "rollback"
+              ? t("updates.history.card.rollback")
+              : t("updates.history.card.update")}
           </span>
         </Badge>
         <Badge size="small" color={status.color}>{status.label}</Badge>
@@ -102,26 +108,28 @@ function HistoryCard({
             isLoading={rollbackLoading}
             onClick={onRollback}
           >
-            {rollbackPending ? "Confirmer le rollback" : "Rollback"}
+            {rollbackPending
+              ? t("updates.history.card.confirmRollback")
+              : t("updates.history.card.rollback")}
           </Button>
         )}
       </div>
 
       <dl className="grid grid-cols-1 gap-x-6 gap-y-1 text-sm sm:grid-cols-2">
         <div className="flex items-baseline gap-2">
-          <dt className="text-ui-fg-muted">Version début</dt>
+          <dt className="text-ui-fg-muted">{t("updates.history.card.versionFrom")}</dt>
           <dd className="font-mono text-ui-fg-base">{update.fromVersion ?? "?"}</dd>
         </div>
         <div className="flex items-baseline gap-2">
-          <dt className="text-ui-fg-muted">Version fin</dt>
+          <dt className="text-ui-fg-muted">{t("updates.history.card.versionTo")}</dt>
           <dd className="font-mono text-ui-fg-base">{update.toVersion ?? "?"}</dd>
         </div>
         <div className="flex items-baseline gap-2">
-          <dt className="text-ui-fg-muted">Début</dt>
+          <dt className="text-ui-fg-muted">{t("updates.history.card.start")}</dt>
           <dd className="text-ui-fg-subtle">{new Date(startDate).toLocaleString()}</dd>
         </div>
         <div className="flex items-baseline gap-2">
-          <dt className="text-ui-fg-muted">Fin</dt>
+          <dt className="text-ui-fg-muted">{t("updates.history.card.end")}</dt>
           <dd className="text-ui-fg-subtle">
             {update.finishedAt ? new Date(update.finishedAt).toLocaleString() : "—"}
           </dd>
@@ -165,11 +173,12 @@ export function HistoryTab({
   onRollbackRequest: (id: string) => void
   onLoadMore: () => void
 }) {
+  const { t } = useTranslation()
   return (
     <section aria-labelledby="updates-history-title">
       <Container className="p-6">
         <div className="mb-4 flex items-center justify-between gap-2">
-          <Heading level="h3" id="updates-history-title">Historique</Heading>
+          <Heading level="h3" id="updates-history-title">{t("updates.history.title")}</Heading>
           <div className="flex items-center gap-2">
             {/* Mobile : dropdown icône sur la ligne du titre (masqué desktop) */}
             <div className="sm:hidden">
@@ -182,7 +191,7 @@ export function HistoryTab({
                 <DropdownMenu.Content>
                   {STATUS_FILTERS.map((f) => (
                     <DropdownMenu.Item key={f.value} onClick={() => onStatusChange(f.value)}>
-                      <span>{f.label}</span>
+                      <span>{t(f.labelKey)}</span>
                       {status === f.value && (
                         <Check className="text-ui-fg-interactive" aria-hidden />
                       )}
@@ -204,7 +213,7 @@ export function HistoryTab({
                       : "rounded-full bg-ui-bg-subtle px-3 py-1 text-xs text-ui-fg-muted hover:text-ui-fg-base"
                   }
                 >
-                  {f.label}
+                  {t(f.labelKey)}
                 </button>
               ))}
             </div>
@@ -216,13 +225,13 @@ export function HistoryTab({
             icon={History}
             title={
               status === "all"
-                ? "Aucune mise à jour enregistrée"
-                : "Aucune mise à jour avec ce statut"
+                ? t("updates.history.empty.allTitle")
+                : t("updates.history.empty.filteredTitle")
             }
             hint={
               status === "all"
-                ? "L'historique se remplit à chaque mise à jour ou rollback lancé."
-                : "Essaie un autre filtre de statut."
+                ? t("updates.history.empty.allHint")
+                : t("updates.history.empty.filteredHint")
             }
           />
         ) : (
@@ -237,6 +246,7 @@ export function HistoryTab({
                     update={g.update}
                     action="rollback"
                     highlighted={g.update.id === trackedId}
+                    t={t}
                   />
                 )
               }
@@ -250,6 +260,7 @@ export function HistoryTab({
                     rollbackPending={pendingRollback === g.update.id}
                     rollbackLoading={rollbackLoading}
                     disabled={running}
+                    t={t}
                   />
                   {g.rollbacks.map((rb) => (
                     <HistoryCard
@@ -257,6 +268,7 @@ export function HistoryTab({
                       update={rb}
                       action="rollback"
                       highlighted={rb.id === trackedId}
+                      t={t}
                     />
                   ))}
                 </div>
@@ -273,7 +285,9 @@ export function HistoryTab({
             isLoading={fetching}
             onClick={onLoadMore}
           >
-            Voir plus ({Math.max(0, (total ?? 0) - items.length - offset)} restantes)
+            {t("updates.history.loadMore", {
+              count: Math.max(0, (total ?? 0) - items.length - offset),
+            })}
           </Button>
         )}
       </Container>

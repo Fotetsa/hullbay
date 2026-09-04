@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { useQuery } from "@tanstack/react-query"
 import {
   Button,
@@ -22,7 +22,7 @@ import { useProvisionLog } from "../lib/useProvisionLog"
 import { PageHeader, PageContainer } from "../components/PageHeader"
 import { ActionMenu } from "../components/ActionMenu"
 import { ModalForm } from "../components/ModalForm"
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 
 const STATUS_COLOR: Record<string, "green" | "orange" | "red" | "grey"> = {
   ready: "green",
@@ -38,6 +38,10 @@ export function ServersPage() {
   
   const { data } = useQuery({ queryKey: ["servers"], queryFn: api.listServers })
   const { data: clusters } = useQuery({ queryKey: ["clusters"], queryFn: api.listClusters})
+
+  // Arrivée depuis la page Cluster (bouton "Ajouter un serveur") via ?cluster=… :
+  // pré-sélectionne le cluster et ouvre directement le formulaire.
+  const [searchParams, setSearchParams] = useSearchParams();
   const [open, setOpen] = useState(false)
   const { lines, clear } = useProvisionLog(open)
 
@@ -55,6 +59,25 @@ export function ServersPage() {
   const [clusterMode, setClusterMode] = useState<"existing" | "new">(clusters?.length ? "existing" : "new")
   const [selectedClusterId, setSelectedClusterId] = useState<string>("");
   const [newClusterName, setNewClusterName] = useState("");
+
+  const preselectFromUrl = () => {
+    const wanted = searchParams.get("cluster");
+    if (wanted && clusters?.some((c) => c.id === wanted)) {
+      setSelectedClusterId(wanted);
+      setClusterMode("existing");
+      clear();
+      setOpen(true);
+      // Nettoie l'URL pour que recharger la page ne rouvre pas le formulaire.
+      setSearchParams({}, { replace: true });
+    }
+  };
+
+  useEffect(() => {
+    if (searchParams.get("cluster")) {
+      preselectFromUrl();
+    }
+
+  }, [clusters, searchParams]);
 
   const provision = useMutationToast({
     mutationFn: () =>
