@@ -22,6 +22,13 @@ export type NodeHealth = {
   state: string // ready | down | unknown
   availability: string // active | pause | drain
   leader: boolean
+  /** Capacité brute du nœud exposée par Docker (0 = non renseigné). */
+  memoryBytes: number
+  nanoCpus: number
+  /** OS / arch du nœud (audit & conformité). */
+  os: string
+  architecture: string
+  dockerVersion: string
 }
 
 /** Placement d'une task d'un service, enrichi du hostname du nœud (lisible). */
@@ -90,6 +97,11 @@ export class ObservabilityService {
       state: n.Status?.State ?? "unknown",
       availability: n.Spec?.Availability ?? "active",
       leader: Boolean(n.ManagerStatus?.Leader),
+      memoryBytes: n.Description?.Resources?.MemoryBytes ?? 0,
+      nanoCpus: n.Description?.Resources?.NanoCPUs ?? 0,
+      os: n.Description?.Platform?.OS ?? "?",
+      architecture: n.Description?.Platform?.Architecture ?? "?",
+      dockerVersion: n.Description?.Engine?.EngineVersion ?? "?",
     }))
 
     // nodeId -> hostname pour rendre les placements lisibles.
@@ -217,7 +229,12 @@ export function registerObservabilitySubscribers(): void {
 
 type RawNode = {
   ID?: string
-  Description?: { Hostname?: string }
+  Description?: {
+    Hostname?: string
+    Platform?: { OS?: string; Architecture?: string }
+    Engine?: { EngineVersion?: string }
+    Resources?: { MemoryBytes?: number; NanoCPUs?: number }
+  }
   Spec?: { Role?: string; Availability?: string }
   Status?: { State?: string }
   ManagerStatus?: { Leader?: boolean }

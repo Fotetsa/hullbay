@@ -10,6 +10,7 @@ import {
   ArrowDownMini,
   Trash,
   CircleMiniSolid,
+  Plus,
 } from "@medusajs/icons";
 import { api, type Server } from "../lib/api";
 import { useMutationToast } from "../lib/useMutationToast";
@@ -20,7 +21,7 @@ import { ActionMenu } from "../components/ActionMenu";
 const STATUS_COLOR: Record<string, "green" | "orange" | "red" | "grey"> = {
   ready: "green",
   provisioning: "orange",
-  error: "grey",
+  error: "red",
   draining: "orange",
   down: "red",
 };
@@ -116,7 +117,11 @@ export function ClusterDetailPage() {
   const managersReachable =
     health?.nodes.filter((n) => n.role === "manager" && n.state === "ready")
       .length ?? 0;
-  const quorumOk = managersTotal === 0 || managersReachable > managersTotal / 2;
+  // Aligné sur la garde backend (docker-engine.managerHealth) : le quorum exige
+  // une MAJORITÉ STRICTE des managers joignables — sans aucun manager, il n'y a
+  // pas de quorum (un Swarm exige au moins un manager).
+  const quorumOk =
+    managersTotal > 0 && managersReachable > Math.floor(managersTotal / 2);
 
   return (
     <PageContainer>
@@ -133,14 +138,23 @@ export function ClusterDetailPage() {
       <PageHeader
         title={cluster.name}
         actions={
-          <Badge
-            color={CLUSTER_STATUS_COLOR[cluster.status] ?? "grey"}
-            size="small"
-          >
-            {cluster.isDefault
-              ? t("clusters.detail.defaultBadge")
-              : t("clusters.detail.clusterBadge")}
-          </Badge>
+          <div className="flex items-center gap-2">
+            <Badge
+              color={CLUSTER_STATUS_COLOR[cluster.status] ?? "grey"}
+              size="small"
+            >
+              {cluster.isDefault
+                ? t("clusters.detail.defaultBadge")
+                : t("clusters.detail.clusterBadge")}
+            </Badge>
+            <Button
+              variant="primary"
+              size="small"
+              onClick={() => navigate(`/servers?cluster=${cluster.id}`)}
+            >
+              <Plus /> {t("clusters.detail.addServer")}
+            </Button>
+          </div>
         }
       />
 
@@ -226,6 +240,29 @@ export function ClusterDetailPage() {
                       <Text size="small" className="text-ui-fg-subtle">
                         {srv.user}@{srv.host}:{srv.port}
                       </Text>
+                      {nodeHealth && nodeHealth.memoryBytes > 0 && (
+                        <Text size="xsmall" className="text-ui-fg-subtle">
+                          {[
+                            t("clusters.detail.server.specs.cpus", {
+                              cpus:
+                                Math.round(nodeHealth.nanoCpus / 1e9) || "?",
+                            }),
+                            t("clusters.detail.server.specs.ram", {
+                              ram: `${(
+                                nodeHealth.memoryBytes /
+                                1024 /
+                                1024 /
+                                1024
+                              ).toFixed(0)} GiB`,
+                            }),
+                            t("clusters.detail.server.specs.os", {
+                              os: nodeHealth.os,
+                              arch: nodeHealth.architecture,
+                              version: nodeHealth.dockerVersion,
+                            }),
+                          ].join(" · ")}
+                        </Text>
+                      )}
                       {srv.lastError && (
                         <Text size="xsmall" className="text-ui-fg-error">
                           {srv.lastError}

@@ -61,8 +61,6 @@ export function App() {
           </Route>
 
           <Route path="*" element={<Navigate to="/" replace />} />
-
-          <Route path="/clusters/:clusterId" element={<ClusterDetailPage />} />
         </Routes>
       </DomainGate>
     </MeProvider>

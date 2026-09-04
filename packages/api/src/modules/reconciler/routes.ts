@@ -130,6 +130,19 @@ export async function registerReconcilerRoutes(app: FastifyInstance) {
       const graph = await projectsService.getProjectGraph(id);
       if (!graph) return reply.code(404).send({ error: "project not found" });
 
+      // Garde : refuser le deploy si le cluster cible n'est pas prêt ou si
+      // son Swarm est inactif — ne pas lancer un workflow voué à l'échec.
+      const cluster = await prisma.cluster.findUnique({
+        where: { id: graph.clusterId },
+      });
+      if (!cluster || cluster.status !== "ready") {
+        return reply.code(409).send({ error: "cluster non prêt au déploiement" });
+      }
+      const deployEngine = await DockerEngineService.forCluster(graph.clusterId);
+      if (!(await deployEngine.isSwarmActive())) {
+        return reply.code(503).send({ error: "Swarm inactif sur le cluster" });
+      }
+
       const userId = currentUser(req)?.sub;
       deployingProjects.add(id);
       await eventBus.emit("deploy.started", { projectId: id, userId });

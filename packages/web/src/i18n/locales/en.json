@@ -223,9 +223,14 @@
       "title": "No clusters",
       "description": "A « Default » cluster is normally created automatically on first startup."
     },
-    "badge": { "default": "default" },
+    "badge": {
+      "default": "default"
+    },
     "serverCount": "{{count}} server(s)",
-    "actions": { "create": "New cluster", "delete": "Delete" },
+    "actions": {
+      "create": "New cluster",
+      "delete": "Delete"
+    },
     "deleteConfirm": {
       "title": "Delete this cluster?",
       "description": "\"{{name}}\" is not operational (status: {{status}}) — deleting it also removes any attached server. This action is irreversible.",
@@ -268,7 +273,11 @@
       },
       "defaultBadge": "default cluster",
       "clusterBadge": "cluster",
-      "tabs": { "overview": "Overview", "services": "Services" },
+      "addServer": "Add server",
+      "tabs": {
+        "overview": "Overview",
+        "services": "Services"
+      },
       "quorum": {
         "title": "Quorum (HA control plane)",
         "description": "{{reachable}}/{{total}} managers reachable. Recommended: odd number (3 tolerates 1 failure, 5 tolerates 2).",
@@ -281,7 +290,12 @@
         "demote": "Demote to worker",
         "remove": "Remove from cluster",
         "leader": "leader",
-        "empty": "No servers in this cluster."
+        "empty": "No servers in this cluster.",
+        "specs": {
+          "cpus": "{{cpus}} vCPU",
+          "ram": "{{ram}} RAM",
+          "os": "{{os}} {{arch}} · Docker {{version}}"
+        }
       },
       "removeServerConfirm": {
         "title": "Remove this server?",
@@ -456,6 +470,159 @@
     },
     "toast": {
       "passwordChanged": "Password changed"
+    }
+  },
+  "updates": {
+    "version": {
+      "dev": "development (local source)",
+      "unknown": "unknown"
+    },
+    "verdict": {
+      "reload": "Reload page",
+      "failed": "The update failed",
+      "checkHistory": "Check the history for details.",
+      "rolledBackDesc": "hullbay has been restored to {{version}}.",
+      "rolledBack": "Update cancelled (rollback)",
+      "success": "Update complete",
+      "successDesc": "{{from}} → {{to}} — hullbay is up to date."
+    },
+    "confirm": {
+      "rollback": "Automatic rollback on failure.",
+      "description": "Install version {{version}} on the {{channel}} channel.",
+      "backup": "Database backup before any operation.",
+      "confirmButton": "Confirm update",
+      "intermediateBadge": "Intermediate version",
+      "title": "Confirm update",
+      "autoReversible": "The update is automatic and reversible:",
+      "progressive": "Progressive redeployment (2-3 s downtime)."
+    },
+    "steps": {
+      "restore": "Restore",
+      "status": {
+        "running": "in progress",
+        "pending": "pending",
+        "success": "succeeded",
+        "failed": "failed"
+      },
+      "pipeline": "Finalization",
+      "web": "Interface",
+      "backup": "Backup",
+      "api": "API",
+      "version": "Version",
+      "pull": "Images"
+    },
+    "versions": {
+      "latest": "Latest",
+      "filterAria": "Filter by version type",
+      "filter": {
+        "all": "All",
+        "stable": "Stable",
+        "beta": "Beta",
+        "rc": "RC"
+      },
+      "loading": "Loading…",
+      "lessDetails": "Less details",
+      "internalSource": "Source: internal",
+      "install": "Install this version",
+      "empty": {
+        "all": "GitHub releases will appear here as soon as they are published.",
+        "stable": "No stable release on this repository at the moment.",
+        "title": "No published version",
+        "rc": "No release candidate (RC) at the moment.",
+        "beta": "No beta pre-release at the moment."
+      },
+      "moreDetails": "More details",
+      "badge": {
+        "rc": "RC",
+        "beta": "Beta",
+        "stable": "Stable"
+      },
+      "viewOnGithub": "View on GitHub",
+      "noNotes": "No release notes.",
+      "title": "Published versions"
+    },
+    "toast": {
+      "channelChanged": "Channel changed to {{channel}}",
+      "applied": "Update {{version}} applied",
+      "failed": "Update failed",
+      "applyStarted": "Update started — live tracking",
+      "rollbackDesc": "hullbay has been restored to {{version}}.",
+      "rolledBack": "Update cancelled (rollback)",
+      "rollbackStarted": "Rollback started — live tracking",
+      "appliedDesc": "hullbay goes from {{from}} to {{to}}."
+    },
+    "history": {
+      "filter": {
+        "running": "In progress",
+        "failed": "Failed",
+        "all": "All",
+        "success": "Succeeded",
+        "rolledBack": "Cancelled"
+      },
+      "card": {
+        "versionFrom": "Start version",
+        "confirmRollback": "Confirm rollback",
+        "end": "End",
+        "rollback": "Rollback",
+        "start": "Start",
+        "update": "Update",
+        "versionTo": "End version"
+      },
+      "loadMore": "Show more ({{count}} remaining)",
+      "empty": {
+        "allHint": "History fills up with each update or rollback launched.",
+        "filteredTitle": "No update with this status",
+        "filteredHint": "Try another status filter.",
+        "allTitle": "No update recorded"
+      },
+      "title": "History"
+    },
+    "pipeline": {
+      "stepFailed": "A step failed",
+      "preparing": "Preparing pipeline…"
+    },
+    "hero": {
+      "recently": "recently",
+      "checkFailed": "Check failed (GitHub or network) — try again later.",
+      "lastCheck": "Last check: {{date}}",
+      "running": "Update in progress",
+      "degraded": "GitHub {{detail}} — last known result.",
+      "reconnecting": "Reconnecting…",
+      "updateAvailable": "Update available",
+      "live": "Live",
+      "upToDate": "You are up to date — {{version}} is the latest version on the {{channel}} channel.",
+      "latestPublished": "{{version}} published on {{date}} on the {{channel}} channel.",
+      "result": "Result",
+      "update": "Update"
+    },
+    "status": {
+      "running": "In progress",
+      "pending": "Pending",
+      "failed": "Failed",
+      "rolled_back": "Cancelled",
+      "success": "Succeeded"
+    },
+    "page": {
+      "betaToggle": "Beta version",
+      "subtitle": "Version and distribution channel of the hullbay instance.",
+      "checkNow": "Check now",
+      "title": "Updates",
+      "nonProdAlert": "Automatic updates are only available in production. This instance is currently running in another environment: the page remains viewable, but installing an update is disabled."
+    },
+    "channel": {
+      "stable": {
+        "label": "Stable",
+        "hint": "Tested versions, recommended for production."
+      },
+      "beta": {
+        "hint": "Pre-release versions, may contain regressions.",
+        "label": "Beta"
+      }
+    },
+    "tab": {
+      "history": "History",
+      "releases": "Published versions",
+      "ariaContenu": "Content"
     }
   }
 }

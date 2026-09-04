@@ -4,6 +4,7 @@ import {
   ArrowUpRightMini, Beaker, CheckCircle, ChevronDown, ChevronUpMini,
   CloudArrowDown, DocumentSeries, Layers3, Tag,
 } from "@medusajs/icons"
+import { useTranslation } from "react-i18next"
 import type { UpdateRelease } from "../../lib/api"
 import { EmptyState, releaseType } from "./updatesShared"
 
@@ -22,9 +23,9 @@ function isNewer(a: string, b: string): boolean {
 }
 
 /** Mini-rendu markdown des notes de version (titres, listes, texte) — sans dépendance. */
-function Notes({ text, clamp = false }: { text: string; clamp?: boolean }) {
+function Notes({ text, clamp = false, t }: { text: string; clamp?: boolean; t: (k: string) => string }) {
   if (!text.trim()) {
-    return <Text size="small" className="text-ui-fg-muted">Pas de notes de version.</Text>
+    return <Text size="small" className="text-ui-fg-muted">{t("updates.versions.noNotes")}</Text>
   }
   // Retire les références issues/PR (#123) et les liens issues/pulls/commits.
   const stripRefs = (s: string) =>
@@ -76,10 +77,10 @@ function Notes({ text, clamp = false }: { text: string; clamp?: boolean }) {
 }
 
 const RELEASE_FILTERS = [
-  { value: "all", label: "Tous", icon: Layers3 },
-  { value: "stable", label: "Stable", icon: CheckCircle },
-  { value: "beta", label: "Beta", icon: Beaker },
-  { value: "rc", label: "RC", icon: Tag },
+  { value: "all", labelKey: "updates.versions.filter.all", icon: Layers3 },
+  { value: "stable", labelKey: "updates.versions.filter.stable", icon: CheckCircle },
+  { value: "beta", labelKey: "updates.versions.filter.beta", icon: Beaker },
+  { value: "rc", labelKey: "updates.versions.filter.rc", icon: Tag },
 ] as const
 
 export type ReleaseFilter = (typeof RELEASE_FILTERS)[number]["value"]
@@ -109,14 +110,15 @@ export function VersionsTab({
   running: boolean
   onInstall: (version: string) => void
 }) {
+  const { t } = useTranslation()
   return (
     <section aria-labelledby="updates-releases-title">
       <Container className="p-6">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-          <Heading level="h3" id="updates-releases-title">Versions publiées</Heading>
+          <Heading level="h3" id="updates-releases-title">{t("updates.versions.title")}</Heading>
           <div
             role="group"
-            aria-label="Filtrer par type de version"
+            aria-label={t("updates.versions.filterAria")}
             className="flex w-full flex-wrap rounded-md border border-ui-border-base bg-ui-bg-subtle p-0.5 sm:w-auto sm:flex-nowrap"
           >
             {RELEASE_FILTERS.map((f) => {
@@ -136,26 +138,26 @@ export function VersionsTab({
                   )}
                 >
                   <Icon />
-                  {f.label}
+                  {t(f.labelKey)}
                 </button>
               )
             })}
           </div>
         </div>
         {loading ? (
-          <Text size="small" className="text-ui-fg-muted">Chargement…</Text>
+          <Text size="small" className="text-ui-fg-muted">{t("updates.versions.loading")}</Text>
         ) : releases.length === 0 ? (
           <EmptyState
             icon={DocumentSeries}
-            title="Aucune version publiée"
+            title={t("updates.versions.empty.title")}
             hint={
               filter === "all"
-                ? "Les releases GitHub apparaîtront ici dès leur publication."
+                ? t("updates.versions.empty.all")
                 : filter === "rc"
-                  ? "Aucune release candidate (RC) pour le moment."
+                  ? t("updates.versions.empty.rc")
                   : filter === "beta"
-                    ? "Aucune pré-release beta pour le moment."
-                    : "Aucune release stable sur ce dépôt pour le moment."
+                    ? t("updates.versions.empty.beta")
+                    : t("updates.versions.empty.stable")
             }
           />
         ) : (
@@ -181,9 +183,9 @@ export function VersionsTab({
                         className="gap-x-1"
                       >
                         {type === "stable" ? <CheckCircle /> : type === "rc" ? <Tag /> : <Beaker />}
-                        {type === "stable" ? "Stable" : type === "rc" ? "RC" : "Beta"}
+                        {t(`updates.versions.badge.${type}`)}
                       </Badge>
-                      {i === 0 && <Badge color="blue" size="small">Dernière</Badge>}
+                      {i === 0 && <Badge color="blue" size="small">{t("updates.versions.latest")}</Badge>}
                     </div>
                     <span className="text-xs text-ui-fg-muted">
                       {r.publishedAt ? new Date(r.publishedAt).toLocaleDateString() : ""}
@@ -192,7 +194,7 @@ export function VersionsTab({
 
                   {/* Notes de version */}
                   <div>
-                    <Notes text={r.notes} clamp={!expanded} />
+                    <Notes text={r.notes} clamp={!expanded} t={t} />
                   </div>
 
                   {/* Actions : installer / GitHub / plus de détails */}
@@ -207,7 +209,7 @@ export function VersionsTab({
                           onClick={() => onInstall(r.version)}
                         >
                           <CloudArrowDown />
-                          Installer cette version
+                          {t("updates.versions.install")}
                         </Button>
                       )}
                       {r.url ? (
@@ -219,11 +221,11 @@ export function VersionsTab({
                         >
                           <a href={r.url} target="_blank" rel="noreferrer">
                             <ArrowUpRightMini />
-                            Voir sur GitHub
+                            {t("updates.versions.viewOnGithub")}
                           </a>
                         </Button>
                       ) : (
-                        <span className="text-xs text-ui-fg-muted">Source : interne</span>
+                        <span className="text-xs text-ui-fg-muted">{t("updates.versions.internalSource")}</span>
                       )}
                     </div>
                     <Button
@@ -233,7 +235,7 @@ export function VersionsTab({
                       onClick={() => onToggle(r.tag)}
                     >
                       {expanded ? <ChevronUpMini /> : <ChevronDown />}
-                      {expanded ? "Moins de détails" : "Plus de détails"}
+                      {expanded ? t("updates.versions.lessDetails") : t("updates.versions.moreDetails")}
                     </Button>
                   </div>
                 </li>

@@ -21,6 +21,19 @@ export class ImageUnavailableError extends Error {
 }
 
 /**
+ * Garde HA : levée quand on tente de rétrograder le DERNIER manager d'un Swarm
+ * (total <= 1). Traduite en 409 par la route servers/:id/role.
+ */
+export class LastManagerError extends Error {
+  constructor() {
+    super(
+      "Impossible de rétrograder le dernier manager : le cluster perdrait tout le control plane Swarm. Ajoute un autre manager d'abord.",
+    )
+    this.name = "LastManagerError"
+  }
+}
+
+/**
  * Wrapper dockerode — mode DOCKER SWARM (services). Chaque "conteneur" du canvas
  * est un SERVICE répliqué : load balancing natif (routing mesh), rolling update
  * zero-downtime, self-healing. Pose toujours nos labels bozando.* (sur le service
@@ -116,28 +129,6 @@ export class DockerEngineService {
     return this.docker.listNodes()
   }
 
-  /**
-   * Récupère le join-token (worker ou manager) du Swarm + l'adresse du manager.
-   * Nécessaire pour faire rejoindre un nouveau serveur au cluster.
-   */
-  async getSwarmJoinInfo(role: "worker" | "manager" = "worker"): Promise<{
-    token: string
-    managerAddr: string
-  }> {
-    const sw = (await this.docker.swarmInspect()) as {
-      JoinTokens?: { Worker?: string; Manager?: string }
-    }
-    const info = (await this.docker.info()) as {
-      Swarm?: { NodeAddr?: string; RemoteManagers?: { Addr?: string }[] }
-    }
-    const token = role === "manager" ? sw.JoinTokens?.Manager : sw.JoinTokens?.Worker
-    const addr =
-      info.Swarm?.RemoteManagers?.[0]?.Addr ||
-      (info.Swarm?.NodeAddr ? `${info.Swarm.NodeAddr}:2377` : "")
-    if (!token || !addr) throw new Error("Swarm join info indisponible (manager actif requis)")
-    return { token, managerAddr: addr }
-  }
-
   /** Retire un nœud du cluster (après drain). Tolérant si déjà absent. */
   async removeNode(swarmNodeId: string) {
     try {
@@ -154,7 +145,18 @@ export class DockerEngineService {
    */
   async setNodeRole(swarmNodeId: string, role: "manager" | "worker") {
     const node = this.docker.getNode(swarmNodeId)
-    const info = (await node.inspect()) as { Version?: { Index?: number }; Spec?: object }
+    const info = (await node.inspect()) as {
+      Version?: { Index?: number }
+      Spec?: { Role?: string; Availability?: string }
+    }
+    // Garde HA (A5) : interdire la rétrogradation du DERNIER manager — un Swarm
+    // sans manager perd tout control plane (aucune façon de rejoindre/gérer).
+    if (role === "worker" && info.Spec?.Role === "manager") {
+      const { total } = await this.managerHealth()
+      if (total <= 1) {
+        throw new LastManagerError()
+      }
+    }
     await node.update({
       version: info.Version?.Index,
       ...(info.Spec as object),
