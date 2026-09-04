@@ -1,5 +1,38 @@
 # Changelog
 
+## [1.3.0](https://github.com/Fotetsa/hullbay/compare/v1.2.4...v1.3.0) (2026-09-04)
+
+
+### Features
+
+* **api,web:** nœud database (Postgres/mysql/mongodb/redis) HA  v1 (expansion, rétention, rebuild) ([#112](https://github.com/Fotetsa/hullbay/issues/112)) ([b862cc8](https://github.com/Fotetsa/hullbay/commit/b862cc8c7ca54117073f8333938aa4f14b8ae7bb))
+* **api:** remplacer image Patroni par custom GHCR (HA déployable) ([#133](https://github.com/Fotetsa/hullbay/issues/133)) ([5794b29](https://github.com/Fotetsa/hullbay/commit/5794b291138753ec7a1b3f7af6f61c8d938b2542))
+* gestion des environnements dev/test/prod ([#126](https://github.com/Fotetsa/hullbay/issues/126)) ([2342edd](https://github.com/Fotetsa/hullbay/commit/2342edd328cb353ed5940e2e70d62a2192ee826e))
+* multi cluster ([#77](https://github.com/Fotetsa/hullbay/issues/77)) ([f169c6f](https://github.com/Fotetsa/hullbay/commit/f169c6f9d07302a8a7b8cff36a75abb91be866df))
+* pages clusters corrections des conflis ([4a54a91](https://github.com/Fotetsa/hullbay/commit/4a54a916e63b7aa1c7a956a5dbb3fbded393e1d3))
+* **updates:** ajouter la mise à jour automatisée de hullbay ([#74](https://github.com/Fotetsa/hullbay/issues/74)) ([4333d9b](https://github.com/Fotetsa/hullbay/commit/4333d9ba3bad7338ec90393ee4f8d16b357ec787))
+* **web:** add custom database icon to resolve visual confusion with volume and implement replicas design ([#134](https://github.com/Fotetsa/hullbay/issues/134)) ([a9d22ae](https://github.com/Fotetsa/hullbay/commit/a9d22ae8c60eb4c7c0dcedfd5307ac6760149516))
+* **web:** add theme toggle ([#106](https://github.com/Fotetsa/hullbay/issues/106)) ([c3a8878](https://github.com/Fotetsa/hullbay/commit/c3a88780a2abf3c7e541b45cd1ea5ff8065ce798))
+* **web:** la base arrive avec son reseau dedie sur le canvas ([#131](https://github.com/Fotetsa/hullbay/issues/131)) ([46f4569](https://github.com/Fotetsa/hullbay/commit/46f456995d3038b1952725550d298c4750bf27fa))
+
+
+### Bug Fixes
+
+* ameliore integrite des suppressions de cluster db et ui ([#121](https://github.com/Fotetsa/hullbay/issues/121)) ([458c106](https://github.com/Fotetsa/hullbay/commit/458c106dfa4bcd34ff426bd3c6ce34f88ad1fef1))
+* **api,infra:** durcissement du provisioning multi-cluster ([#104](https://github.com/Fotetsa/hullbay/issues/104)) ([84b4ba3](https://github.com/Fotetsa/hullbay/commit/84b4ba381cf6d48fe6aa788083d1c1428bd81c1f))
+* **api,web:** corriger bugs recette (Caddy, pull timeout, clusterId, … ([#122](https://github.com/Fotetsa/hullbay/issues/122)) ([249d209](https://github.com/Fotetsa/hullbay/commit/249d20981091b8d7af25bf5189c9815fc7e3b2c9))
+* **api:** corriger le tag d'image (préfixe v) et le pull des updates ([#135](https://github.com/Fotetsa/hullbay/issues/135)) ([5cc3216](https://github.com/Fotetsa/hullbay/commit/5cc3216cdd3049c24f4fb9fcfe8ecdefaf13ebfc))
+* **api:** fiabiliser les clusters swarm multi-machines (SSH direct, Caddy) ([#110](https://github.com/Fotetsa/hullbay/issues/110)) ([c4a7b1c](https://github.com/Fotetsa/hullbay/commit/c4a7b1c21e473d4f3502e760d6fd80db51557320))
+* **api:** resynchroniser la version deployee et trier les releases par date ([#128](https://github.com/Fotetsa/hullbay/issues/128)) ([d46f153](https://github.com/Fotetsa/hullbay/commit/d46f153d79feac1b156e271e2d6d13c29ab191ed))
+* **api:** sortir PATRONI_RESTAPI_PASSWORD de l'env (config-secret + fichier) ([#113](https://github.com/Fotetsa/hullbay/issues/113)) ([300d164](https://github.com/Fotetsa/hullbay/commit/300d164d7d1b6d3fb3c9c144243839b2125ef77f))
+* **cluster:** corriger la provision multi-cluster sur machines distantes ([#102](https://github.com/Fotetsa/hullbay/issues/102)) ([c8f6aa3](https://github.com/Fotetsa/hullbay/commit/c8f6aa311fe501a3b79f80be9e96cd3adb9c8781))
+* feature/i18n setup ([#76](https://github.com/Fotetsa/hullbay/issues/76)) ([a573253](https://github.com/Fotetsa/hullbay/commit/a5732536e122ee56d54fba199b7f6411e3b804e5))
+* parcourt boostrap jusqaua la config du domain ([#38](https://github.com/Fotetsa/hullbay/issues/38)) ([55df685](https://github.com/Fotetsa/hullbay/commit/55df685ad8f4b9a693af9194d5aa4bf2f22c2c40))
+* **provisioning:** sécurisation de la création de cluster et garantir l'atomicité des états ([#87](https://github.com/Fotetsa/hullbay/issues/87)) ([cd382c1](https://github.com/Fotetsa/hullbay/commit/cd382c15030d27e62012a0b0fb6d584573c8c1cc))
+* refactoriser le service de cluster et resoudre les conflits ([#109](https://github.com/Fotetsa/hullbay/issues/109)) ([1b538f3](https://github.com/Fotetsa/hullbay/commit/1b538f37319cd5fe9be9981b66806bbfa7806fd4))
+* **settings:** corriger la route domaine, navigation et badge canal ([#86](https://github.com/Fotetsa/hullbay/issues/86)) ([4cbbca6](https://github.com/Fotetsa/hullbay/commit/4cbbca612b39474b16d00efceeb04b69951d21a2))
+* **web:** corriger et compléter l'i18n (détection langue, sélecteur, nav, health) ([9f0e61c](https://github.com/Fotetsa/hullbay/commit/9f0e61c70e6c75c27fe1c16e95e8d828e06bcedc))
+
 ## [1.2.4](https://github.com/Fotetsa/hullbay/compare/v1.2.3...v1.2.4) (2026-08-08)
 
 
