@@ -7,7 +7,7 @@
 #
 # Matrice PG figée volontairement (14,15,16,17,18) : c'est une décision produit
 # stable, pas une valeur qui doit varier à chaque run. Pour ajouter/retirer une
-# version PG supportée, modifier PG_MAJORS ci-dessous, pas passer un input.
+# version PG supportée, modifier directement la liste dans `strategy.matrix`.
 #
 # Déclenchement :
 #   - manuel (workflow_dispatch) : on peut forcer une version précise, ou laisser
@@ -23,8 +23,6 @@ on:
         description: "Version Patroni à build (ex. 3.3.0). Vide = dernière upstream."
         required: false
         type: string
-env:
-  PG_MAJORS: '["14","15","16","17","18"]'
 permissions:
   contents: write
   pull-requests: write
@@ -95,7 +93,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        pg: ${{ fromJson(env.PG_MAJORS) }}
+        pg: ["14", "15", "16", "17", "18"]
     steps:
       - name: Checkout
         uses: actions/checkout@v6
