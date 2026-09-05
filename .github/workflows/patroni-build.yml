@@ -107,6 +107,12 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
+      - name: Normaliser le nom du repository en minuscules
+        # Docker exige un nom de repository entièrement en minuscules ; github.repository
+        # conserve la casse exacte du dépôt GitHub (ex. "Fotetsa/hullbay"), ce qui fait
+        # échouer le tag si le owner ou le nom contient une majuscule.
+        id: repo
+        run: echo "lc=$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
       - name: Build & Push patroni
         uses: docker/build-push-action@v7
         with:
@@ -118,4 +124,4 @@ jobs:
             PATRONI_VERSION=${{ needs.prepare.outputs.version }}
           # Tag aligné sur la VERSION DE PATRONI + major PG (ex. v3.3.0-pg17).
           # Préfixe `v` cohérent avec la convention ghcr. Pas de latest : fixe.
-          tags: ghcr.io/${{ github.repository }}/patroni:v${{ needs.prepare.outputs.version }}-pg${{ matrix.pg }}
+          tags: ghcr.io/${{ steps.repo.outputs.lc }}/patroni:v${{ needs.prepare.outputs.version }}-pg${{ matrix.pg }}
