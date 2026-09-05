@@ -120,4 +120,17 @@ describe("GET /api/health/cluster", () => {
 
     expect(response.statusCode).toBe(500);
   });
+
+  it("B5 — /api/drift retourne un objet { drift } (pas undefined)", async () => {
+    const response = await app.inject({
+      method: "GET",
+      url: "/api/drift",
+      headers: { authorization: `Bearer ${mockViewerToken}` },
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = response.json();
+    expect(body).toHaveProperty("drift");
+    expect(Array.isArray(body.drift)).toBe(true);
+  });
 });

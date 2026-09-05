@@ -226,3 +226,50 @@ describe("ClusterService.createPending", () => {
     });
   });
 });
+
+describe("ClusterService.markFailed (B4)", () => {
+  let service: ClusterService;
+  let errorSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    service = new ClusterService();
+    errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+  });
+
+  it("passe le statut à 'failed' et émet cluster.status", async () => {
+    mockPrisma.cluster.update.mockResolvedValue({ id: "c1", status: "failed" });
+    mockEventBus.emit.mockResolvedValue(true);
+
+    await service.markFailed("c1");
+
+    expect(mockPrisma.cluster.update).toHaveBeenCalledWith({
+      where: { id: "c1" },
+      data: { status: "failed" },
+    });
+    expect(mockEventBus.emit).toHaveBeenCalledWith(
+      "cluster.status",
+      expect.objectContaining({ clusterId: "c1", to: "failed" }),
+    );
+    expect(errorSpy).not.toHaveBeenCalled();
+  });
+
+  it("ne gobe plus l'échec DB (B4) : log + rethrow, pas d'emit erroné", async () => {
+    mockPrisma.cluster.update.mockRejectedValue(new Error("DB down"));
+    mockEventBus.emit.mockResolvedValue(true);
+
+    await expect(service.markFailed("c1")).rejects.toThrow("DB down");
+    expect(errorSpy).toHaveBeenCalled();
+    expect(mockEventBus.emit).not.toHaveBeenCalled();
+  });
+
+  it("logge l'échec de l'event sans rethrow (le statut DB est déjà posé)", async () => {
+    mockPrisma.cluster.update.mockResolvedValue({ id: "c1", status: "failed" });
+    mockEventBus.emit.mockRejectedValue(new Error("bus down"));
+
+    await expect(service.markFailed("c1")).resolves.toBeUndefined();
+    expect(errorSpy).toHaveBeenCalled();
+    const calls = errorSpy.mock.calls.map((c: unknown[]) => c.join(" "));
+    expect(calls.some((c: string) => c.includes("échec emit cluster.status") && c.includes("bus down"))).toBe(true);
+  });
+});
