@@ -72,6 +72,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+        with:
+          persist-credentials: false
       - name: Bumper la version dans le Dockerfile
         run: |
           VERSION="${{ needs.prepare.outputs.version }}"
