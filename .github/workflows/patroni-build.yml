@@ -5,6 +5,10 @@
 # Les tags des conteneurs correspondent à la VERSION DE PATRONI embarquée, en
 # conservant l'extension qui précise la version majeure PG : `v3.3.0-pg17`.
 #
+# Matrice PG figée volontairement (14,15,16,17,18) : c'est une décision produit
+# stable, pas une valeur qui doit varier à chaque run. Pour ajouter/retirer une
+# version PG supportée, modifier PG_MAJORS ci-dessous, pas passer un input.
+#
 # Déclenchement :
 #   - manuel (workflow_dispatch) : on peut forcer une version précise, ou laisser
 #     le workflow détecter la dernière version stable upstream.
@@ -19,10 +23,8 @@ on:
         description: "Version Patroni à build (ex. 3.3.0). Vide = dernière upstream."
         required: false
         type: string
-      pg_majors:
-        description: "Version majeures PG à build, séparées par virgule (ex. 16,17)."
-        required: false
-        type: string
+env:
+  PG_MAJORS: '["14","15","16","17","18"]'
 permissions:
   contents: write
   pull-requests: write
@@ -33,7 +35,6 @@ jobs:
     outputs:
       version: ${{ steps.resolve.outputs.version }}
       needs_bump: ${{ steps.resolve.outputs.needs_bump }}
-      pg_majors_json: ${{ steps.pg.outputs.majors_json }}
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -66,13 +67,6 @@ jobs:
           fi
           printf 'version=%s\n' "$VERSION" >> "$GITHUB_OUTPUT"
           printf 'needs_bump=%s\n' "$NEEDS_BUMP" >> "$GITHUB_OUTPUT"
-      - name: Résoudre les majeures PG (liste JSON pour la matrix)
-        id: pg
-        run: |
-          MAJORS="${{ inputs.pg_majors }}"
-          if [ -z "$MAJORS" ]; then MAJORS="16,17"; fi
-          echo "$MAJORS" | jq -R 'split(",")' > /tmp/majors.json
-          echo "majors_json=$(cat /tmp/majors.json)" >> "$GITHUB_OUTPUT"
   bump:
     needs: prepare
     if: needs.prepare.outputs.needs_bump == 'true'
@@ -101,7 +95,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        pg: ${{ fromJson(needs.prepare.outputs.pg_majors_json) }}
+        pg: ${{ fromJson(env.PG_MAJORS) }}
     steps:
       - name: Checkout
         uses: actions/checkout@v6
