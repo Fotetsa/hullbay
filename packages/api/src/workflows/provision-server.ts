@@ -458,7 +458,15 @@ export async function provisionServerWorkflow(input: ProvisionInput): Promise<vo
         lastError: result.error ?? "échec provisioning",
       });
       if (input.isNewCluster) {
-        await clusterService.markFailed(input.clusterId);
+        try {
+          await clusterService.markFailed(input.clusterId);
+        } catch (markErr) {
+          // L'échec de l'update DB markFailed est déjà loggé côté service (B4).
+          // On ne masque pas l'erreur métier du provisioning ici.
+          console.error(
+            `[provision-server] cluster ${input.clusterId} reste en attente de statut "failed" — ${markErr instanceof Error ? markErr.message : String(markErr)}`,
+          );
+        }
       }
       await eventBus.emit("provision.step", {
         serverId: input.serverId,

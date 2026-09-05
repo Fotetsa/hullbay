@@ -132,6 +132,18 @@ export function ServersPage() {
     serversByCluster.set(srv.clusterId, arr);
   }
 
+  // Garde A5 : nombre de managers par cluster (pour masquer "Rétrograder" sur
+  // le dernier manager — la garde backend renverrait un 409 LastManagerError).
+  const managerCountByCluster = new Map<string, number>();
+  for (const srv of data?.servers ?? []) {
+    if (srv.role === "manager") {
+      managerCountByCluster.set(
+        srv.clusterId,
+        (managerCountByCluster.get(srv.clusterId) ?? 0) + 1,
+      );
+    }
+  }
+
   const canSubmit =
     name &&
     host &&
@@ -229,7 +241,8 @@ export function ServersPage() {
                                 },
                               ]
                             : []),
-                          ...(srv.swarmNodeId && srv.role === "manager"
+                          ...(srv.swarmNodeId && srv.role === "manager" &&
+                            (managerCountByCluster.get(clusterId) ?? 0) > 1
                             ? [
                                 {
                                   label: "Rétrograder worker",

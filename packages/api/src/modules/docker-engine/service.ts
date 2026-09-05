@@ -129,6 +129,15 @@ export class DockerEngineService {
     return this.docker.listNodes()
   }
 
+  /** `docker system df` — utilisation disque du démon (images/containers/volumes). */
+  async systemDf() {
+    try {
+      return await this.docker.df()
+    } catch {
+      return { LayersSize: 0, Images: [], Containers: [], Volumes: [], BuildCache: [] }
+    }
+  }
+
   /** Retire un nœud du cluster (après drain). Tolérant si déjà absent. */
   async removeNode(swarmNodeId: string) {
     try {

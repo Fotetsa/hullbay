@@ -511,6 +511,12 @@ export type ClusterHealth = {
   swarmActive: boolean;
   nodes: NodeHealth[];
   services: ServiceHealth[];
+  diskUsage: {
+    layersSize: number;
+    images: number;
+    containers: number;
+    volumes: number;
+  };
 };
 
 export type DriftEntry = {

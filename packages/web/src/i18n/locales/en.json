@@ -137,6 +137,15 @@
       "availability": "Avail.",
       "leader": "leader"
     },
+    "disk": {
+      "title": "Disk (docker system df)",
+      "layersSize": "Layers size",
+      "sizeUnavailable": "Unavailable",
+      "images": "Images",
+      "containers": "Containers",
+      "volumes": "Volumes",
+      "count": "{{count}}"
+    },
     "services": {
       "title": "Services ({{count}})",
       "service": "Service",

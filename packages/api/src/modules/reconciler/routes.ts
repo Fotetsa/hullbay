@@ -268,21 +268,39 @@ export async function registerReconcilerRoutes(app: FastifyInstance) {
       },
     },
     async () => {
-      const clusters = await prisma.cluster.findMany({ select: { id: true } })
+      const clusters = await prisma.cluster.findMany({ select: { id: true, status: true } })
+      // Garde (A1) : ne reconstruire que sur des clusters prêts ; un cluster
+      // pending/failed ne doit pas servir de base de reconstruction.
+      const candidates = clusters.filter((c) => c.status === "ready")
+      const skippedUnready = clusters.length - candidates.length
       const { items, totalMs } = await runWithConcurrency(
-        clusters.map((c) => c.id),
+        candidates.map((c) => c.id),
         CLUSTER_CONCURRENCY,
-        (clusterId) => rebuildFromDocker(clusterId),
+        async (clusterId) => {
+          const engine = await DockerEngineService.forCluster(clusterId)
+          if (!(await engine.isSwarmActive())) {
+            return { projects: 0, nodes: 0, edges: 0, degraded: 0, skipped: true }
+          }
+          return { ...(await rebuildFromDocker(clusterId)), skipped: false }
+        },
       )
       let total = { projects: 0, nodes: 0, edges: 0, degraded: 0 }
+      let skippedSwarmInactive = 0
+      let failed = 0
       for (const it of items) {
         if (it.status === "fulfilled" && it.value) {
           total.projects += it.value.projects; total.nodes += it.value.nodes
           total.edges += it.value.edges; total.degraded += it.value.degraded
+          if (it.value.skipped) skippedSwarmInactive++
+        } else if (it.status === "rejected") {
+          // Cluster ready mais injoignable : ni reconstruit, ni compté en skip
+          // silencieux — on le remonte pour que l'opérateur voie l'échec.
+          failed++
         }
       }
-      console.log(`[reconciler] rebuild ${clusters.length} clusters en ${totalMs.toFixed(0)}ms (concurrency=${CLUSTER_CONCURRENCY})`)
-      return { ok: true, ...total };
+      const skipped = skippedUnready + skippedSwarmInactive
+      console.log(`[reconciler] rebuild ${candidates.length} clusters en ${totalMs.toFixed(0)}ms (concurrency=${CLUSTER_CONCURRENCY}, skip=${skipped}, failed=${failed})`)
+      return { ok: true, ...total, skipped, failed };
     },
   );
 

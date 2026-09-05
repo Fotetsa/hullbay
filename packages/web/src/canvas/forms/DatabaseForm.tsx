@@ -39,7 +39,7 @@ export const ENGINE_DEFAULTS: Record<
  *  une image custom buildée (hullbay/patroni) — en HA l'utilisateur ne peut pas
  *  taper n'importe quoi (le pull échouerait au déploiement). En mode single le
  *  champ reste libre (toute image postgres:<version> Docker Hub existe). */
-export const POSTGRES_HA_VERSIONS = ["16.3", "17"] as const
+export const POSTGRES_HA_VERSIONS = ["14", "15", "16.3", "17", "18"] as const
 
 /** Petite section de formulaire : titre + contenu, cohérente avec l'inspecteur. */
 function Section({ title, children }: { title: string; children: ReactNode }) {

@@ -117,9 +117,16 @@ export class ClusterService {
 
   // Marque un cluster en echec suite un provisioning qui c'est mal passé
   async markFailed(clusterId: string): Promise<void> {
-    await prisma.cluster
-      .update({ where: { id: clusterId }, data: { status: "failed" } })
-      .catch(() => {});
+    try {
+      await prisma.cluster.update({
+        where: { id: clusterId },
+        data: { status: "failed" },
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(`[clusters] markFailed(${clusterId}): échec update DB (le cluster restera "pending") — ${msg}`);
+      throw err;
+    }
     await eventBus
       .emit("cluster.status", {
         clusterId,
@@ -127,7 +134,13 @@ export class ClusterService {
         to: "failed",
         timestamp: new Date().toISOString(),
       })
-      .catch(() => {});
+      .catch((emitErr) => {
+        const msg =
+          emitErr instanceof Error ? emitErr.message : String(emitErr);
+        console.error(
+          `[clusters] markFailed(${clusterId}): échec emit cluster.status — ${msg}`,
+        );
+      });
   }
 
   /**
