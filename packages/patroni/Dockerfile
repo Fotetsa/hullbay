@@ -3,7 +3,7 @@
 # Base postgres:<major>-bookworm ; la version Patroni est un ARG (défaut = pin
 # courant). Le workflow dédié (patroni-build.yml, dispatch) la bumper à la volée.
 ARG PG_VERSION=17
-ARG PATRONI_VERSION=3.3.0
+ARG PATRONI_VERSION=4.1.5
 FROM postgres:${PG_VERSION}-bookworm
 
 # ARG re-déclaré SANS valeur après FROM : hérite de la valeur globale (ou du
