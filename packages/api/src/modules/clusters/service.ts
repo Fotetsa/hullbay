@@ -115,19 +115,122 @@ export class ClusterService {
     });
   }
 
-  // Marque un cluster en echec suite un provisioning qui c'est mal passé
+  /**
+   * Marque un cluster en échec suite à un provisioning qui s'est mal passé.
+   * On ne relance jamais d'exception ici, cette fonction est appelée en toute
+   * fin de workflow, souvent depuis un bloc qui gère déjà une erreur précédente,
+   * et on ne veut surtout pas en masquer une nouvelle derrière. En revanche,
+   * on ne doit plus jamais avaler un échec de la mise à jour en base sans rien
+   * dire. Sans cette visibilité, un cluster resterait bloqué indéfiniment dans
+   * un état incohérent, sans que personne ne puisse s'en rendre compte.
+   */
   async markFailed(clusterId: string): Promise<void> {
-    await prisma.cluster
-      .update({ where: { id: clusterId }, data: { status: "failed" } })
-      .catch(() => {});
-    await eventBus
-      .emit("cluster.status", {
+    try {
+      await prisma.cluster.update({
+        where: { id: clusterId },
+        data: { status: "failed" },
+      });
+    } catch (err) {
+      console.error(
+        `[clusters] impossible de marquer le cluster ${clusterId} comme failed :`,
+        err,
+      );
+    }
+    try {
+      await eventBus.emit("cluster.status", {
         clusterId,
         from: "pending",
         to: "failed",
         timestamp: new Date().toISOString(),
-      })
-      .catch(() => {});
+      });
+    } catch (err) {
+      console.error(
+        `[clusters] impossible d'émettre l'événement de statut pour ${clusterId} :`,
+        err,
+      );
+    }
+  }
+
+  /**
+   * Fait passer un cluster de l'état prêt à l'état défaillant, mais seulement
+   * s'il est encore réellement dans l'état prêt au moment précis de l'écriture.
+   * On utilise une mise à jour conditionnelle directement portée par la
+   * requête, plutôt qu'une lecture suivie d'une écriture séparée, pour ne
+   * jamais risquer d'agir sur une information déjà périmée, par exemple si
+   * l'utilisateur avait entre-temps lancé une action sur ce même cluster.
+   * Retourne vrai si la transition a réellement eu lieu, faux si elle a été
+   * annulée parce que l'état avait déjà changé sous nos pieds.
+   */
+  async markUnhealthy(clusterId: string): Promise<boolean> {
+    let changed = false;
+    try {
+      const result = await prisma.cluster.updateMany({
+        where: { id: clusterId, status: "ready" },
+        data: { status: "failed" },
+      });
+      changed = result.count > 0;
+    } catch (err) {
+      console.error(
+        `Impossible de marquer le cluster ${clusterId} comme défaillant :`,
+        err,
+      );
+      return false;
+    }
+    if (!changed) return false;
+    try {
+      await eventBus.emit("cluster.status", {
+        clusterId,
+        from: "ready",
+        to: "failed",
+        timestamp: new Date().toISOString(),
+      });
+    } catch (err) {
+      console.error(
+        `Impossible d'émettre l'événement de statut pour ${clusterId} :`,
+        err,
+      );
+    }
+    return true;
+  }
+
+  /**
+   * Fait passer un cluster précédemment marqué défaillant de nouveau vers
+   * l'état prêt, après que le job de surveillance a constaté qu'il répondait
+   * à nouveau de façon stable. Même principe de mise à jour conditionnelle
+   * que markUnhealthy, on ne touche à rien si le cluster n'est plus, au
+   * moment de l'écriture, dans l'état défaillant qu'on croyait observer, ce
+   * qui couvre notamment le cas où une suppression aurait démarré entre-temps.
+   */
+  async markRecovered(clusterId: string): Promise<boolean> {
+    let changed = false;
+    try {
+      const result = await prisma.cluster.updateMany({
+        where: { id: clusterId, status: "failed" },
+        data: { status: "ready" },
+      });
+      changed = result.count > 0;
+    } catch (err) {
+      console.error(
+        `Impossible de remettre le cluster ${clusterId} en service :`,
+        err,
+      );
+      return false;
+    }
+    if (!changed) return false;
+    try {
+      await eventBus.emit("cluster.status", {
+        clusterId,
+        from: "failed",
+        to: "ready",
+        timestamp: new Date().toISOString(),
+      });
+    } catch (err) {
+      console.error(
+        `Impossible d'émettre l'événement de statut pour ${clusterId} :`,
+        err,
+      );
+    }
+    return true;
   }
 
   /**

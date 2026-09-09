@@ -260,6 +260,28 @@
         "port": "Entre un port valide (1–65535)."
       }
     },
+    "status": {
+      "ready": "Prêt",
+      "pending": "En attente",
+      "failed": "Échec",
+      "deleting": "Suppression en cours"
+    },
+    "search": {
+      "placeholder": "Rechercher un cluster…",
+      "noResults": "Aucun cluster ne correspond à ta recherche."
+    },
+    "filter": {
+      "statusLabel": "Statut",
+      "all": "Tous"
+    },
+    "sort": {
+      "label": "Trier par",
+      "byName": "Nom",
+      "byStatus": "Statut",
+      "byServers": "Nb. serveurs",
+      "ascending": "Ordre croissant",
+      "descending": "Ordre décroissant"
+    },
     "detail": {
       "back": "Retour",
       "backToClusters": "Retour aux clusters",
@@ -270,12 +292,24 @@
       },
       "defaultBadge": "cluster par défaut",
       "clusterBadge": "cluster",
+      "addServer": {
+        "button": "Ajouter un serveur",
+        "title": "Ajouter un serveur à ce cluster",
+        "toast": {
+          "started": "Provisionnement démarré"
+        },
+        "managerLabel": "Rejoindre comme manager",
+        "managerForcedHint": "Aucun manager actif dans ce cluster — ce serveur doit rejoindre comme manager (un worker ne peut pas rejoindre sans un manager vivant pour délivrer un token de jonction).",
+        "managerOptionalHint": "Facultatif — laisse désactivé pour rejoindre comme worker."
+      },
+      "viewAuditLog": "Voir le journal d'audit",
       "tabs": { "overview": "Vue d'ensemble", "services": "Services" },
       "quorum": {
         "title": "Quorum (HA control plane)",
         "description": "{{reachable}}/{{total}} managers joignables. Recommandé : nombre impair (3 tolère 1 panne, 5 en tolère 2).",
         "ok": "quorum OK",
-        "atRisk": "quorum à risque"
+        "atRisk": "quorum à risque",
+        "atRiskBanner": "Quorum du cluster à risque — au moins un manager est injoignable."
       },
       "unreachable": "Ce cluster n'est pas joignable actuellement — aucune donnée de santé disponible.",
       "server": {
@@ -283,7 +317,19 @@
         "demote": "Rétrograder worker",
         "remove": "Retirer du cluster",
         "leader": "leader",
-        "empty": "Aucun serveur dans ce cluster."
+        "empty": "Aucun serveur dans ce cluster.",
+        "status": {
+          "ready": "Prêt",
+          "provisioning": "Provisionnement",
+          "error": "Erreur",
+          "draining": "Vidage en cours",
+          "down": "Hors ligne"
+        },
+        "sysinfo": {
+          "cpu_one": "{{count}} cœur CPU",
+          "cpu_other": "{{count}} cœurs CPU",
+          "disk": "Disque"
+        }
       },
       "removeServerConfirm": {
         "title": "Retirer ce serveur ?",

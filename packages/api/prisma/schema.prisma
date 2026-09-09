@@ -116,6 +116,7 @@ model Server {
   publicKey     String? // clé-outil publique (déposée dans authorized_keys)
   hostKeyFp     String? // empreinte SSH connue (TOFU known_hosts)
   lastError     String?
+  systemInfo   Json?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 

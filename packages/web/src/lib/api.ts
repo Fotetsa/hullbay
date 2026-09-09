@@ -536,6 +536,19 @@ export type ManagerHealth = {
   quorumOk: boolean;
 };
 
+export type SystemInfoSnapshot = {
+  os: string | null;
+  kernel: string | null;
+  cpuCores: number | null;
+  ramTotalMb: number | null;
+  ramUsedMb: number | null;
+  swapTotalMb: number | null;
+  swapUsedMb: number | null;
+  diskTotalGb: number | null;
+  diskUsedGb: number | null;
+  collectedAt: string;
+};
+
 export type Server = {
   id: string;
   name: string;
@@ -547,6 +560,7 @@ export type Server = {
   swarmNodeId: string | null;
   lastError: string | null;
   clusterId: string;
+  systemInfo: SystemInfoSnapshot | null;
 };
 
 export type UpdateChannel = "stable" | "beta";

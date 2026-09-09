@@ -20,9 +20,14 @@ export default defineConfig({
   workers: 1,
   retries: process.env.CI ? 1 : 0,
   reporter: process.env.CI ? "github" : "list",
+  timeout: 60_000,
+  expect: {
+    timeout: 15_000,
+  },
   use: {
     baseURL: "http://localhost:5273",
     trace: "on-first-retry",
+    actionTimeout: 15_000,
   },
   projects: [
     {

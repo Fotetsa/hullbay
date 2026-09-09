@@ -128,8 +128,16 @@ export async function registerServersRoutes(app: FastifyInstance) {
             error: `cluster "${target.name}" pas encore prêt (statut: ${target.status})`,
           });
         }
+        /**
+         * On Verifie ici si le cluster a vraiment un manager qui tourne en ce moment, plutôt que de
+         * se fier au statut "ready" du cluster tout seul. Le statut peut rester "ready" en base même
+         * si le manager a été retiré depuis, rien ne le repasse en arrière automatiquement. Sans ce
+         * contrôle, pourrait laisser quelqu'un rejoindre "worker" un cluster qui n'a plus personne
+         * pour delivrer le token de jonction Swarm.
+         */
+        const hasActiveManager = await serversService.hasManager(body.clusterId);
         clusterId = body.clusterId;
-        role = body.role ?? "worker";
+        role = hasActiveManager ? (body.role ?? "worker") : "manager";
       } else {
         try {
           const cluster = await clusterService.createPending(
@@ -207,8 +215,22 @@ export async function registerServersRoutes(app: FastifyInstance) {
         return reply.code(404).send({ error: "serveur introuvable" });
       if (server.swarmNodeId) {
         const engine = await DockerEngineService.forCluster(server.clusterId);
-        await engine.drainNode(server.swarmNodeId).catch(() => {});
-        await engine.removeNode(server.swarmNodeId).catch(() => {});
+        /**
+         * On ne bloque jamais la suppression si le drain ou le retrait échoue, l'utilisateur
+         * veut peut-être supprimer un serveur qui n'est déjà plus joignable du tout. Mais on
+         * ne veut  non que cet échec passe complétement inaperçu, alors on le consigne, pour qu'un
+         * administrateur puisse aller vérifier manuellement si le noeud est resté visible côté Swarm.
+         */
+        await engine.drainNode(server.swarmNodeId).catch((err) => {
+          req.log.warn(
+            `impossible de drainer le nœud ${server.swarmNodeId} avant suppression : ${err instanceof Error ? err.message : String(err)}`,
+          );
+        });
+        await engine.removeNode(server.swarmNodeId).catch((err) => {
+          req.log.warn(
+            `impossible de retirer le nœud ${server.swarmNodeId} du Swarm, il pourrait rester visible côté cluster même après cette suppression : ${err instanceof Error ? err.message : String(err)}`,
+          );
+        });
       }
       await serversService.remove(id);
       await eventBus.emit("server.removed", {
@@ -223,45 +245,52 @@ export async function registerServersRoutes(app: FastifyInstance) {
   // Recommandation : nombre IMPAIR de managers (3 tolère 1 panne, 5 en tolère 2).
 
   const setRoleBody = z.object({ role: z.enum(["manager", "worker"]) });
-  app.post(
-    "/api/servers/:id/role",
-    {
-      ...owner,
-      schema: {
-        body: setRoleBody,
-        tags: ["servers"],
-        summary: "Promouvoir / rétrograder un nœud (owner uniquement)",
-        security: [{ bearerAuth: [] }],
-      },
+app.post(
+  "/api/servers/:id/role",
+  {
+    ...owner,
+    schema: {
+      body: setRoleBody,
+      tags: ["servers"],
+      summary: "Promouvoir / rétrograder un nœud (owner uniquement)",
+      security: [{ bearerAuth: [] }],
     },
-    async (req, reply) => {
-      const { id } = req.params as { id: string };
-      const server = await serversService.get(id);
-      if (!server)
-        return reply.code(404).send({ error: "serveur introuvable" });
-      if (!server.swarmNodeId) {
-        return reply
-          .code(409)
-          .send({ error: "nœud pas encore joint au Swarm" });
+  },
+  async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const server = await serversService.get(id);
+    if (!server) return reply.code(404).send({ error: "serveur introuvable" });
+    if (!server.swarmNodeId) {
+      return reply.code(409).send({ error: "nœud pas encore joint au Swarm" });
+    }
+
+    const body = setRoleBody.parse(req.body);
+
+    // On protège le quorum en refusant de rétrograder le dernier manager actif d'un cluster.
+    if (body.role === "worker" && server.role === "manager") {
+      const activeManagers = await serversService.countReadyManagers(server.clusterId);
+      if (activeManagers <= 1) {
+        return reply.code(409).send({
+          error: "impossible de rétrograder le dernier manager du cluster, le quorum serait perdu",
+        });
       }
-      try {
-        const body = setRoleBody.parse(req.body);
-        const engine = await DockerEngineService.forCluster(server.clusterId);
-        await engine.setNodeRole(server.swarmNodeId, body.role);
-      } catch (err) {
-        const status = err instanceof TunnelError ? err.statusCode : 500;
-        return reply
-          .code(status)
-          .send({ error: err instanceof Error ? err.message : String(err) });
-      }
-      const body = setRoleBody.parse(req.body);
-      await serversService.update(id, { role: body.role });
-      await eventBus.emit("server.role.changed", {
-        serverId: id,
-        userId: currentUser(req)?.sub,
-        role: body.role,
-      });
-      return { ok: true, role: body.role };
-    },
-  );
+    }
+
+    try {
+      const engine = await DockerEngineService.forCluster(server.clusterId);
+      await engine.setNodeRole(server.swarmNodeId, body.role);
+    } catch (err) {
+      const status = err instanceof TunnelError ? err.statusCode : 500;
+      return reply.code(status).send({ error: err instanceof Error ? err.message : String(err) });
+    }
+
+    await serversService.update(id, { role: body.role });
+    await eventBus.emit("server.role.changed", {
+      serverId: id,
+      userId: currentUser(req)?.sub,
+      role: body.role,
+    });
+    return { ok: true, role: body.role };
+  },
+);
 }

@@ -10,17 +10,20 @@ import {
   ArrowDownMini,
   Trash,
   CircleMiniSolid,
+  DocumentText,
+  Plus,
 } from "@medusajs/icons";
-import { api, type Server } from "../lib/api";
+import { api, type Server, type SystemInfoSnapshot } from "../lib/api";
 import { useMutationToast } from "../lib/useMutationToast";
 import { useConfirmDelete } from "../lib/useConfirmDelete";
 import { PageHeader, PageContainer } from "../components/PageHeader";
 import { ActionMenu } from "../components/ActionMenu";
+import { AddServerModal } from "../components/servers/AddServerModal";
 
 const STATUS_COLOR: Record<string, "green" | "orange" | "red" | "grey"> = {
   ready: "green",
   provisioning: "orange",
-  error: "grey",
+  error: "red",
   draining: "orange",
   down: "red",
 };
@@ -36,11 +39,45 @@ const CLUSTER_STATUS_COLOR: Record<
 
 type TabKey = "overview" | "services";
 
+function ServerSystemInfo({ info }: { info: SystemInfoSnapshot | null }) {
+  const { t } = useTranslation()
+  if (!info) return null
+
+  const ramPct = info.ramTotalMb && info.ramUsedMb
+    ? Math.round((info.ramUsedMb / info.ramTotalMb) * 100)
+    : null
+  const diskPct = info.diskTotalGb && info.diskUsedGb
+    ? Math.round((info.diskUsedGb / info.diskTotalGb) * 100)
+    : null
+
+  return (
+    <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-ui-fg-muted" data-testid="server-system-info">
+      {info.os && <span>{info.os}</span>}
+      {info.cpuCores !== null && <span>{t("clusters.detail.server.sysinfo.cpu", { count: info.cpuCores })}</span>}
+      {info.ramTotalMb !== null && (
+        <span>
+          RAM {info.ramUsedMb ?? "?"}/{info.ramTotalMb} Mo{ramPct !== null ? ` (${ramPct}%)` : ""}
+        </span>
+      )}
+      {info.diskTotalGb !== null && (
+        <span>
+          {t("clusters.detail.server.sysinfo.disk")} {info.diskUsedGb ?? "?"}/{info.diskTotalGb} Go{diskPct !== null ? ` (${diskPct}%)` : ""}
+        </span>
+      )}
+      {info.swapTotalMb !== null && info.swapTotalMb > 0 && (
+        <span>Swap {info.swapUsedMb ?? "?"}/{info.swapTotalMb} Mo</span>
+      )}
+    </div>
+  )
+}
+
 export function ClusterDetailPage() {
   const { t } = useTranslation();
   const { clusterId } = useParams<{ clusterId: string }>();
   const navigate = useNavigate();
   const [tab, setTab] = useState<TabKey>("overview");
+
+  const [addServerOpen, setAddServerOpen] = useState(false);
 
   const { data: clusters, isLoading: clustersLoading } = useQuery({
     queryKey: ["clusters"],
@@ -49,10 +86,14 @@ export function ClusterDetailPage() {
   const { data: serversData, isLoading: serversLoading } = useQuery({
     queryKey: ["servers"],
     queryFn: api.listServers,
+    refetchInterval: 15_000,
+    refetchOnWindowFocus: true,
   });
   const { data: healthData, isLoading: healthLoading } = useQuery({
     queryKey: ["health"],
     queryFn: api.clusterHealth,
+    refetchInterval: 15_000,
+    refetchOnWindowFocus: true,
   });
 
   const removeServer = useConfirmDelete<Server>({
@@ -112,11 +153,18 @@ export function ClusterDetailPage() {
   );
   const health = healthData?.clusters.find((c) => c.clusterId === clusterId);
 
+  // Calculé dynamiquement (pas depuis cluster.status), reflète l'état
+  // réel, même si un manager a été retiré depuis la dernière transition de
+  // statut du cluster.
+  const hasActiveManager = servers.some(
+    (s) => s.role === "manager" && s.status === "ready",
+  );
+
   const managersTotal = servers.filter((s) => s.role === "manager").length;
   const managersReachable =
     health?.nodes.filter((n) => n.role === "manager" && n.state === "ready")
       .length ?? 0;
-  const quorumOk = managersTotal === 0 || managersReachable > managersTotal / 2;
+  const quorumOk = managersTotal > 0 && managersReachable > managersTotal / 2;
 
   return (
     <PageContainer>
@@ -133,14 +181,26 @@ export function ClusterDetailPage() {
       <PageHeader
         title={cluster.name}
         actions={
-          <Badge
-            color={CLUSTER_STATUS_COLOR[cluster.status] ?? "grey"}
-            size="small"
-          >
-            {cluster.isDefault
-              ? t("clusters.detail.defaultBadge")
-              : t("clusters.detail.clusterBadge")}
-          </Badge>
+          <div className="flex items-center gap-2">
+            <Button size="small" onClick={() => setAddServerOpen(true)}>
+              <Plus /> {t("clusters.detail.addServer.button")}
+            </Button>
+            <Button
+              variant="secondary"
+              size="small"
+              onClick={() => navigate("/audit")}
+            >
+              <DocumentText /> {t("clusters.detail.viewAuditLog")}
+            </Button>
+            <Badge
+              color={CLUSTER_STATUS_COLOR[cluster.status] ?? "grey"}
+              size="small"
+            >
+              {cluster.isDefault
+                ? t("clusters.detail.defaultBadge")
+                : t("clusters.detail.clusterBadge")}
+            </Badge>
+          </div>
         }
       />
 
@@ -168,10 +228,31 @@ export function ClusterDetailPage() {
 
       {tab === "overview" && (
         <div className="flex flex-col gap-4">
+          {managersTotal > 0 && !quorumOk && (
+            <Container className="border-2 border-ui-fg-error bg-ui-bg-error/20 p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <Text weight="plus" className="text-ui-fg-error">
+                    {t("clusters.detail.quorum.atRiskBanner")}
+                  </Text>
+                  <Text size="small" className="text-ui-fg-subtle">
+                    {t("clusters.detail.quorum.description", {
+                      reachable: managersReachable,
+                      total: managersTotal,
+                    })}
+                  </Text>
+                </div>
+                <Badge color="red">{t("clusters.detail.quorum.atRisk")}</Badge>
+              </div>
+            </Container>
+          )}
+
           {managersTotal > 0 && (
             <Container className="flex items-center justify-between p-4">
               <div>
-                <Heading level="h3">{t("clusters.detail.quorum.title")}</Heading>
+                <Heading level="h3">
+                  {t("clusters.detail.quorum.title")}
+                </Heading>
                 <Text size="small" className="text-ui-fg-subtle">
                   {t("clusters.detail.quorum.description", {
                     reachable: managersReachable,
@@ -215,7 +296,9 @@ export function ClusterDetailPage() {
                           size="2xsmall"
                           color={STATUS_COLOR[srv.status] ?? "grey"}
                         >
-                          {srv.status}
+                          {t(`clusters.detail.server.status.${srv.status}`, {
+                            defaultValue: srv.status,
+                          })}
                         </Badge>
                         {nodeHealth?.leader && (
                           <Badge size="2xsmall" color="purple">
@@ -226,6 +309,7 @@ export function ClusterDetailPage() {
                       <Text size="small" className="text-ui-fg-subtle">
                         {srv.user}@{srv.host}:{srv.port}
                       </Text>
+                      <ServerSystemInfo info={srv.systemInfo} />
                       {srv.lastError && (
                         <Text size="xsmall" className="text-ui-fg-error">
                           {srv.lastError}
@@ -342,6 +426,12 @@ export function ClusterDetailPage() {
           )}
         </Container>
       )}
+      <AddServerModal
+        open={addServerOpen}
+        onOpenChange={setAddServerOpen}
+        clusterId={clusterId!}
+        forceManager={!hasActiveManager}
+      />
     </PageContainer>
   );
 }

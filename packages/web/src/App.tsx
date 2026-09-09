@@ -51,7 +51,7 @@ export function App() {
             <Route path="/health" element={<HealthPage />} />
             <Route path="/servers" element={<ServersPage />} />
             <Route path="/clusters" element={<ClustersPage />} />
-            <Route path="/clusters/:clusterId"element={<ClusterDetailPage />}/>
+            <Route path="/clusters/:clusterId" element={<ClusterDetailPage />} />
             <Route path="/registries" element={<IntegrationsPage />} />
             <Route path="/secrets" element={<SecretsPage />} />
             <Route path="/users" element={<UsersPage />} />
@@ -61,8 +61,6 @@ export function App() {
           </Route>
 
           <Route path="*" element={<Navigate to="/" replace />} />
-
-          <Route path="/clusters/:clusterId" element={<ClusterDetailPage />} />
         </Routes>
       </DomainGate>
     </MeProvider>

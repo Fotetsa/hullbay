@@ -116,28 +116,6 @@ export class DockerEngineService {
     return this.docker.listNodes()
   }
 
-  /**
-   * Récupère le join-token (worker ou manager) du Swarm + l'adresse du manager.
-   * Nécessaire pour faire rejoindre un nouveau serveur au cluster.
-   */
-  async getSwarmJoinInfo(role: "worker" | "manager" = "worker"): Promise<{
-    token: string
-    managerAddr: string
-  }> {
-    const sw = (await this.docker.swarmInspect()) as {
-      JoinTokens?: { Worker?: string; Manager?: string }
-    }
-    const info = (await this.docker.info()) as {
-      Swarm?: { NodeAddr?: string; RemoteManagers?: { Addr?: string }[] }
-    }
-    const token = role === "manager" ? sw.JoinTokens?.Manager : sw.JoinTokens?.Worker
-    const addr =
-      info.Swarm?.RemoteManagers?.[0]?.Addr ||
-      (info.Swarm?.NodeAddr ? `${info.Swarm.NodeAddr}:2377` : "")
-    if (!token || !addr) throw new Error("Swarm join info indisponible (manager actif requis)")
-    return { token, managerAddr: addr }
-  }
-
   /** Retire un nœud du cluster (après drain). Tolérant si déjà absent. */
   async removeNode(swarmNodeId: string) {
     try {

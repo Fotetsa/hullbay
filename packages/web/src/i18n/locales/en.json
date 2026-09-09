@@ -258,6 +258,28 @@
         "port": "Enter a valid port (1–65535)."
       }
     },
+    "status": {
+      "ready": "Ready",
+      "pending": "Pending",
+      "failed": "Failed",
+      "deleting": "Deleting"
+    },
+    "search": {
+      "placeholder": "Search a cluster…",
+      "noResults": "No cluster matches your search."
+    },
+    "filter": {
+      "statusLabel": "Status",
+      "all": "All"
+    },
+    "sort": {
+      "label": "Sort by",
+      "byName": "Name",
+      "byStatus": "Status",
+      "byServers": "Server count",
+      "ascending": "Ascending order",
+      "descending": "Descending order"
+    },
     "detail": {
       "back": "Back",
       "backToClusters": "Back to clusters",
@@ -268,12 +290,24 @@
       },
       "defaultBadge": "default cluster",
       "clusterBadge": "cluster",
+      "addServer": {
+        "button": "Add a server",
+        "title": "Add a server to this cluster",
+        "toast": {
+          "started": "Provisioning started"
+        },
+        "managerLabel": "Join as manager",
+        "managerForcedHint": "No active manager in this cluster — this server must join as manager (a worker cannot join without a live manager to issue a join token).",
+        "managerOptionalHint": "Optional — leave off to join as a worker."
+      },
+      "viewAuditLog": "View audit log",
       "tabs": { "overview": "Overview", "services": "Services" },
       "quorum": {
         "title": "Quorum (HA control plane)",
         "description": "{{reachable}}/{{total}} managers reachable. Recommended: odd number (3 tolerates 1 failure, 5 tolerates 2).",
         "ok": "quorum OK",
-        "atRisk": "quorum at risk"
+        "atRisk": "quorum at risk",
+        "atRiskBanner": "Cluster quorum at risk — at least one manager is unreachable."
       },
       "unreachable": "This cluster is currently unreachable — no health data available.",
       "server": {
@@ -281,7 +315,19 @@
         "demote": "Demote to worker",
         "remove": "Remove from cluster",
         "leader": "leader",
-        "empty": "No servers in this cluster."
+        "empty": "No servers in this cluster.",
+        "status": {
+          "ready": "Ready",
+          "provisioning": "Provisioning",
+          "error": "Error",
+          "draining": "Draining",
+          "down": "Down"
+        },
+        "sysinfo": {
+          "cpu_one": "{{count}} CPU core",
+          "cpu_other": "{{count}} CPU cores",
+          "disk": "Disk"
+        }
       },
       "removeServerConfirm": {
         "title": "Remove this server?",

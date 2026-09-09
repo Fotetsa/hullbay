@@ -14,6 +14,7 @@ import { runWithConcurrency, CLUSTER_CONCURRENCY } from "../../lib/concurrency"
 import { expandDatabaseGraph, databaseNodePreview } from "../database"
 import { DatabaseValidationError } from "../database/validation"
 import type { ExpandedProjectGraph } from "../database"
+import { clusterService } from "../clusters/service"
 
 const operator = { preHandler: requireRole("operator") }
 const owner = { preHandler: requireRole("owner") }
@@ -130,6 +131,28 @@ export async function registerReconcilerRoutes(app: FastifyInstance) {
       const graph = await projectsService.getProjectGraph(id);
       if (!graph) return reply.code(404).send({ error: "project not found" });
 
+      // On refuse de lancer un déploiement sur un cluster qu'on sait déjà ne pas
+      // être en état de le recevoir. Le statut "ready" seul ne suffit pas, un
+      // cluster peut rester marqué ready en base alors que son Swarm est en
+      // réalité tombé, puisque rien ne réévalue ce statut automatiquement pour
+      // l'instant. On vérifie donc aussi l'état réel du Swarm, pas seulement ce
+      // que dit la base.
+      const targetCluster = await clusterService.get(graph.clusterId);
+      if (!targetCluster || targetCluster.status !== "ready") {
+        return reply.code(409).send({
+          error: `le cluster cible n'est pas prêt, statut actuel : ${targetCluster?.status ?? "introuvable"}`,
+        });
+      }
+      const targetEngine = await DockerEngineService.forCluster(
+        graph.clusterId,
+      );
+      if (!(await targetEngine.isSwarmActive())) {
+        return reply.code(409).send({
+          error:
+            "le Swarm de ce cluster n'est pas actif, vérifie qu'au moins un manager répond avant de redéployer",
+        });
+      }
+
       const userId = currentUser(req)?.sub;
       deployingProjects.add(id);
       await eventBus.emit("deploy.started", { projectId: id, userId });
@@ -142,14 +165,17 @@ export async function registerReconcilerRoutes(app: FastifyInstance) {
         try {
           log = await deployProjectWorkflow({ graph, createdBy: userId });
         } catch (firstErr) {
-          const msg = firstErr instanceof Error ? firstErr.message : String(firstErr);
+          const msg =
+            firstErr instanceof Error ? firstErr.message : String(firstErr);
           const isTunnelRetryable =
             msg.includes("ECONNREFUSED") ||
             msg.includes("EPIPE") ||
             msg.includes("socket hang up") ||
             firstErr instanceof TunnelError;
           if (!isTunnelRetryable) throw firstErr;
-          console.log(`[deploy] 1er essai échoué (${msg}) — retry avec tunnel frais…`);
+          console.log(
+            `[deploy] 1er essai échoué (${msg}) — retry avec tunnel frais…`,
+          );
           invalidateDockerClient(graph.clusterId);
           log = await deployProjectWorkflow({ graph, createdBy: userId });
         }
@@ -173,9 +199,11 @@ export async function registerReconcilerRoutes(app: FastifyInstance) {
         // Erreur MÉTIER prévisible (image, garde multi-nœuds, secret…) → 422 + message
         // propre. Sinon vrai bug serveur → 500.
         const status =
-          err instanceof DeployError ? 422 :
-          err instanceof TunnelError ? err.statusCode :
-          500;
+          err instanceof DeployError
+            ? 422
+            : err instanceof TunnelError
+              ? err.statusCode
+              : 500;
         return reply.code(status).send({ ok: false, error: message });
       } finally {
         deployingProjects.delete(id);
