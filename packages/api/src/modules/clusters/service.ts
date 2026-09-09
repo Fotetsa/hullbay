@@ -135,6 +135,7 @@ export class ClusterService {
         `[clusters] impossible de marquer le cluster ${clusterId} comme failed :`,
         err,
       );
+      throw err;
     }
     try {
       await eventBus.emit("cluster.status", {
@@ -144,10 +145,8 @@ export class ClusterService {
         timestamp: new Date().toISOString(),
       });
     } catch (err) {
-      console.error(
-        `[clusters] impossible d'émettre l'événement de statut pour ${clusterId} :`,
-        err,
-      );
+      const errMsg = err instanceof Error ? err.message : String(err);
+      console.error(`[clusters] échec emit cluster.status pour ${clusterId} : ${errMsg}`);
     }
   }
 

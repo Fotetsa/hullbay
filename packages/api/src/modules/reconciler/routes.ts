@@ -112,7 +112,7 @@ export async function registerReconcilerRoutes(app: FastifyInstance) {
     },
   );
 
-  // Déployer (desired -> real).
+  
   app.post(
     "/api/projects/:id/deploy",
     {
