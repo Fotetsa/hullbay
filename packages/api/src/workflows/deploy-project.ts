@@ -26,6 +26,7 @@ import { ReconcilerService } from "../modules/reconciler/service"
 import { registryService } from "../modules/registry/service"
 import { prisma } from "../lib/prisma"
 import { expandDatabaseGraph, DatabaseValidationError } from "../modules/database"
+import { resolveLatestPatroniTag } from "../modules/database/providers/postgres"
 
 /**
  * Erreur MÉTIER de déploiement (image indisponible, garde multi-nœuds, secret
@@ -47,6 +48,30 @@ export class DeployError extends Error {
 function isDockerHubImage(image: string): boolean {
   const firstPart = (image.split(":")[0]?.split("/")[0]) ?? ""
   return !firstPart.includes(".")
+}
+
+/**
+ * Résout le tag Patroni à déployer pour chaque version majeure PG présente dans
+ * le graphe (topologies postgres HA). Une seule résolution par majeure (le cache
+ * interne de resolveLatestPatroniTag absorbe les doublons). Retour vide si aucun
+ * nœud postgres HA — l'expansion reste alors 100% sur pin.
+ */
+async function resolvePatroniTagOverrides(
+  graph: ProjectGraph,
+): Promise<Record<string, string>> {
+  const overrides: Record<string, string> = {}
+  for (const node of graph.nodes) {
+    if (node.type !== "database") continue
+    const cfg = node.config as { engine?: string; version?: string }
+    if (cfg.engine !== "postgres") continue
+    const version = cfg.version ?? ""
+    const pgMajor = version.replace(/^(\d+).*$/, "$1")
+    if (!pgMajor) continue
+    // Dédoublonne les nœuds partageant la même majeure (multi-bases PG16, etc.).
+    if (overrides[pgMajor]) continue
+    overrides[pgMajor] = await resolveLatestPatroniTag(pgMajor)
+  }
+  return overrides
 }
 
 /**
@@ -330,11 +355,26 @@ export const servicesStep: Step<DeployInput> = {
       //    Exception : images Docker Hub (pas de registry explicite) — Swarm les
       //    tirera automatiquement sur le nœud cible.
       if (!pulled && nodeCount > 1 && !isDockerHubImage(image)) {
-        throw new DeployError(
-          `Image locale « ${image} » (policy ${policy}) non déployable sur un cluster ` +
-            `multi-nœuds (${nodeCount} nœuds) : pousse-la sur un registre (ex. ghcr.io/...) ` +
-            `et référence-la par ce nom, ou enregistre ses identifiants dans Registres.`
-        )
+        // `pulled:false` sous IfNotPresent peut venir d'une image DÉJÀ en cache
+        // local plutôt que d'un registre injoignable : on retente un pull forcé
+        // (Always) avant de conclure — l'image est pullable tout en étant présente
+        // localement. Si le retry réussit, chaque nœud peut la tirer au deploy.
+        if (policy !== "Always") {
+          try {
+            ;({ pulled } = await s.engine.ensureImage(image, "Always"));
+          } catch (err) {
+            if (err instanceof ImageUnavailableError) throw new DeployError(err.message)
+            throw err
+          }
+          if (pulled) s.log.push(`image ${image} re-pullée (cache local écarté, registre OK)`)
+        }
+        if (!pulled) {
+          throw new DeployError(
+            `Image locale « ${image} » (policy ${policy}) non déployable sur un cluster ` +
+              `multi-nœuds (${nodeCount} nœuds) : pousse-la sur un registre (ex. ghcr.io/...) ` +
+              `et référence-la par ce nom, ou enregistre ses identifiants dans Registres.`
+          )
+        }
       }
 
       try {
@@ -514,7 +554,12 @@ export async function deployProjectWorkflow(input: DeployInput) {
   // un moteur non implémenté bloquent le déploiement AVANT toute action Docker.
   let expanded: ReturnType<typeof expandDatabaseGraph>
   try {
-    expanded = expandDatabaseGraph(input.graph)
+    // Résolution DYNAMIQUE du tag Patroni (registre) pour les topologies HA :
+    // la CI publie les images patroni indépendamment du pin de l'API — on lit ce
+    // qui est réellement publié, faute de quoi le pull échoue (404) si le pin
+    // a divergé. Plan/diff (sans IO) gardent le pin via l'absence d'override.
+    const patroniTagOverrides = await resolvePatroniTagOverrides(input.graph)
+    expanded = expandDatabaseGraph(input.graph, { patroniTagOverrides })
   } catch (err) {
     if (err instanceof DatabaseValidationError) {
       throw new DeployError(err.message)

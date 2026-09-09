@@ -63,6 +63,10 @@ async function stubApi(page: Page, overrides: Record<string, Handler> = {}) {
   const handlers: Record<string, Handler> = {
     "GET /api/auth/me": (route) =>
       route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(OWNER) }),
+    "GET /api/system/environment": (route) =>
+      route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ environment: "production" }) }),
+    "GET /api/settings/domain": (route) =>
+      route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ domain: "hbox.local" }) }),
     "GET /api/updates/check": (route) =>
       route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(CHECK_200) }),
     "GET /api/updates/history": (route) =>
@@ -106,6 +110,7 @@ function stubApply(page: Page, getStatus: Record<string, unknown> | (() => Recor
 async function login(page: Page) {
   await page.addInitScript((token) => {
     window.localStorage.setItem("hullbay_token", token)
+    window.localStorage.setItem("user-language", "fr")
   }, "e2e-token")
 }
 

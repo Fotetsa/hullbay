@@ -12,11 +12,25 @@ import { registerReconcilerRoutes } from "../routes";
 import { registerAuthGuard } from "../../auth/routes";
 import { authService } from "../../auth/service";
 import * as rebuildModule from "../rebuild";
+import { DockerEngineService } from "../../docker-engine/service";
 import { prisma } from "../../../lib/prisma";
 
 // 1. Mock du module de rebuild
 vi.mock("../rebuild", () => ({
   rebuildFromDocker: vi.fn(),
+}));
+
+// Guard A1 : isSwarmActive doit être mocké pour ne pas ouvrir de vraie connexion.
+const { mockForCluster } = vi.hoisted(() => ({
+  mockForCluster: vi.fn(() => ({
+    isSwarmActive: vi.fn().mockResolvedValue(true),
+  })),
+}));
+
+vi.mock("../../docker-engine/service", () => ({
+  DockerEngineService: {
+    forCluster: mockForCluster,
+  },
 }));
 
 // 2. Mock du service de réconciliation
@@ -72,7 +86,7 @@ describe("POST /api/rebuild-from-docker", () => {
     vi.clearAllMocks();
 
     vi.mocked(prisma.cluster.findMany).mockResolvedValue([
-      { id: "mock-cluster-id" },
+      { id: "mock-cluster-id", status: "ready" },
     ] as any);
 
     vi.mocked(authService.verifyToken).mockImplementation((token: string) => {
@@ -101,7 +115,7 @@ describe("POST /api/rebuild-from-docker", () => {
     });
 
     expect(response.statusCode).toBe(200);
-    expect(response.json()).toEqual({ ok: true, ...mockResult });
+    expect(response.json()).toEqual({ ok: true, ...mockResult, skipped: 0, failed: 0 });
     expect(rebuildModule.rebuildFromDocker).toHaveBeenCalledTimes(1);
   });
 
@@ -150,5 +164,55 @@ describe("POST /api/rebuild-from-docker", () => {
       headers: { authorization: `Bearer ${mockViewerToken}` },
     });
     expect(response.statusCode).toBe(403);
+  });
+
+  it("devrait skiper les clusters non prêts (garde A1)", async () => {
+    vi.mocked(prisma.cluster.findMany).mockResolvedValue([
+      { id: "ready-cluster", status: "ready" },
+      { id: "pending-cluster", status: "pending" },
+      { id: "failed-cluster", status: "failed" },
+    ] as any);
+    vi.mocked(rebuildModule.rebuildFromDocker).mockResolvedValue({
+      projects: 2,
+      nodes: 3,
+      edges: 1,
+      degraded: 0,
+    } as any);
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/rebuild-from-docker",
+      headers: { authorization: `Bearer ${mockOwnerToken}` },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      ok: true,
+      projects: 2,
+      nodes: 3,
+      edges: 1,
+      degraded: 0,
+      skipped: 2,
+    });
+    expect(rebuildModule.rebuildFromDocker).toHaveBeenCalledTimes(1);
+  });
+
+  it("devrait skiper un cluster ready mais au Swarm inactif (garde A1)", async () => {
+    vi.mocked(prisma.cluster.findMany).mockResolvedValue([
+      { id: "inactive-cluster", status: "ready" },
+    ] as any);
+    mockForCluster.mockImplementation(() => ({
+      isSwarmActive: vi.fn().mockResolvedValue(false),
+    }));
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/rebuild-from-docker",
+      headers: { authorization: `Bearer ${mockOwnerToken}` },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({ ok: true, skipped: 1, failed: 0 });
+    expect(rebuildModule.rebuildFromDocker).not.toHaveBeenCalled();
   });
 });

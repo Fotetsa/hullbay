@@ -476,6 +476,11 @@ export type NodeHealth = {
   state: string;
   availability: string;
   leader: boolean;
+  memoryBytes: number;
+  nanoCpus: number;
+  os: string;
+  architecture: string;
+  dockerVersion: string;
 };
 
 export type ServicePlacement = {
@@ -506,6 +511,12 @@ export type ClusterHealth = {
   swarmActive: boolean;
   nodes: NodeHealth[];
   services: ServiceHealth[];
+  diskUsage: {
+    layersSize: number;
+    images: number;
+    containers: number;
+    volumes: number;
+  };
 };
 
 export type DriftEntry = {

@@ -89,8 +89,10 @@ export class UpdaterService {
     }
 
     // Détecter automatiquement le canal depuis le tag de version
-    // Si le tag contient "beta" ou "alpha", c'est le canal beta, sinon stable
-    const inferredChannel = /-(beta|alpha)/i.test(tag) ? "beta" : "stable";
+    // Toute pré-release (beta, alpha, rc, pre, dev…) = canal beta, sinon stable.
+    // Un tag rc (ex. v1.2.4-rc.2) ne doit pas être traité comme stable : sur le
+    // canal stable il annoncerait toujours une update (rc < stable en semver).
+    const inferredChannel = /-(beta|alpha|rc|pre|dev|milestone|snapshot)/i.test(tag) ? "beta" : "stable";
 
     if (existing) {
       if (
@@ -583,8 +585,11 @@ export class UpdaterService {
       const image = (component: "api" | "web") =>
         this.imageRef(component, toVersion);
       const docker = await this.getDocker();
-      await docker.ensureImage(image("api"), "Always");
-      await docker.ensureImage(image("web"), "Always");
+      // "IfNotPresent" : le tag encode la version exacte, pas besoin de re-tirer
+      // une image déjà en cache (évite un pull réseau long sur les VMs à faible
+      // débit — le tag est unique par release). Pull réseau seulement si absente.
+      await docker.ensureImage(image("api"), "IfNotPresent");
+      await docker.ensureImage(image("web"), "IfNotPresent");
       await log("images tirées (api + web)");
       await stepOk("pull");
 
@@ -632,11 +637,17 @@ export class UpdaterService {
    * Référence d'image d'un composant : registre IMAGE_REGISTRY (défaut ghcr.io)
    * + owner GHCR_OWNER + tag version. IMAGE_REGISTRY permet de pointer vers un
    * miroir/registre local (tests hors-ligne) sans changer de code.
+   *
+   * Le tag est construit avec le préfixe `v` : ghcr.io publie les releases sous
+   * leur tag GitHub brut (v1.2.4-rc.2), alors que normalizeTag() retire le `v`
+   * pour les comparaisons semver. Sans ce préfixe le pull renvoyait un 404
+   * (image "1.2.4-rc.2" introuvable).
    */
   private imageRef(component: "api" | "web", version: string): string {
     const registry = process.env.IMAGE_REGISTRY || "ghcr.io";
     const owner = process.env.GHCR_OWNER || "fotetsa";
-    return `${registry}/${owner}/hullbay/${component}:${version}`;
+    const tag = version.startsWith("v") ? version : `v${version}`;
+    return `${registry}/${owner}/hullbay/${component}:${tag}`;
   }
 
   /**

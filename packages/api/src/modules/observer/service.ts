@@ -273,6 +273,11 @@ export async function handleContainerEvent(
  * une rafale d'events pour le même service : debounce courte par nœud pour
  * éviter une tempête d'appels `getServiceMetrics` (coûteux : inspect + stats
  * CPU par task).
+ *
+ * Émet AUSSI "node.placements" (nodeId Swarm + taskId de chaque replica RUNNING) :
+ * même debounce, même coût (déjà en train d'inspecter le service), consommé par
+ * le canvas pour colorer chaque couche de la pile de replicas selon le nœud Swarm
+ * réel qui l'exécute (cf. packages/web/src/canvas/OpsNode.tsx).
  */
 const REPLICA_DEBOUNCE_MS = 800;
 const pendingRecount = new Map<string, NodeJS.Timeout>();
@@ -306,32 +311,52 @@ async function recountReplicas(
     if (aggregate) {
       const serviceIds = await engine.listServiceIdsByDatabaseParent(nodeId);
       let running = 0;
+      const placements: { swarmNodeId: string; taskId: string }[] = [];
       for (const sid of serviceIds) {
         const metrics = await engine.getServiceMetrics(sid);
         running += metrics.runningReplicas;
+        const tasks = typeof engine.listServiceTaskPlacements === "function"
+          ? await engine.listServiceTaskPlacements(sid)
+          : [];
+        for (const t of tasks) {
+          if (t.state === "running")
+            placements.push({ swarmNodeId: t.nodeId, taskId: t.taskId });
+        }
       }
       await eventBus.emit("node.replicas", {
         projectId,
         nodeId,
         runningReplicas: running,
       });
+      await eventBus.emit("node.placements", { projectId, nodeId, placements });
       return;
     }
     const serviceId = await engine.findServiceIdByNodeId(nodeId);
     if (!serviceId) {
-      // Service disparu (destroy) : 0 replica live.
+      // Service disparu (destroy) : 0 replica live, pile vide.
       await eventBus.emit("node.replicas", {
         projectId,
         nodeId,
         runningReplicas: 0,
       });
+      await eventBus.emit("node.placements", { projectId, nodeId, placements: [] });
       return;
     }
     const metrics = await engine.getServiceMetrics(serviceId);
+    const tasks = typeof engine.listServiceTaskPlacements === "function"
+      ? await engine.listServiceTaskPlacements(serviceId)
+      : [];
     await eventBus.emit("node.replicas", {
       projectId,
       nodeId,
       runningReplicas: metrics.runningReplicas,
+    });
+    await eventBus.emit("node.placements", {
+      projectId,
+      nodeId,
+      placements: tasks
+        .filter((t) => t.state === "running")
+        .map((t) => ({ swarmNodeId: t.nodeId, taskId: t.taskId })),
     });
   } catch {
     // service/conteneur disparu entre l'event et la mesure — pas grave, le

@@ -33,7 +33,9 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        package: [api, web]
+        include:
+          - package: api
+          - package: web
     steps:
       - name: Checkout release
         uses: actions/checkout@v6
@@ -56,7 +58,12 @@ jobs:
             type=sha
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
-      - name: Build & Push
+      - name: Read Patroni version from Dockerfile
+        id: patroni-pin
+        run: |
+          VERSION="$(grep -oP 'ARG PATRONI_VERSION=\K[0-9.]+' packages/patroni/Dockerfile)"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+      - name: Build & Push api/web
         uses: docker/build-push-action@v7
         with:
           context: .
@@ -64,3 +71,8 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          # Injecte la version de Patroni courante (pin du Dockerfile) dans l'API :
+          # c'est la valeur qui tague patroni:v<version>-pgXX (workflow dédié) —
+          # une seule source de vérité = le pin du Dockerfile Patroni.
+          build-args: |
+            PATRONI_VERSION=${{ steps.patroni-pin.outputs.version }}

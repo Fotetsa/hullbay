@@ -1,30 +1,46 @@
 import { useEffect, useState } from "react"
 import type { ElementType } from "react"
+import { useTranslation } from "react-i18next"
+import type { TFunction } from "i18next"
 import { Badge, Button, Container, Heading, Text, clx } from "@medusajs/ui"
 import {
   ArrowPath, CheckCircle, CircleCheckSolid, CircleStack, CircleXmarkSolid, CloudArrowDown,
   CubeSolid, Globe, Layers3, Server, Tag, XMark,
 } from "@medusajs/icons"
 import type { SystemUpdateRecord, UpdatesCheck } from "../../lib/api"
-import { CHANNEL_LABELS, STATUS_LABELS } from "./updatesShared"
+import { channelLabels, statusLabels } from "./updatesShared"
 
-/** Étapes du pipeline : libellé + icône Medusa pour le stepper. */
-const STEP_META: Record<string, { label: string; icon: ElementType }> = {
-  backup: { label: "Sauvegarde", icon: CircleStack },
-  version: { label: "Version", icon: Tag },
-  pull: { label: "Images", icon: CubeSolid },
-  web: { label: "Interface", icon: Globe },
-  api: { label: "API", icon: Server },
-  pipeline: { label: "Finalisation", icon: Layers3 },
-  restore: { label: "Restauration", icon: CircleStack },
+/** Icônes Medusa pour chaque étape du stepper (labels traduits via stepLabel). */
+const STEP_ICON: Record<string, ElementType> = {
+  backup: CircleStack,
+  version: Tag,
+  pull: CubeSolid,
+  web: Globe,
+  api: Server,
+  pipeline: Layers3,
+  restore: CircleStack,
+}
+
+const STEP_LABEL: Record<string, string> = {
+  backup: "updates.steps.backup",
+  version: "updates.steps.version",
+  pull: "updates.steps.pull",
+  web: "updates.steps.web",
+  api: "updates.steps.api",
+  pipeline: "updates.steps.pipeline",
+  restore: "updates.steps.restore",
+}
+
+function stepLabel(name: string, t: TFunction): string {
+  return STEP_LABEL[name] ? t(STEP_LABEL[name]) : name
 }
 
 /** Pastille d'état d'une étape du stepper (icône Medusa + formes/animations). */
-function StepBadge({ step }: { step: { name: string; status: string } }) {
-  const Icon = STEP_META[step.name]?.icon ?? Layers3
+function StepBadge({ step, t }: { step: { name: string; status: string }; t: TFunction }) {
+  const Icon = STEP_ICON[step.name] ?? Layers3
   if (step.status === "success") {
     return (
-      <span className="hb-animate-step-pop relative flex h-9 w-9 items-center justify-center" aria-label="réussie">
+      <span className="hb-animate-step-pop relative flex h-9 w-9 items-center justify-center" aria-label={t("updates.steps.status.success")}>
         <span className="relative flex h-9 w-9 items-center justify-center rounded-full border-2 border-uf-green bg-ui-bg-success text-uf-green">
           <CheckCircle className="h-4 w-4" aria-hidden />
         </span>
@@ -35,7 +51,7 @@ function StepBadge({ step }: { step: { name: string; status: string } }) {
     return (
       <span
         className="hb-animate-step-pop flex h-9 w-9 items-center justify-center rounded-full bg-ui-bg-error text-ui-fg-error"
-        aria-label="échouée"
+        aria-label={t("updates.steps.status.failed")}
       >
         <XMark className="h-4 w-4" aria-hidden />
       </span>
@@ -43,7 +59,7 @@ function StepBadge({ step }: { step: { name: string; status: string } }) {
   }
   if (step.status === "running") {
     return (
-      <span className="relative flex h-9 w-9 items-center justify-center" aria-label="en cours">
+      <span className="relative flex h-9 w-9 items-center justify-center" aria-label={t("updates.steps.status.running")}>
         <span className="hb-animate-node-pulse absolute inset-0 rounded-full bg-blue-500" aria-hidden />
         <span className="relative flex h-9 w-9 items-center justify-center rounded-full border-2 border-blue-500 bg-blue-50 text-blue-600">
           <Icon className="h-4 w-4" aria-hidden />
@@ -54,7 +70,7 @@ function StepBadge({ step }: { step: { name: string; status: string } }) {
   return (
     <span
       className="flex h-9 w-9 items-center justify-center rounded-full bg-ui-bg-base-pressed text-ui-fg-muted"
-      aria-label="en attente"
+      aria-label={t("updates.steps.status.pending")}
     >
       <Icon className="h-4 w-4" aria-hidden />
     </span>
@@ -104,7 +120,7 @@ function formatDuration(ms: number): string {
  * Contenu du pipeline (affiché dans la carte) : stepper visuel à icônes,
  * échecs d'étapes, progression + durée. Aucun log : un seul retour visuel.
  */
-function PipelineContent({ update, live }: { update: SystemUpdateRecord; live: boolean }) {
+function PipelineContent({ update, live, t }: { update: SystemUpdateRecord; live: boolean; t: TFunction }) {
   const steps = update.steps ?? []
   const done = steps.filter((s) => s.status === "success").length
   const progress = steps.length ? Math.round((done / steps.length) * 100) : 0
@@ -136,7 +152,7 @@ function PipelineContent({ update, live }: { update: SystemUpdateRecord; live: b
                 style={{ animationDelay: `${i * 60}ms` }}
               >
                 <div className="flex flex-col items-center gap-1.5">
-                  <StepBadge key={`${s.name}-${s.status}`} step={s} />
+                  <StepBadge key={`${s.name}-${s.status}`} step={s} t={t} />
                   <span
                     className={clx(
                       "text-xs",
@@ -145,7 +161,7 @@ function PipelineContent({ update, live }: { update: SystemUpdateRecord; live: b
                         : "text-ui-fg-muted",
                     )}
                   >
-                    {STEP_META[s.name]?.label ?? s.name}
+                    {stepLabel(s.name, t)}
                   </span>
                 </div>
                 {!last && <StepLink status={s.status} />}
@@ -156,18 +172,18 @@ function PipelineContent({ update, live }: { update: SystemUpdateRecord; live: b
       ) : (
         <div className="flex items-center gap-2">
           <CircleDottedLoader />
-          <Text size="small" className="text-ui-fg-muted">Pipeline en préparation…</Text>
+          <Text size="small" className="text-ui-fg-muted">{t("updates.pipeline.preparing")}</Text>
         </div>
       )}
 
       {failedSteps.length > 0 && (
         <div className="mt-4 rounded-md bg-ui-bg-base-pressed p-3">
           <Text size="xsmall" weight="plus" className="text-ui-fg-error">
-            Une étape a échoué
+            {t("updates.pipeline.stepFailed")}
           </Text>
           {failedSteps.map((s) => (
             <Text key={s.name} size="xsmall" className="mt-1 text-ui-fg-subtle">
-              {STEP_META[s.name]?.label ?? s.name} : {s.error}
+              {stepLabel(s.name, t)} : {s.error}
             </Text>
           ))}
         </div>
@@ -200,10 +216,12 @@ function VerdictBanner({
   update,
   onReload,
   onClose,
+  t,
 }: {
   update: SystemUpdateRecord
   onReload: () => void
   onClose: () => void
+  t: TFunction
 }) {
   const ok = update.status === "success"
   const rolledBack = update.status === "rolled_back"
@@ -246,27 +264,30 @@ function VerdictBanner({
         <div>
           <Text weight="plus">
             {ok
-              ? "Mise à jour terminée"
+              ? t("updates.verdict.success")
               : rolledBack
-                ? "Mise à jour annulée (rollback)"
-                : "La mise à jour a échoué"}
+                ? t("updates.verdict.rolledBack")
+                : t("updates.verdict.failed")}
           </Text>
           <Text size="small" className="mt-0.5 text-ui-fg-muted">
             {ok
-              ? `${update.fromVersion ?? "?"} → ${update.toVersion ?? "?"} — hullbay est à jour.`
+              ? t("updates.verdict.successDesc", {
+                  from: update.fromVersion ?? "?",
+                  to: update.toVersion ?? "?",
+                })
               : rolledBack
-                ? `hullbay est repassé à ${restored ?? "?"}.`
-                : update.error?.slice(0, 160) ?? "Vérifie l'historique pour le détail."}
+                ? t("updates.verdict.rolledBackDesc", { version: restored ?? "?" })
+                : update.error?.slice(0, 160) ?? t("updates.verdict.checkHistory")}
           </Text>
         </div>
       </div>
       <div className="flex shrink-0 gap-2">
         <Button variant="secondary" size="small" onClick={onReload}>
           <ArrowPath />
-          Recharger la page
+          {t("updates.verdict.reload")}
         </Button>
         <Button variant="primary" size="small" onClick={onClose}>
-          Fermer
+          {t("common.close")}
         </Button>
       </div>
     </div>
@@ -297,17 +318,22 @@ export function UpdatesHero({
   onCloseLive: () => void
   updatesDisabled?: boolean
 }) {
+  const { t } = useTranslation()
+  const clabels = channelLabels(t)
+  const slabels = statusLabels(t)
   const liveView = !!live
   const updateTerminal =
     liveView && ["success", "failed", "rolled_back"].includes(live!.status)
   const currentVersion = !data?.currentVersion
     ? "…"
     : data.currentVersion === "unknown"
-      ? "développement"
+      ? t("updates.version.dev")
       : data.currentVersion;
   const activeChannel = data?.updateChannel ?? "stable"
   const lastCheckLabel = data
-    ? `Dernière vérification : ${new Date(data.lastCheckAt).toLocaleString()}`
+    ? t("updates.hero.lastCheck", {
+        date: new Date(data.lastCheckAt).toLocaleString(),
+      })
     : null
   const isUpToDate = !!data && !data.updateAvailable
 
@@ -319,7 +345,7 @@ export function UpdatesHero({
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <Text size="xsmall" className="text-ui-fg-muted uppercase tracking-wide">
-                  {running ? "Mise à jour en cours" : "Résultat"}
+                  {running ? t("updates.hero.running") : t("updates.hero.result")}
                 </Text>
                 <Heading level="h3" className="mt-0.5 font-mono">
                   {live.fromVersion ?? "?"} → {live.toVersion ?? "?"}
@@ -328,7 +354,7 @@ export function UpdatesHero({
               <div className="flex items-center gap-2">
                 {running ? (
                   <Badge color="blue" className="animate-pulse motion-reduce:animate-none">
-                    {connected ? "En direct" : "Reconnexion…"}
+                    {connected ? t("updates.hero.live") : t("updates.hero.reconnecting")}
                   </Badge>
                 ) : (
                   <Badge
@@ -338,7 +364,7 @@ export function UpdatesHero({
                           : "orange"
                     }
                   >
-                    {STATUS_LABELS[live.status]?.label ?? live.status}
+                    {slabels[live.status]?.label ?? live.status}
                   </Badge>
                 )}
               </div>
@@ -349,11 +375,12 @@ export function UpdatesHero({
                 update={live}
                 onReload={() => window.location.reload()}
                 onClose={onCloseLive}
+                t={t}
               />
             )}
 
             <div className="mt-5">
-              <PipelineContent update={live} live={running} />
+              <PipelineContent update={live} live={running} t={t} />
             </div>
           </>
         ) : (
@@ -365,22 +392,26 @@ export function UpdatesHero({
                     {currentVersion}
                   </span>
                   {data?.updateAvailable && (
-                    <Badge color="orange">Mise à jour disponible</Badge>
+                    <Badge color="orange">{t("updates.hero.updateAvailable")}</Badge>
                   )}
                 </div>
                 {data?.updateAvailable && data.latest ? (
                   <Text className="mt-2 text-ui-fg-subtle">
-                    {data.latest.version} publiée le{" "}
-                    {data.latest.publishedAt
-                      ? new Date(data.latest.publishedAt).toLocaleDateString()
-                      : "récemment"}{" "}
-                    sur le canal {CHANNEL_LABELS[activeChannel].label.toLowerCase()}.
+                    {t("updates.hero.latestPublished", {
+                      version: data.latest.version,
+                      date: data.latest.publishedAt
+                        ? new Date(data.latest.publishedAt).toLocaleDateString()
+                        : t("updates.hero.recently"),
+                      channel: clabels[activeChannel].label.toLowerCase(),
+                    })}
                   </Text>
                 ) : isUpToDate ? (
                   <Text className="mt-2 flex items-center gap-1.5 text-ui-fg-subtle">
                     <CircleCheckSolid className="h-4 w-4 shrink-0 text-ui-fg-success" aria-hidden />
-                    Vous êtes à jour — {currentVersion} est la dernière version du canal{" "}
-                    {CHANNEL_LABELS[activeChannel].label.toLowerCase()}.
+                    {t("updates.hero.upToDate", {
+                      version: currentVersion,
+                      channel: clabels[activeChannel].label.toLowerCase(),
+                    })}
                   </Text>
                 ) : null}
               </div>
@@ -389,7 +420,7 @@ export function UpdatesHero({
                 {data?.updateAvailable && (
                   <Button variant="primary" disabled={running || updatesDisabled} onClick={onUpdate}>
                     <CloudArrowDown />
-                    Mettre à jour
+                    {t("updates.hero.update")}
                   </Button>
                 )}
               </div>
@@ -399,12 +430,12 @@ export function UpdatesHero({
               {lastCheckLabel && <span>{lastCheckLabel}</span>}
               {data?.degraded && (
                 <span className="text-amber-600">
-                  GitHub {data.degraded.slice(0, 80)} — dernier résultat connu.
+                  {t("updates.hero.degraded", { detail: data.degraded.slice(0, 80) })}
                 </span>
               )}
               {isError && (
                 <span className="text-red-600">
-                  Vérification impossible (GitHub ou réseau) — réessaie plus tard.
+                  {t("updates.hero.checkFailed")}
                 </span>
               )}
             </div>

@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { Button, Container, Heading, Text, Badge, Table } from "@medusajs/ui";
 import {
-  ArrowLeft,
+  ArrowDownLeft,
   ServerSolid,
   ArrowUpMini,
   ArrowDownMini,
@@ -174,7 +174,7 @@ export function ClusterDetailPage() {
           size="small"
           onClick={() => navigate("/clusters")}
         >
-          <ArrowLeft /> {t("clusters.detail.back")}
+          <ArrowDownLeft /> {t("clusters.detail.back")}
         </Button>
       </div>
 
@@ -334,7 +334,12 @@ export function ClusterDetailPage() {
                                 },
                               ]
                             : []),
-                          ...(srv.swarmNodeId && srv.role === "manager"
+                          ...(srv.swarmNodeId &&
+                            srv.role === "manager" &&
+                            // Garde A5 : on masque "Rétrograder" sur le DERNIER
+                            // manager — la rétrogradation est bloquée en back
+                            // (409 LastManagerError), inutile de la proposer en UI.
+                            managersTotal > 1
                             ? [
                                 {
                                   label: t("clusters.detail.server.demote"),

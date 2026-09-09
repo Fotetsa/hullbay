@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
+import { useTranslation } from "react-i18next"
 import {
   Alert, Badge, Button, Label, Prompt, Switch, Text, toast, clx,
 } from "@medusajs/ui"
@@ -9,7 +10,7 @@ import { useMutationToast } from "../lib/useMutationToast"
 import { useUpdatesCheck } from "../lib/useUpdates"
 import { useUpdateSocket } from "../lib/useUpdateSocket"
 import { PageContainer, PageHeader } from "../components/PageHeader"
-import { CHANNEL_LABELS, releaseType } from "../components/updates/updatesShared"
+import { channelLabels, releaseType } from "../components/updates/updatesShared"
 import { UpdatesHero } from "../components/updates/UpdatesHero"
 import { VersionsTab } from "../components/updates/VersionsTab"
 import { HistoryTab } from "../components/updates/HistoryTab"
@@ -32,6 +33,8 @@ const SHOW_MANUAL_CHECK = false
 const HISTORY_PAGE_SIZE = 20
 
 export function UpdatesPage() {
+  const { t } = useTranslation()
+  const chLabels = channelLabels(t)
   // Les mises a jour ont de sens qu'en production.
   const { data: envData } = useQuery({ queryKey: ["environment"], queryFn: api.getEnvironment })
   const isProduction = envData?.environment === "production"
@@ -115,12 +118,15 @@ export function UpdatesPage() {
       updates.refetch()
       qc.invalidateQueries({ queryKey: ["updates-status"] })
       if (p.status === "success") {
-        toast.success(`Mise à jour ${p.toVersion} appliquée`, {
-          description: `hullbay passe de ${p.fromVersion} à ${p.toVersion}.`,
+        toast.success(t("updates.toast.applied", { version: p.toVersion }), {
+          description: t("updates.toast.appliedDesc", {
+            from: p.fromVersion,
+            to: p.toVersion,
+          }),
         })
       } else if (p.status === "rolled_back") {
-        toast.info("Mise à jour annulée (rollback)", {
-          description: `hullbay est repassé à ${p.toVersion}.`,
+        toast.info(t("updates.toast.rolledBack"), {
+          description: t("updates.toast.rollbackDesc", { version: p.toVersion }),
         })
       }
     },
@@ -128,7 +134,7 @@ export function UpdatesPage() {
       refetchHistory()
       qc.invalidateQueries({ queryKey: ["updates-status"] })
       if (p.updateId === trackedId) {
-        toast.error("Échec de la mise à jour", { description: p.error })
+        toast.error(t("updates.toast.failed"), { description: p.error })
       }
     },
   })
@@ -136,7 +142,10 @@ export function UpdatesPage() {
   // ---- Canal (toggle header) ----
   const setChannel = useMutationToast({
     mutationFn: (channel: UpdateChannel) => api.setUpdateChannel(channel),
-    success: (_, channel) => `Canal passé en ${CHANNEL_LABELS[channel].label.toLowerCase()}`,
+    success: (_, channel) =>
+      t("updates.toast.channelChanged", {
+        channel: chLabels[channel].label.toLowerCase(),
+      }),
     invalidate: [["updates-check"]],
   })
 
@@ -147,7 +156,7 @@ export function UpdatesPage() {
   const apply = useMutationToast({
     mutationFn: (opts: { channel?: UpdateChannel; version?: string }) =>
       api.applyUpdate(opts),
-    success: "Mise à jour lancée — suivi en direct",
+    success: t("updates.toast.applyStarted"),
     onSuccess: (result) => {
       setModalOpen(false)
       setTargetVersionOverride(null)
@@ -184,7 +193,7 @@ export function UpdatesPage() {
   }
   const rollback = useMutationToast({
     mutationFn: (id: string) => api.rollbackUpdate(id),
-    success: "Rollback lancé — suivi en direct",
+    success: t("updates.toast.rollbackStarted"),
     onSuccess: (result) => {
       setPendingRollback(null)
       setActiveId(result.id)
@@ -227,16 +236,16 @@ export function UpdatesPage() {
     ? "..."
     : rawVersion === "unknown"
       ? isProduction
-        ? "inconnue" 
-        : "développement (source locale)"
+        ? t("updates.version.unknown")
+        : t("updates.version.dev")
       : rawVersion
   const activeChannel = updates.data?.updateChannel ?? "stable"
 
   return (
     <PageContainer size="5xl">
       <PageHeader
-        title="Mises à jour"
-        subtitle="Version et canal de distribution de l'instance hullbay."
+        title={t("updates.page.title")}
+        subtitle={t("updates.page.subtitle")}
         actions={
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-2">
@@ -253,7 +262,7 @@ export function UpdatesPage() {
                 size="small"
                 className="text-ui-fg-base"
               >
-                Version bêta
+                {t("updates.page.betaToggle")}
               </Label>
             </div>
             {SHOW_MANUAL_CHECK && (
@@ -266,7 +275,7 @@ export function UpdatesPage() {
                 isLoading={updates.isFetching || historyFetching}
               >
                 <ArrowPath />
-                Vérifier maintenant
+                {t("updates.page.checkNow")}
               </Button>
             )}
           </div>
@@ -275,11 +284,7 @@ export function UpdatesPage() {
 
       {!isProduction && (
         <Alert variant="info" className="mb-4">
-          <Text size="small">
-            Les mises à jour automatique ne sont disponible qu'en producti.
-            Cette instance tourne actuellement en environnement, la page reste
-            consultatble, mais l'installation d'une mise à jour est désactivée.
-          </Text>
+          <Text size="small">{t("updates.page.nonProdAlert")}</Text>
         </Alert>
       )}
 
@@ -307,23 +312,23 @@ export function UpdatesPage() {
         <div className="flex justify-start">
           <div
             role="tablist"
-            aria-label="Contenu"
+            aria-label={t("updates.tab.ariaContenu")}
             className="flex w-full rounded-md border border-ui-border-base bg-ui-bg-subtle p-0.5 sm:inline-flex sm:w-auto"
           >
             {(
               [
-                { value: "releases", label: "Versions publiées" },
-                { value: "history", label: "Historique" },
+                { value: "releases", label: t("updates.tab.releases") },
+                { value: "history", label: t("updates.tab.history") },
               ] as const
-            ).map((t) => {
-              const active = activeTab === t.value;
+            ).map((tgp) => {
+              const active = activeTab === tgp.value;
               return (
                 <button
-                  key={t.value}
+                  key={tgp.value}
                   type="button"
                   role="tab"
                   aria-selected={active}
-                  onClick={() => setActiveTab(t.value)}
+                  onClick={() => setActiveTab(tgp.value)}
                   className={clx(
                     "flex-1 rounded px-4 py-2 text-sm font-medium transition-colors sm:flex-none",
                     active
@@ -331,7 +336,7 @@ export function UpdatesPage() {
                       : "text-ui-fg-muted hover:text-ui-fg-base",
                   )}
                 >
-                  {t.label}
+                  {tgp.label}
                 </button>
               );
             })}
@@ -385,45 +390,42 @@ export function UpdatesPage() {
       >
         <Prompt.Content>
           <Prompt.Header>
-            <Prompt.Title>Confirmer la mise à jour</Prompt.Title>
+            <Prompt.Title>{t("updates.confirm.title")}</Prompt.Title>
             <Prompt.Description>
-              Installer la version{" "}
-              <span className="font-mono text-ui-fg-base">
-                {confirmVersion ?? "…"}
-              </span>{" "}
-              sur le canal {CHANNEL_LABELS[activeChannel].label.toLowerCase()}.
+              {t("updates.confirm.description", {
+                version: confirmVersion ?? "…",
+                channel: chLabels[activeChannel].label.toLowerCase(),
+              })}
             </Prompt.Description>
           </Prompt.Header>
           <div className="flex flex-col gap-2 px-6 text-sm text-ui-fg-subtle">
             {targetVersionOverride && (
               <Badge className="w-fit" size="small">
-                Version intermédiaire
+                {t("updates.confirm.intermediateBadge")}
               </Badge>
             )}
-            <Text size="small">
-              La mise à jour est automatique et réversible :
-            </Text>
+            <Text size="small">{t("updates.confirm.autoReversible")}</Text>
             <ul className="flex flex-col gap-1.5">
               <li className="flex items-start gap-2">
                 <CircleCheckSolid
                   className="mt-0.5 h-4 w-4 shrink-0 text-ui-fg-success"
                   aria-hidden
                 />
-                Sauvegarde de la base avant toute manipulation.
+                {t("updates.confirm.backup")}
               </li>
               <li className="flex items-start gap-2">
                 <CircleCheckSolid
                   className="mt-0.5 h-4 w-4 shrink-0 text-ui-fg-success"
                   aria-hidden
                 />
-                Redéploiement progressif (coupure de 2-3 s).
+                {t("updates.confirm.progressive")}
               </li>
               <li className="flex items-start gap-2">
                 <CircleCheckSolid
                   className="mt-0.5 h-4 w-4 shrink-0 text-ui-fg-success"
                   aria-hidden
                 />
-                Retour arrière automatique en cas d'échec.
+                {t("updates.confirm.rollback")}
               </li>
             </ul>
           </div>
@@ -435,7 +437,7 @@ export function UpdatesPage() {
             </div>
           )}
           <Prompt.Footer>
-            <Prompt.Cancel>Annuler</Prompt.Cancel>
+            <Prompt.Cancel>{t("common.cancel")}</Prompt.Cancel>
             <Button
               size="small"
               variant="primary"
@@ -448,7 +450,7 @@ export function UpdatesPage() {
                 })
               }
             >
-              Confirmer la mise à jour
+              {t("updates.confirm.confirmButton")}
             </Button>
           </Prompt.Footer>
         </Prompt.Content>

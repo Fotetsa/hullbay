@@ -3,6 +3,7 @@ import { runWorkflow } from "../../lib/workflow"
 import { secretsStep, servicesStep } from "../deploy-project"
 import type { DeployInput, DeployShared } from "../deploy-project"
 import { LabelKeys } from "@hullbay/shared"
+import { ImageUnavailableError } from "../../modules/docker-engine/service"
 
 const GENERATED_NAME = "boz_proj-a_postgres-haproxy-a1b2c3d4"
 
@@ -196,5 +197,142 @@ describe("secretsStep — configs générées versionnées, posées AVANT servic
     )
     expect(engine.removeSecret).not.toHaveBeenCalled()
     expect(engine.upsertSecret).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe("servicesStep — garde multi-nœuds : retrait forcé avant « image locale »", () => {
+  const GHCR_IMAGE = { image: "ghcr.io/fotetsa/hullbay/patroni", tag: "v4.1.5-pg16" }
+
+  function ghcrGraph() {
+    return {
+      id: "p1",
+      name: "projet A",
+      slug: "proj-a",
+      clusterId: "c1",
+      status: "draft",
+      nodes: [
+        {
+          id: "n_pg",
+          projectId: "p1",
+          type: "container",
+          name: "pg",
+          posX: 0,
+          posY: 0,
+          config: { ...GHCR_IMAGE, replicas: 1 },
+        },
+      ],
+      edges: [],
+    }
+  }
+
+  function engineWithPull(sequence: { pulled: boolean }[] | "fail") {
+    let i = 0
+    const ensureImage = vi.fn(async (image: string, policy: string) => {
+      expect(image).toBe("ghcr.io/fotetsa/hullbay/patroni:v4.1.5-pg16")
+      if (policy === "Always" && sequence === "fail") {
+        throw new ImageUnavailableError("Impossible de récupérer l'image")
+      }
+      const step = Array.isArray(sequence) ? sequence[Math.min(i++, sequence.length - 1)]! : sequence
+      return step
+    })
+    return {
+      listNodes: vi.fn(async () => [{ id: "n1" }, { id: "n2" }]), // multi-nœuds
+      listProjectServices: vi.fn(async () => []),
+      listManagedSecrets: vi.fn(async () => []),
+      upsertSecret: vi.fn(async () => "s"),
+      removeSecret: vi.fn(async () => {}),
+      createService: vi.fn(async () => ({ id: "svc-1" })),
+      updateService: vi.fn(async () => {}),
+      removeService: vi.fn(async () => {}),
+      ensureImage,
+    }
+  }
+
+  function runWith(engine: ReturnType<typeof engineWithPull>) {
+    const shared: DeployShared = {
+      log: [],
+      networkIdByNodeId: new Map(),
+      createdServiceIds: [],
+      createdNetworkIds: [],
+      createdGateways: [],
+      db: { graph: ghcrGraph() as never, ownership: new Map(), generatedSecrets: [] },
+      deployed: new Map(),
+      engine: engine as never,
+      reconciler: {
+        plan: async () => ({
+          actions: [
+            { kind: "create", node: (ghcrGraph() as never)["nodes"]![0] },
+          ],
+        }),
+      } as never,
+    }
+    return runWorkflow(
+      "t",
+      [servicesStep],
+      { graph: ghcrGraph() as DeployInput["graph"] } as DeployInput,
+      {},
+      shared as unknown as Record<string, unknown>,
+    )
+  }
+
+  it("image en cache local (IfNotPresent, pulled:false) sur multi-nœuds → retry pull forcé accepté", async () => {
+    const engine = engineWithPull([{ pulled: false }, { pulled: true }])
+    const res = await runWith(engine)
+    expect(res.ok).toBe(true)
+    // IfNotPresent (cache hit) puis Always (retry) : l'image référencée sur un
+    // registre est pullable même si présente localement → deploy continue.
+    expect(engine.ensureImage).toHaveBeenCalledWith(
+      "ghcr.io/fotetsa/hullbay/patroni:v4.1.5-pg16",
+      "IfNotPresent",
+    )
+    expect(engine.ensureImage).toHaveBeenCalledWith(
+      "ghcr.io/fotetsa/hullbay/patroni:v4.1.5-pg16",
+      "Always",
+    )
+    expect(engine.createService).toHaveBeenCalled()
+  })
+
+  it("retry pull forcé échoue → DeployError « Impossible de récupérer » (pas d'image locale trompeuse)", async () => {
+    const engine = engineWithPull("fail")
+    const res = await runWith(engine)
+    expect(res.ok).toBe(false)
+    expect(engine.createService).not.toHaveBeenCalled()
+    expect(String(res.error)).toMatch(/Impossible de récupérer/)
+  })
+
+  it("policy déjà Always (pulled:false) + registre injoignable → aucune image locale, erreur directe", async () => {
+    const engine = engineWithPull([{ pulled: false }])
+    // Force policy Always sur le nœud : le retry retomberait sur Always → on
+    // simule que le premier ensureImage a déjà été Always (pulled:false tout de
+    // même) ; policy!==Always étant faux, la garde conclut sans re-pull inutile.
+    engine.ensureImage.mockClear()
+    engine.ensureImage.mockImplementation(async () => ({ pulled: false }))
+    const graph = ghcrGraph()
+    ;(graph.nodes[0] as { config: Record<string, unknown> }).config.pullPolicy = "Always"
+    const shared: DeployShared = {
+      log: [],
+      networkIdByNodeId: new Map(),
+      createdServiceIds: [],
+      createdNetworkIds: [],
+      createdGateways: [],
+      db: { graph: ghcrGraph() as never, ownership: new Map(), generatedSecrets: [] },
+      deployed: new Map(),
+      engine: engine as never,
+      reconciler: {
+        plan: async () => ({
+          actions: [{ kind: "create", node: graph.nodes[0] }],
+        }),
+      } as never,
+    }
+    const res = await runWorkflow(
+      "t",
+      [servicesStep],
+      { graph: graph as DeployInput["graph"] } as DeployInput,
+      {},
+      shared as unknown as Record<string, unknown>,
+    )
+    expect(res.ok).toBe(false)
+    expect(engine.ensureImage).toHaveBeenCalledTimes(1)
+    expect(String(res.error)).toContain("Image locale")
   })
 })

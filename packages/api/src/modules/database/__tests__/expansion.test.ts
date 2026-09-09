@@ -158,6 +158,37 @@ describe("expandDatabaseGraph — edge app→db (S3-06)", () => {
     expect(secrets.filter((s) => s.secretName === "db_pg_password")).toHaveLength(1)
   })
 
+  it("HA : writer ET reader partagent le même secret → monté UNE seule fois (pas de conflit target Swarm)", () => {
+    // En HA postgres, provider.connection() expose deux endpoints (writer/reader)
+    // avec le MÊME passwordSecretRef. Sans déduplication, le secret serait monté
+    // deux fois → Swarm rejette (target en conflit). La collecte doit donner 1.
+    const haDb = {
+      ...dbNode,
+      config: {
+        ...dbNode.config,
+        mode: "ha" as const,
+        topology: { replicas: 3 },
+      },
+    }
+    const graph: ProjectGraph = {
+      ...baseGraph([]),
+      nodes: [haDb, appNode],
+      edges: [
+        {
+          id: "e1",
+          projectId: "p1",
+          sourceNodeId: "n_app",
+          targetNodeId: "n_db",
+          kind: "database" as const,
+        },
+      ],
+    }
+    const expanded = expandDatabaseGraph(graph)
+    const app = expanded.graph.nodes.find((n) => n.id === "n_app")!
+    const secrets = (app.config as { secrets: { secretName: string }[] }).secrets
+    expect(secrets.filter((s) => s.secretName === "db_pg_password")).toHaveLength(1)
+  })
+
   it("ajoute un edge réseau app→réseau DB (résolution DNS Swarm)", () => {
     const expanded = expandDatabaseGraph(
       baseGraph([
