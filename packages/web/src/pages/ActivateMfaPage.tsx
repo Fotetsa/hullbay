@@ -57,60 +57,126 @@ export function ActivateMfaPage() {
   }
 
   return (
-    <div className="flex h-full items-center justify-center bg-ui-bg-subtle p-4">
-      <Container className="w-[560px] p-6">
-        <Heading level="h1" className="mb-4">
+  <div className="flex min-h-full w-full items-center justify-center bg-ui-bg-subtle px-4 py-8">
+    <div className="w-full max-w-[390px]">
+
+      {/* Logo */}
+      <div className="mb-6 flex justify-center">
+        <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-ui-bg-base shadow-sm">
+          <div className="h-7 w-7 rounded-lg bg-ui-fg-base" />
+        </div>
+      </div>
+
+      {/* Header */}
+      <div className="mb-6 text-center">
+        <Heading
+          level="h1"
+          className="mb-2 text-xl font-semibold text-ui-fg-base"
+        >
           Activer la double authentification
         </Heading>
-        <Text className="text-ui-fg-subtle mb-4">
-          Pour sécuriser ton compte, active la MFA en scannant le QR code ci-dessous
-          (Google Authenticator, Authy, etc.) puis saisis le code.
-        </Text>
 
-        <div className="rounded-3xl bg-ui-bg-base p-5 shadow-sm mb-4">
+        <Text className="text-sm leading-5 text-ui-fg-subtle">
+          Sécurisez votre compte en activant la MFA. Scannez le QR code
+          avec votre application d'authentification puis saisissez le code
+          affiché.
+        </Text>
+      </div>
+
+      {/* QR Code */}
+      <div className="mb-4 rounded-xl bg-ui-bg-base p-5 shadow-sm">
+        <div className="mb-3 text-center">
+          <Text className="text-sm font-medium text-ui-fg-base">
+            Scannez le QR code
+          </Text>
+        </div>
+
+        <div className="flex justify-center">
           {otpauth ? (
-            <div className="mx-auto flex w-full max-w-xs justify-center rounded-3xl p-4 ">
+            <div className="flex items-center justify-center rounded-xl bg-white p-4">
               <QRCodeSVG value={otpauth} size={180} marginSize={2} />
             </div>
           ) : (
-            <Text className="text-ui-fg-muted">Préparation en cours...</Text>
+            <div className="flex h-[212px] items-center justify-center">
+              <Text className="text-sm text-ui-fg-muted">
+                Préparation en cours...
+              </Text>
+            </div>
           )}
         </div>
 
-        <div className="rounded-3xl bg-ui-bg-base p-4 shadow-sm mb-4">
-          <Label size="small" className="mb-1 block">
-            Saisie manuelle (à copier)
-          </Label>
-          <Text size="small" className="text-ui-fg-subtle mb-2">
-            Copie ce secret dans ton application si tu ne peux pas scanner.
-          </Text>
-          <div className="flex items-center gap-3">
-            <div className="flex-1 rounded-2xl bg-ui-bg-base-pressed p-3 text-sm font-mono break-all">
-              {secret ?? "—"}
-            </div>
-            <Button
-              variant="secondary"
-              size="small"
-              onClick={() => {
-                if (secret) navigator.clipboard.writeText(secret)
-              }}
-            >
-              Copier
-            </Button>
+        <Text className="mt-3 text-center text-xs text-ui-fg-subtle">
+          Utilisez Google Authenticator, Authy ou une application
+          compatible avec la validation en deux étapes.
+        </Text>
+      </div>
+
+      {/* Secret */}
+      <div className="mb-4 rounded-xl bg-ui-bg-base p-4 shadow-sm">
+        <Label
+          size="small"
+          className="mb-1.5 block text-ui-fg-subtle"
+        >
+          Configuration manuelle
+        </Label>
+
+        <Text className="mb-3 text-xs text-ui-fg-subtle">
+          Si vous ne pouvez pas scanner le QR code, copiez ce secret
+          dans votre application.
+        </Text>
+
+        <div className="flex items-center gap-2">
+          <div className="min-w-0 flex-1 rounded-lg bg-ui-bg-base-pressed p-3 text-xs font-mono break-all text-ui-fg-base">
+            {secret ?? "—"}
           </div>
-        </div>
 
-        <div className="rounded-3xl bg-ui-bg-base p-4 shadow-sm mb-4">
-          <Label size="small">Code de vérification</Label>
-          <Input value={code} onChange={(e) => setCode(e.target.value)} placeholder="123456" inputMode="numeric" className="mt-2" />
-        </div>
-
-        <div className="flex">
-          <Button onClick={confirm} isLoading={loading} className="w-fit px-6 mx-auto" disabled={code.length !== 6}>
-            Confirmer l'activation
+          <Button
+            variant="secondary"
+            size="small"
+            onClick={() => {
+              if (secret) {
+                navigator.clipboard.writeText(secret)
+              }
+            }}
+          >
+            Copier
           </Button>
         </div>
-      </Container>
+      </div>
+
+      {/* Verification code */}
+      <div className="mb-5 rounded-xl bg-ui-bg-base p-4 shadow-sm">
+        <Label
+          size="small"
+          className="mb-1.5 block text-ui-fg-subtle"
+        >
+          Code de vérification
+        </Label>
+
+        <Text className="mb-3 text-xs text-ui-fg-subtle">
+          Saisissez le code à 6 chiffres affiché dans votre application.
+        </Text>
+
+        <Input
+          value={code}
+          onChange={(e) => setCode(e.target.value)}
+          placeholder="123456"
+          inputMode="numeric"
+          maxLength={6}
+          className="h-10 rounded-lg text-center text-base tracking-[0.3em]"
+        />
+      </div>
+
+      {/* Confirm */}
+      <Button
+        onClick={confirm}
+        isLoading={loading}
+        disabled={code.length !== 6}
+        className="h-10 w-full rounded-lg"
+      >
+        Confirmer l'activation
+      </Button>
     </div>
-  )
+  </div>
+)
 }
