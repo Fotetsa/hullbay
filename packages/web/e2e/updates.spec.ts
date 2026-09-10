@@ -291,6 +291,85 @@ test("le verdict affiche la fin de la mise à jour (check animé + Recharger/Fer
   await expect(page.getByRole("button", { name: "Mettre à jour" }).first()).toBeVisible()
 })
 
+test("la dernière release publiée (même numéro, autre canal) propose Installeur", async ({ page }) => {
+  // Cas réel aligné sur le correctif serveur : stable v1.3.0 installé, la dernière
+  // publiée TOUS canaux confondus est la beta 1.3.0-beta.1 (même numéro semver).
+  await stubApi(page, {
+    "GET /api/updates/check": (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          currentVersion: "v1.3.0",
+          updateChannel: "beta",
+          updateAvailable: true,
+          latestVersion: "1.3.0-beta.1",
+          latest: { tag: "v1.3.0-beta.1", version: "1.3.0-beta.1", publishedAt: "2026-09-01T00:00:00Z", url: "", notes: "" },
+          releases: [
+            { tag: "v1.3.0-beta.1", version: "1.3.0-beta.1", prerelease: true, publishedAt: "2026-09-01T00:00:00Z", url: "", notes: "## Bêta" },
+            { tag: "v1.3.0", version: "1.3.0", prerelease: false, publishedAt: "2026-08-01T00:00:00Z", url: "", notes: "" },
+          ],
+          lastCheckAt: "2026-09-02T00:00:00Z",
+          degraded: null,
+          channelHistory: [],
+        }),
+      }),
+  })
+
+  await page.goto("/updates")
+  // Le bouton s'affiche sur la dernière publiée (la beta du même numéro),
+  // PAS sur le 1.3.0 stable déjà installé.
+  const installBtn = page.getByRole("button", { name: "Installer cette version" })
+  await expect(installBtn).toHaveCount(1)
+  await expect(page.getByText("1.3.0-beta.1", { exact: true }).first()).toBeVisible()
+  // Badge "Dernière" aligné sur la même ligne (le global latest, pas la tête du filtre).
+  await expect(page.getByText("Dernière", { exact: true })).toHaveCount(1)
+
+  await installBtn.click()
+  await expect(page.locator('[role="alertdialog"]').getByText("Version intermédiaire")).toBeVisible()
+  await expect(page.locator('[role="alertdialog"]').getByText("1.3.0-beta.1")).toBeVisible()
+})
+
+test("le bouton Installeur suit la dernière publiée TOUS canaux, pas la tête du filtre", async ({ page }) => {
+  // Global latest = stable v1.3.1 ; filtre Bêta ne montre que 1.3.0-beta.1 (qui
+  // n'est PAS le global latest) → aucun bouton. Retour "Tous" → bouton sur v1.3.1.
+  await stubApi(page, {
+    "GET /api/updates/check": (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          currentVersion: "v1.3.0",
+          updateChannel: "stable",
+          updateAvailable: true,
+          latestVersion: "1.3.1",
+          latest: { tag: "v1.3.1", version: "1.3.1", publishedAt: "2026-09-05T00:00:00Z", url: "", notes: "" },
+          releases: [
+            { tag: "v1.3.1", version: "1.3.1", prerelease: false, publishedAt: "2026-09-05T00:00:00Z", url: "", notes: "## Stable" },
+            { tag: "v1.3.0-beta.1", version: "1.3.0-beta.1", prerelease: true, publishedAt: "2026-09-01T00:00:00Z", url: "", notes: "# Bêta 1" },
+          ],
+          lastCheckAt: "2026-09-06T00:00:00Z",
+          degraded: null,
+          channelHistory: [],
+        }),
+      }),
+  })
+
+  await page.goto("/updates")
+  const installBtn = page.getByRole("button", { name: "Installer cette version" })
+  // Vue "Tous" (défaut) : un seul bouton, sur la ligne globale la plus récente.
+  await expect(installBtn).toHaveCount(1)
+  await expect(page.getByText("1.3.1", { exact: true }).first()).toBeVisible()
+  await expect(page.getByText("Dernière", { exact: true })).toHaveCount(1)
+
+  // Filtre Bêta : la ligne 1.3.0-beta.1 n'est PAS le global latest → pas de bouton,
+  // et pas de badge "Dernière" dessus non plus (badge aligné sur le global latest).
+  await page.getByRole("button", { name: "Beta" }).click()
+  await expect(page.getByText("1.3.0-beta.1", { exact: true }).first()).toBeVisible()
+  await expect(installBtn).toHaveCount(0)
+  await expect(page.getByText("Dernière", { exact: true })).not.toBeVisible()
+})
+
 test("une version intermédiaire s'installe depuis la liste des releases", async ({ page }) => {
   await stubApi(page, {
     "POST /api/updates/apply": (route) =>

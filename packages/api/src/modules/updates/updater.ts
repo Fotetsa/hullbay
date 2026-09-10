@@ -3,7 +3,7 @@ import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { prisma } from "../../lib/prisma";
 import { eventBus } from "../../lib/event-bus";
-import { githubReleasesService, type Channel } from "./github";
+import { compareVersions, githubReleasesService, type Channel } from "./github";
 import { DockerEngineService } from "../docker-engine/service";
 import { clusterService } from "../clusters/service";
 
@@ -88,24 +88,31 @@ export class UpdaterService {
       );
     }
 
-    // Détecter automatiquement le canal depuis le tag de version
-    // Toute pré-release (beta, alpha, rc, pre, dev…) = canal beta, sinon stable.
+    // Détecter automatiquement le canal depuis le tag de version :
+    // toute pré-release (beta, alpha, rc, pre, dev…) = canal beta, sinon stable.
     // Un tag rc (ex. v1.2.4-rc.2) ne doit pas être traité comme stable : sur le
     // canal stable il annoncerait toujours une update (rc < stable en semver).
+    //
+    // NB : cette inférence NE SERT QU'À L'INITIALISATION (première création du
+    // singleton). Sur une ligne EXISTANTE, updateChannel est un choix utilisateur
+    // (toggle stable/beta de la page Mises à jour) — on ne l'écrase JAMAIS avec le
+    // canal du tag déployé. Avant ce correctif, `current()` (appelé à chaque
+    // /api/updates/check, que le front invalide après chaque bascule) réécrivait
+    // updateChannel d'après le tag : une instance stable basculée vers beta
+    // repassait instantanément à stable → le toggle retombait sur off et le
+    // bouton "Mettre à jour" (basé sur updateChannel) n'apparaissait jamais.
     const inferredChannel = /-(beta|alpha|rc|pre|dev|milestone|snapshot)/i.test(tag) ? "beta" : "stable";
 
     if (existing) {
-      if (
-        existing.currentVersion === tag &&
-        existing.updateChannel === inferredChannel
-      ) {
+      // Toujours resynchroniser la version effective (source de vérité = tag
+      // réellement déployé), mais ne JAMAIS écraser le canal choisi par l'user.
+      if (existing.currentVersion === tag) {
         return existing;
       }
       return prisma.systemInfo.update({
         where: { id: "singleton" },
         data: {
           currentVersion: tag,
-          updateChannel: inferredChannel,
         },
       });
     }
@@ -156,13 +163,16 @@ export class UpdaterService {
 
     const latest = releases[0] ?? null;
     // "unknown" (pas d'IMAGE_TAG en dev) : on considère qu'une release existe → dispo.
+    // Une release est "disponible" quand la plus récemment publiée du canal est
+    // installable (isInstallable) : semver strictement supérieur, OU pré-release
+    // du MÊME numéro publiée après le stable installé (ex. v1.3.0 → 1.3.0-beta.1).
+    // On réutilise la même garde que apply() pour que check et apply restent
+    // cohérents — sinon un latest de numéro inférieur (le tri est par date de
+    // publication) serait annoncé alors que apply() le refuserait.
     const updateAvailable =
       latest !== null &&
       (currentVersion === "unknown" ||
-        githubReleasesService.isUpdateAvailable(
-          currentVersion,
-          latest.version,
-        ));
+        this.isInstallable(currentVersion, latest.version));
 
     // En mode dégradé on ne réécrit PAS lastCheckResult : on garde le dernier
     // état connu (la ligne "Dernière vérification" reste à la précédente).
@@ -563,11 +573,15 @@ export class UpdaterService {
       if (!latest)
         throw new Error("aucune release trouvée sur le canal demandé");
       const toVersion = latest.version;
-      // Garde anti-downgrade : on n'installe jamais une version <= à celle
-      // déployée (le canal beta peut contenir des pre-release "anciennes").
+      // Garde anti-downgrade : jamais de numéro semver strictement inférieur au
+      // déployé (le canal beta peut contenir des pre-release "anciennes"). On
+      // AUTORISE toutefois le glissement de pré-release d'un MÊME numéro (ex.
+      // stable 1.3.0 → beta 1.3.0-beta.1 publiée après) : c'est le mauvais
+      // comportement observé — le bouton "Mettre à jour" était invisible et le
+      // toggle ignoré, car current() + isUpdateAvailable comparaient en semver.
       if (
         fromVersion !== "unknown" &&
-        !githubReleasesService.isUpdateAvailable(fromVersion, toVersion)
+        !this.isInstallable(fromVersion, toVersion)
       ) {
         throw new Error(
           `refusé : ${toVersion} n'est pas plus récent que ${fromVersion} (anti-downgrade)`,
@@ -965,6 +979,41 @@ export class UpdaterService {
       deployed === `v${target}` ||
       target === `v${deployed}`
     );
+  }
+
+  /** Version normalisée (retire le `v` et tout suffixe -prerelease / +build). */
+  private releaseLine(v: string): string {
+    return v
+      .replace(/^v/, "")
+      .replace(/-[0-9A-Za-z.-]+$/, "")
+      .replace(/\+.*$/, "");
+  }
+
+  /** Vrai si deux versions désignent la MÊME release publiée (tolère le préfixe `v`). */
+  private sameVersion(a: string, b: string): boolean {
+    return a.replace(/^v/, "") === b.replace(/^v/, "");
+  }
+
+  /**
+   * Garde d'installabilité (anti-downgrade). Une cible est installable si :
+   *  - semver strictement supérieur au déployé, OU
+   *  - pré-release d'un MÊME numéro (stable → beta/rc du même major.minor.patch,
+   *    publiée après) — la release la plus récente du canal est déterminée par la
+   *    date de publication, pas par le semver.
+   * Toute autre cible (version identique, ou numéro réellement inférieur) est
+   * refusée.
+   */
+  private isInstallable(from: string, to: string): boolean {
+    if (this.sameVersion(from, to)) return false;
+    // Semver strictement supérieur au déployé → installable.
+    if (githubReleasesService.isUpdateAvailable(from, to)) return true;
+    // Fallback : pré-release d'un MÊME numéro (stable → beta/rc du même
+    // major.minor.patch, publiée après) — "latest" est choisi par date de
+    // publication, pas par semver. Ex. v1.3.0 installé, 1.3.0-beta.1 dispo.
+    if (compareVersions(to, from) < 0) {
+      return this.releaseLine(to) === this.releaseLine(from);
+    }
+    return false;
   }
 }
 
