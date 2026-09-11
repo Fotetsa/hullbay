@@ -1,5 +1,24 @@
 # Changelog
 
+## [1.4.0](https://github.com/Fotetsa/hullbay/compare/v1.3.0...v1.4.0) (2026-09-11)
+
+
+### Features
+
+* **web:** refresh login reset password and mfa ui ([#150](https://github.com/Fotetsa/hullbay/issues/150)) ([c2aaf48](https://github.com/Fotetsa/hullbay/commit/c2aaf489752de226eef5f5cdf19570d5e2ad29c0))
+
+
+### Bug Fixes
+
+* **api,web:** couvrir les points restants du rapport cluster ([#139](https://github.com/Fotetsa/hullbay/issues/139)) ([aac9e5b](https://github.com/Fotetsa/hullbay/commit/aac9e5b25004c5ceab67f20fa3aa6d7057a3b638))
+* **api,web:** rendre le toggle bêta et le bouton de mise à jour opérationnels ([#151](https://github.com/Fotetsa/hullbay/issues/151)) ([f38c31d](https://github.com/Fotetsa/hullbay/commit/f38c31dcfc81a13de71d17d1e84d7d0f5970351f))
+* **api,web:** résolution dynamique du tag Patroni + versions PG figées ([#145](https://github.com/Fotetsa/hullbay/issues/145)) ([73a16b1](https://github.com/Fotetsa/hullbay/commit/73a16b12966fd4b3eb5b8dc687a7e00cf97314ae))
+* corrige les points restants du rapport cluster et ajoute la surv… ([#146](https://github.com/Fotetsa/hullbay/issues/146)) ([7b59c4e](https://github.com/Fotetsa/hullbay/commit/7b59c4e181520143ca06ec762cd1a2d6416593e0))
+* normalize repository name to lowercase for Docker tags ([#144](https://github.com/Fotetsa/hullbay/issues/144)) ([bb77249](https://github.com/Fotetsa/hullbay/commit/bb772492c58ed9a8c80864596b69072b8aec3704))
+* refactor PG major versions handling in workflow ([#140](https://github.com/Fotetsa/hullbay/issues/140)) ([4f40434](https://github.com/Fotetsa/hullbay/commit/4f40434577dc878dd1d395f07cdcb33d539a2188))
+* refactor PG version handling in patroni-build.yml, f ([#141](https://github.com/Fotetsa/hullbay/issues/141)) ([5cd2d76](https://github.com/Fotetsa/hullbay/commit/5cd2d767bcd52ac3acca6e6afc2142931f26e2db))
+* update persist-credentials to false ([#142](https://github.com/Fotetsa/hullbay/issues/142)) ([49af8cb](https://github.com/Fotetsa/hullbay/commit/49af8cb3c705d570a46a52ae7ccea6a7e9bac349))
+
 ## [1.3.0](https://github.com/Fotetsa/hullbay/compare/v1.2.4...v1.3.0) (2026-09-04)
 
 
