@@ -149,6 +149,7 @@ model Cluster {
   caddyAdminUrl String
   isDefault     Boolean @default(false)
   status        String   @default("pending")
+  deletingAt    DateTime?
   servers       Server[]
   projects      Project[]
   createdAt     DateTime @default(now())

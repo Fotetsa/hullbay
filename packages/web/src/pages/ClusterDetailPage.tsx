@@ -228,7 +228,7 @@ export function ClusterDetailPage() {
 
       {tab === "overview" && (
         <div className="flex flex-col gap-4">
-          {managersTotal > 0 && !quorumOk && (
+          {health?.swarmActive && managersTotal > 0 && !quorumOk && (
             <Container className="border-2 border-ui-fg-error bg-ui-bg-error/20 p-4">
               <div className="flex items-center justify-between">
                 <div>
@@ -247,7 +247,7 @@ export function ClusterDetailPage() {
             </Container>
           )}
 
-          {managersTotal > 0 && (
+          {health?.swarmActive && managersTotal > 0 && (
             <Container className="flex items-center justify-between p-4">
               <div>
                 <Heading level="h3">
@@ -335,11 +335,11 @@ export function ClusterDetailPage() {
                               ]
                             : []),
                           ...(srv.swarmNodeId &&
-                            srv.role === "manager" &&
-                            // Garde A5 : on masque "Rétrograder" sur le DERNIER
-                            // manager — la rétrogradation est bloquée en back
-                            // (409 LastManagerError), inutile de la proposer en UI.
-                            managersTotal > 1
+                          srv.role === "manager" &&
+                          // Garde A5 : on masque "Rétrograder" sur le DERNIER
+                          // manager — la rétrogradation est bloquée en back
+                          // (409 LastManagerError), inutile de la proposer en UI.
+                          managersTotal > 1
                             ? [
                                 {
                                   label: t("clusters.detail.server.demote"),

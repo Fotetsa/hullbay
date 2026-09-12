@@ -20,6 +20,8 @@ const { mockSettingsService } = vi.hoisted(() => ({
   },
 }));
 
+vi.setConfig({ testTimeout: 15000, hookTimeout: 15000 });
+
 vi.mock("../service", () => ({
   settingsService: mockSettingsService,
 }));

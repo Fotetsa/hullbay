@@ -10,13 +10,16 @@ const { mockTx, mockPrisma, mockEventBus } = vi.hoisted(() => {
   const mockPrisma = {
     cluster: {
       findUnique: vi.fn(),
+      findUniqueOrThrow: vi.fn(),
       findFirst: vi.fn(),
       create: vi.fn(),
       update: vi.fn(),
+      updateMany: vi.fn(),
       delete: vi.fn(),
     },
     server: {
       findMany: vi.fn(),
+      deleteMany: vi.fn(),
     },
     $transaction: vi.fn((fn: (tx: typeof mockTx) => unknown) => fn(mockTx)),
   };
@@ -68,7 +71,7 @@ describe("ClusterService.remove", () => {
     expect(mockPrisma.cluster.delete).not.toHaveBeenCalled();
   });
 
-  it("passe en 'deleting' et émet cluster.delete.requested si teardown=true", async () => {
+    it("passe en 'deleting' et émet cluster.delete.requested si teardown=true", async () => {
     mockPrisma.cluster.findUnique.mockResolvedValue({
       id: "c1",
       status: "failed",
@@ -80,10 +83,14 @@ describe("ClusterService.remove", () => {
     const result = await service.remove("c1", { teardown: true });
 
     expect(result).toEqual({ removedServers: 2, status: "deleting" });
-    expect(mockPrisma.cluster.update).toHaveBeenCalledWith({
-      where: { id: "c1" },
-      data: { status: "deleting" },
-    });
+
+    expect(mockPrisma.cluster.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "c1" },
+        data: expect.objectContaining({ status: "deleting" }),
+      })
+    );
+    
     expect(mockEventBus.emit).toHaveBeenCalledWith("cluster.delete.requested", {
       clusterId: "c1",
       serverIds: ["s1", "s2"],
@@ -91,18 +98,48 @@ describe("ClusterService.remove", () => {
     expect(mockPrisma.cluster.delete).not.toHaveBeenCalled();
   });
 
-  it("refuse (409) de supprimer un cluster ready", async () => {
+  it("refuse (409) de supprimer un cluster ready avec des serveurs rattachés", async () => {
     mockPrisma.cluster.findUnique.mockResolvedValue({
       id: "c1",
       status: "ready",
       isDefault: false,
     });
+    // La nouvelle logique interroge toujours les serveurs en premier, pour
+    // décider si le cluster est supprimable directement (zéro serveur) ou
+    // s'il faut appliquer la garde "ready". Ce test couvre le cas où des
+    // serveurs existent encore : la garde doit s'appliquer.
+    mockPrisma.server.findMany.mockResolvedValue([{ id: "s1" }]);
 
     await expect(service.remove("c1")).rejects.toMatchObject({
       statusCode: 409,
       message: expect.stringContaining("opérationnel"),
     });
-    expect(mockPrisma.server.findMany).not.toHaveBeenCalled();
+    expect(mockPrisma.server.findMany).toHaveBeenCalledWith({
+      where: { clusterId: "c1" },
+      select: { id: true },
+    });
+  });
+
+  it("supprime un cluster ready sans aucun serveur rattaché", async () => {
+    // C'est exactement le cas que le rapport d'audit signalait comme
+    // impasse : un cluster resté "ready" en base après que tous ses
+    // serveurs ont été retirés un par un. La suppression doit passer,
+    // peu importe le statut affiché, dès lors qu'il n'y a plus rien à
+    // protéger.
+    mockPrisma.cluster.findUnique.mockResolvedValue({
+      id: "c1",
+      status: "ready",
+      isDefault: false,
+    });
+    mockPrisma.server.findMany.mockResolvedValue([]);
+    mockPrisma.cluster.delete.mockResolvedValue({});
+
+    const result = await service.remove("c1");
+
+    expect(result).toEqual({ removedServers: 0, status: "deleted" });
+    expect(mockPrisma.cluster.delete).toHaveBeenCalledWith({
+      where: { id: "c1" },
+    });
   });
 
   it("refuse (403) de supprimer le cluster par défaut, même si son statut n'est pas ready", async () => {
@@ -147,27 +184,37 @@ describe("ClusterService.createPending", () => {
     service = new ClusterService();
   });
 
-  it("remplace un cluster FAILED portant le même nom, sans erreur P2002", async () => {
-    mockPrisma.cluster.findUnique.mockResolvedValue({
-      id: "old-failed-cluster",
-      name: "Cluster Test",
-      status: "failed",
-    });
-    mockTx.server.deleteMany.mockResolvedValue({ count: 0 });
-    mockTx.cluster.delete.mockResolvedValue({});
-    mockTx.cluster.create.mockResolvedValue({
-      id: "new-cluster",
-      name: "Cluster Test",
-      status: "pending",
-    });
+    it("remplace un cluster FAILED portant le même nom, sans erreur P2002", async () => {
+      mockPrisma.cluster.findUnique.mockResolvedValue({
+        id: "old-failed-cluster",
+        name: "Cluster Test",
+        status: "failed",
+      });
 
-    const result = await service.createPending("Cluster Test");
+      mockPrisma.cluster.updateMany.mockResolvedValue({ count: 1 });
 
-    expect(mockTx.cluster.delete).toHaveBeenCalledWith({
-      where: { id: "old-failed-cluster" },
+      mockPrisma.server.deleteMany.mockResolvedValue({ count: 0 });
+
+      mockPrisma.cluster.findUniqueOrThrow.mockResolvedValue({
+        id: "old-failed-cluster",
+        name: "Cluster Test",
+        status: "pending",
+      });
+
+      const result = await service.createPending("Cluster Test");
+
+      expect(mockPrisma.cluster.updateMany).toHaveBeenCalledWith({
+        where: {
+          id: "old-failed-cluster",
+          status: { in: ["pending", "failed"] },
+        },
+        data: { dockerHost: "", caddyAdminUrl: "", status: "pending" },
+      });
+      expect(mockPrisma.server.deleteMany).toHaveBeenCalledWith({
+        where: { clusterId: "old-failed-cluster" },
+      });
+      expect(result.status).toBe("pending");
     });
-    expect(result.status).toBe("pending");
-  });
 
   it("refuse (409) si un cluster READY porte déjà ce nom", async () => {
     mockPrisma.cluster.findUnique.mockResolvedValue({

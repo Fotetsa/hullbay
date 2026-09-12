@@ -1,3 +1,4 @@
+import { defineConfig } from 'vite';
 import { prisma } from "../../lib/prisma";
 import { eventBus } from "../../lib/event-bus";
 import { Prisma } from "@prisma/client";
@@ -29,15 +30,36 @@ export class ClusterService {
       where: { isDefault: true },
     });
     if (existing) return existing;
-    return prisma.cluster.create({
-      data: {
-        name: "Default",
-        dockerHost: process.env.DOCKER_HOST || "tcp://socket-proxy:2375",
-        caddyAdminUrl: process.env.CADDY_ADMIN_URL || "http://caddy:2019",
-        isDefault: true,
-        status: "ready",
-      },
-    });
+    try {
+      return prisma.cluster.create({
+        data: {
+          name: "Default",
+          dockerHost: process.env.DOCKER_HOST || "tcp://socket-proxy:2375",
+          caddyAdminUrl: process.env.CADDY_ADMIN_URL || "http://caddy:2019",
+          isDefault: true,
+          status: "ready",
+        },
+      });
+    } catch (err) {
+      /**
+       * Deux appels concurrents peuvent chacun constater l'abscence du cluster par défaut
+       * et tenter de le créer en même temps. La contriante d'unicité déjà présente sur le
+       * nom empêche qu'il en existe deux, mais celui qui perd la course recevait jusqu'ici une
+       * erreur brute plutôt qu'un vrai cluster utilisable. On relit simplement ce que l'autre
+       * appel vient de créer, au lieu de faire remonter cette erreur interne.
+       */
+
+      if (
+        err instanceof Prisma.PrismaClientKnownRequestError &&
+        err.code === "P2002"
+      ) {
+        const winner = await prisma.cluster.findFirst({
+          where: { isDefault: true },
+        });
+        if (winner) return winner;
+      }
+      throw err;
+    }
   }
 
   /**
@@ -54,22 +76,30 @@ export class ClusterService {
         (err as Error & { statusCode?: number }).statusCode = 409;
         throw err;
       }
-      try {
-        return await prisma.$transaction(async (tx) => {
-          await tx.server.deleteMany({ where: { clusterId: existing.id } });
-          await tx.cluster.delete({ where: { id: existing.id } });
-          return tx.cluster.create({
-            data: {
-              name,
-              dockerHost: "",
-              caddyAdminUrl: "",
-              status: "pending",
-            },
-          });
-        });
-      } catch (err) {
-        throw this.friendlyNameCollisionError(err, name);
+      /**
+       * On réutilise la ligne existante par une mise à jour conditionnelle, plutôt que de la supprimer
+       * puis d'en recréer une nouvelle. L'ancienne approche laissait une fenêtre où un provisionnement
+       * déjà en cours sur cette même ligne continuait d'ecrire dans un identifiant qui venait disparaître
+       * de la base. Ici, l'indentifiant du cluster ne change jamais, seul son contenue est remis à zéro, et
+       * la condition sur le statut garantit qu'on ne touche à rien si un autre appell a déjà gagné la course
+       * entre le moment où on a lu son statut et celui où écrit.
+       */
+      const result = await prisma.cluster.updateMany({
+        where: { id: existing.id, status: { in: ["pending", "failed"] } },
+        data: { dockerHost: "", caddyAdminUrl: "", status: "pending" },
+      });
+      if (result.count === 0) {
+        throw this.friendlyNameCollisionError(
+          new Prisma.PrismaClientKnownRequestError("P2002", {
+            code: "P2002",
+            clientVersion: "",
+            meta: { target: ["name"] },
+          } as never),
+          name,
+        );
       }
+      await prisma.server.deleteMany({ where: { clusterId: existing.id } });
+      return prisma.cluster.findUniqueOrThrow({ where: { id: existing.id } });
     }
 
     try {
@@ -146,7 +176,9 @@ export class ClusterService {
       });
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : String(err);
-      console.error(`[clusters] échec emit cluster.status pour ${clusterId} : ${errMsg}`);
+      console.error(
+        `[clusters] échec emit cluster.status pour ${clusterId} : ${errMsg}`,
+      );
     }
   }
 
@@ -264,13 +296,6 @@ export class ClusterService {
       (err as Error & { statusCode?: number }).statusCode = 403;
       throw err;
     }
-    if (cluster.status === "ready") {
-      const err = new Error(
-        "impossible de supprimer un cluster opérationnel — retire d'abord ses serveurs",
-      );
-      (err as Error & { statusCode?: number }).statusCode = 409;
-      throw err;
-    }
     if (cluster.status === "deleting") {
       const err = new Error("Suppression déjà en cours pour ce cluster");
       (err as Error & { statusCode?: number }).statusCode = 409;
@@ -282,9 +307,27 @@ export class ClusterService {
       select: { id: true },
     });
 
+    /**
+     * Auncun serveur rattaché : rien à teardown, la suppression est sûre quel que soit le statut affiché en base, y compris
+     * "ready". Un cluster ready sans serveur est un cluster dont l'infrastructure a déjà disparu, le ststut n'est alors qu'une
+     * étiqutte obsolète, pas une garantie qu'il y a encore quelque chose à protéger.
+     */
+
     if (servers.length === 0) {
       await prisma.cluster.delete({ where: { id } });
       return { removedServers: 0, status: "deleted" };
+    }
+
+    /**
+     * Des serveurs sont encore rattachés : un cluster ready avec de vrais serveurs actifs reste protégé, il faut d'abord les retirer
+     * ou passer par le teardown explicite, jamais une suppression directe.
+     */
+    if (cluster.status === "ready") {
+      const err = new Error(
+        "impossible de supprimer un cluster opérationnel — retire d'abord ses serveurs",
+      );
+      (err as Error & { statusCode?: number }).statusCode = 409;
+      throw err;
     }
 
     if (!opts.teardown) {
@@ -297,7 +340,7 @@ export class ClusterService {
 
     await prisma.cluster.update({
       where: { id },
-      data: { status: "deleting" },
+      data: { status: "deleting", deletingAt: new Date() },
     });
     await eventBus.emit("cluster.delete.requested", {
       clusterId: id,
@@ -305,6 +348,37 @@ export class ClusterService {
     });
 
     return { removedServers: servers.length, status: "deleting" };
+  }
+
+  /**
+   * Un teardown est lancé sans jamais rester surveillé après coup, si le
+   * processus s'arrête pendant qu'il tourne, le cluster reste bloqué dans
+   * l'état de suppression pour toujours, sans qu'aucune route ne permette de
+   * retenter quoi que ce soit. Cette méthode retrouve ces cas et relance le
+   * teardown depuis le début, ce qui est sûr puisque chaque étape du
+   * teardown lui-même tolère déjà de retomber sur des ressources déjà
+   * parties.
+   */
+  async reclaimStuckDeletions(): Promise<void> {
+    const thresholdMs =
+      Number(process.env.CLUSTER_DELETING_STUCK_MS) || 10 * 60_000;
+    const cutoff = new Date(Date.now() - thresholdMs);
+    const stuck = await prisma.cluster.findMany({
+      where: { status: "deleting", deletingAt: { lt: cutoff } },
+    });
+    for (const cluster of stuck) {
+      const servers = await prisma.server.findMany({
+        where: { clusterId: cluster.id },
+        select: { id: true },
+      });
+      console.warn(
+        `[clusters] la suppression du cluster ${cluster.id} semble bloquée depuis plus de ${Math.round(thresholdMs / 60_000)} minutes, nouvelle tentative.`,
+      );
+      await eventBus.emit("cluster.delete.requested", {
+        clusterId: cluster.id,
+        serverIds: servers.map((s) => s.id),
+      });
+    }
   }
 }
 
