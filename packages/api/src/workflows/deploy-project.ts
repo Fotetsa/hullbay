@@ -46,8 +46,19 @@ export class DeployError extends Error {
  * Exemples : "postgres:16.3" → true, "ghcr.io/fotetsa/api:v1" → false
  */
 function isDockerHubImage(image: string): boolean {
-  const firstPart = (image.split(":")[0]?.split("/")[0]) ?? ""
-  return !firstPart.includes(".")
+  const firstSegment = image.split("/")[0] ?? "";
+  const hostCandidate = firstSegment.split(":")[0] ?? "";
+  // Un segment de tête désigne un vrai registre, pas un espace de noms
+  // Docker Hub, s'il contient un point de domaine, s'il précise un port
+  // explicite comme registry:5000, ou s'il vaut littéralement localhost.
+  // L'ancienne version découpait d'abord sur les deux points avant de
+  // découper sur la barre oblique, ce qui, pour un registre avec port,
+  // perdait à la fois le port et tout ce qui suivait, ne laissant qu'un
+  // simple nom d'hôte indiscernable d'un nom Docker Hub.
+  if (hostCandidate === "localhost") return false;
+  if (hostCandidate.includes(".")) return false;
+  if (firstSegment.includes(":")) return false;
+  return true;
 }
 
 /**

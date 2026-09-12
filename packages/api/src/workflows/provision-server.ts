@@ -59,12 +59,15 @@ type ProvShared = {
 };
 
 /**
- * Transforme la sortie brute en objet typé. Chaque valeur manquante ou non numérique devient null
- * plutôt que de faire planter tout le parsing, un serveur avec un outil manquant ne doit pas empêcher
- * de recuperer le reste des informations.
+ * Transforme la sortie brute en objet typé. Chaque valeur manquante ou non
+ * numérique devient null plutôt que de faire planter tout le parsing, un
+ * serveur avec un outil manquant ne doit pas empêcher de récupérer le reste
+ * des informations. Chaque valeur écartée est quand même consignée en log de
+ * débogage, avec le nom du champ et la valeur brute reçue, pour qu'on puisse
+ * comprendre après coup pourquoi telle information manque pour tel serveur,
+ * plutôt que de se retrouver face à un simple null sans aucune piste.
  */
-
-function parseSystemInfoOutput(raw: string): SystemInfoSnapshot {
+function parseSystemInfoOutput(raw: string, serverId: string): SystemInfoSnapshot {
   const lines = raw.split("\n").map((l) => l.trim()).filter(Boolean)
   const map = new Map<string, string>()
   for (const line of lines) {
@@ -76,9 +79,16 @@ function parseSystemInfoOutput(raw: string): SystemInfoSnapshot {
     const v = map.get(key)
     if (!v) return null
     const n = Number(v)
-    return Number.isFinite(n) ? n : null
+    if (!Number.isFinite(n)) {
+      console.debug(
+        `[provision-server] serveur ${serverId}, champ ${key} : valeur non numérique reçue ("${v}"), ignorée.`
+      )
+      return null
+    }
+    return n
   }
-  return {
+
+  const result: SystemInfoSnapshot = {
     os: map.get("OS") || null,
     kernel: map.get("KERNEL") || null,
     cpuCores: num("CPU"),
@@ -89,7 +99,10 @@ function parseSystemInfoOutput(raw: string): SystemInfoSnapshot {
     diskTotalGb: num("DISK_TOTAL_GB"),
     diskUsedGb: num("DISK_USED_GB"),
     collectedAt: new Date().toISOString(),
-  };
+  }
+
+  console.debug(`[provision-server] serveur ${serverId}, informations système décodées : ${JSON.stringify(result)}`)
+  return result
 }
 
 /** Commande shell unique, sans dépendance à un outil qui pourrait manquer sur une image 
@@ -246,11 +259,23 @@ const collectSystemInfoStep: Step<ProvisionInput> = {
     log(input.serverId, "Collecte des informations système…");
     try {
       const res = await s.session!.exec(SYSTEM_INFO_COMMAND);
-      s.systemInfo = parseSystemInfoOutput(res.stdout);
+      if (res.stderr) {
+        console.debug(
+          `[provision-server] serveur ${input.serverId}, la commande de collecte système a produit une sortie d'erreur : ${res.stderr}`,
+        );
+      }
+      s.systemInfo = parseSystemInfoOutput(res.stdout, input.serverId);
       log(input.serverId, "Informations système récupérées.");
-    } catch {
-      // Non bloquant : un serveur sans ces infos reste utilisable, on ne
-      // fait pas échouer tout le provisioning pour une donnée de confort.
+    } catch (err) {
+      // Cette étape reste volontairement non bloquante : un serveur sans ces
+      // informations reste tout à fait utilisable, on ne veut pas faire
+      // échouer tout le provisionnement pour une donnée de confort. En
+      // revanche, on veut désormais savoir pourquoi la collecte a échoué,
+      // pour un serveur donné, sans avoir à deviner.
+      const msg = err instanceof Error ? err.message : String(err);
+      console.debug(
+        `[provision-server] serveur ${input.serverId}, échec de la collecte des informations système : ${msg}`,
+      );
       log(input.serverId, "Informations système indisponibles (ignoré).");
     }
   },

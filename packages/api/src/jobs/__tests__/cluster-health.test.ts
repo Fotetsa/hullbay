@@ -5,6 +5,7 @@ const { mockClusterService, mockForCluster } = vi.hoisted(() => ({
     list: vi.fn(),
     markUnhealthy: vi.fn(),
     markRecovered: vi.fn(),
+    reclaimStuckDeletions: vi.fn().mockResolvedValue(undefined),
   },
   mockForCluster: vi.fn(),
 }));
@@ -43,6 +44,7 @@ describe("runClusterHealthCheck", () => {
     resetHealthCountersForTests();
     mockClusterService.markUnhealthy.mockResolvedValue(true);
     mockClusterService.markRecovered.mockResolvedValue(true);
+    mockClusterService.reclaimStuckDeletions.mockResolvedValue(undefined);
   });
 
   it("ne touche pas un cluster qui n'est pas prêt et n'a jamais été provisionné", async () => {
@@ -113,6 +115,7 @@ describe("runClusterHealthCheck", () => {
       managerHealth: vi
         .fn()
         .mockResolvedValue({ total: 1, reachable: 1, quorumOk: true }),
+      listNodes: vi.fn().mockResolvedValue([]),
     });
     mockForCluster.mockRejectedValueOnce(new Error("injoignable"));
     mockForCluster.mockRejectedValueOnce(new Error("injoignable"));
@@ -149,6 +152,7 @@ describe("runClusterHealthCheck", () => {
       managerHealth: vi
         .fn()
         .mockResolvedValue({ total: 1, reachable: 1, quorumOk: true }),
+      listNodes: vi.fn().mockResolvedValue([]),
     });
 
     await runClusterHealthCheck();
@@ -166,6 +170,7 @@ describe("runClusterHealthCheck", () => {
       managerHealth: vi
         .fn()
         .mockResolvedValue({ total: 1, reachable: 1, quorumOk: true }),
+      listNodes: vi.fn().mockResolvedValue([]),
     });
 
     await runClusterHealthCheck();
@@ -180,6 +185,7 @@ describe("runClusterHealthCheck", () => {
       managerHealth: vi
         .fn()
         .mockResolvedValue({ total: 1, reachable: 1, quorumOk: true }),
+      listNodes: vi.fn().mockResolvedValue([]),
     };
     mockForCluster.mockResolvedValueOnce(healthy);
     mockForCluster.mockResolvedValueOnce(healthy);
@@ -195,4 +201,35 @@ describe("runClusterHealthCheck", () => {
 
     expect(mockClusterService.markRecovered).not.toHaveBeenCalled();
   });
+
+    it("respecte la limite de concurrence même avec un grand nombre de clusters", async () => {
+      const manyClusters = Array.from({ length: 12 }, (_, i) =>
+        cluster({ id: `cluster-${i}`, status: "ready" }),
+      );
+      mockClusterService.list.mockResolvedValue(manyClusters);
+
+      let current = 0;
+      let peak = 0;
+      mockForCluster.mockImplementation(async () => {
+        current += 1;
+        peak = Math.max(peak, current);
+        // Une petite pause simulée laisse le temps à d'autres vérifications de
+        // démarrer en parallèle, ce qui permet de vérifier que le pic mesuré
+        // reste bien borné plutôt que de retomber à un par un.
+        await new Promise((resolve) => setTimeout(resolve, 20));
+        current -= 1;
+        return {
+          isSwarmActive: vi.fn().mockResolvedValue(true),
+          managerHealth: vi
+            .fn()
+            .mockResolvedValue({ total: 1, reachable: 1, quorumOk: true }),
+          listNodes: vi.fn().mockResolvedValue([]),
+        };
+      });
+
+      await runClusterHealthCheck();
+
+      expect(peak).toBeGreaterThan(1);
+      expect(peak).toBeLessThanOrEqual(4);
+    });
 });

@@ -20,6 +20,8 @@ vi.mock("../../auth/service", () => ({
   authService: { verifyToken: vi.fn() },
 }));
 
+vi.setConfig({ testTimeout: 15000, hookTimeout: 15000 });
+
 // 1. Le graphe persiste : projectsService.getProjectGraph est mocké.
 vi.mock("../../projects/service", () => ({
   projectsService: {

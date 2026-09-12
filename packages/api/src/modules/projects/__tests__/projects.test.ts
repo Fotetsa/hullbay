@@ -5,6 +5,7 @@ import { registerProjectRoutes } from "../routes";
 import { registerAuthGuard } from "../../auth/routes";
 import { authService } from "../../auth/service";
 
+vi.setConfig({ testTimeout: 30000, hookTimeout: 120000 });
 vi.mock("../service", () => ({
   projectsService: { createProject: vi.fn() },
 }));

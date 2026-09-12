@@ -167,7 +167,7 @@ export function ServersPage() {
         }
       />
 
-      {mgr && mgr.total > 0 && (
+      {mgr && mgr.total > 0 && serversByCluster.size === 1 && (
         <Container className="mb-4 flex items-center justify-between p-4">
           <div>
             <Heading level="h3">Quorum (HA control plane)</Heading>
@@ -241,8 +241,9 @@ export function ServersPage() {
                                 },
                               ]
                             : []),
-                          ...(srv.swarmNodeId && srv.role === "manager" &&
-                            (managerCountByCluster.get(clusterId) ?? 0) > 1
+                          ...(srv.swarmNodeId &&
+                          srv.role === "manager" &&
+                          (managerCountByCluster.get(clusterId) ?? 0) > 1
                             ? [
                                 {
                                   label: "Rétrograder worker",
