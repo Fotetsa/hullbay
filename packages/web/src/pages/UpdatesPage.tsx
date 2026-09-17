@@ -355,6 +355,7 @@ export function UpdatesPage() {
             }
             currentVersion={currentVersion}
             running={running}
+            latestTag={allReleases.data?.releases?.[0]?.tag ?? null}
             onInstall={(version) => openConfirm(version)}
           />
         ) : (

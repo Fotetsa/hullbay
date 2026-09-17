@@ -65,9 +65,14 @@ vi.mock("../../clusters/service", () => ({
     list: vi.fn(),
   },
 }));
-vi.mock("../github", () => ({
-  githubReleasesService: mockGithub,
-}))
+vi.mock("../github", async (importOriginal) => {
+  // Le service est mocké, mais compareVersions est une fonction pure utilisée
+  // par updater.isInstallable (fallback "même numéro de release") : on garde la
+  // vraie implémentation pour les comparaisons semver.
+  const original =
+    await importOriginal<typeof import("../github")>();
+  return { githubReleasesService: mockGithub, compareVersions: original.compareVersions };
+})
 
 import { updaterService } from "../updater"
 
@@ -259,6 +264,77 @@ describe("UpdaterService", () => {
       expect(failedUpdate).toBeTruthy()
       expect(failedUpdate![0].data.error).toContain("anti-downgrade")
     })
+
+    it("autorise une pré-release du MÊME numéro que la version déployée (stable → beta)", async () => {
+      // Cas réel : instance stable v1.3.0, canal beta, latest = 1.3.0-beta.1
+      // (même numéro, publiée APRÈS le stable). Le bouton "Mettre à jour" doit
+      // être visible et l'apply accepté malgré le semver inférieur.
+      mockDocker.currentSystemTag.mockResolvedValue("v1.3.0")
+      // current() resynchronise la version réelle (source de vérité = tag) quand
+      // elle diffère du stockage (ici "1.2.2") → le canal reste le choix user.
+      mockPrisma.systemInfo.update.mockResolvedValue({
+        id: "singleton",
+        currentVersion: "v1.3.0",
+        updateChannel: "stable",
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      })
+      mockGithub.latest.mockResolvedValue({
+        version: "1.3.0-beta.1",
+        tag: "v1.3.0-beta.1",
+        prerelease: true,
+        draft: false,
+        publishedAt: "2026-09-01T00:00:00Z",
+        url: "",
+        notes: "",
+      })
+      // isUpdateAvailable (semver) dit "inférieur" → false ; le fallback
+      // "même numéro de release" doit malgré tout accepter.
+      mockGithub.isUpdateAvailable.mockReturnValue(false)
+      mockDocker.ensureImage.mockResolvedValue({ pulled: true })
+      mockDocker.updateSystemServiceImage.mockResolvedValue(undefined)
+
+      await updaterService.apply({ channel: "beta" }, "user-1")
+      await updaterService.waitForPending()
+
+      expect(mockDocker.ensureImage).toHaveBeenCalledWith(
+        "ghcr.io/fotetsa/hullbay/api:v1.3.0-beta.1",
+        "IfNotPresent",
+      )
+    })
+
+    it("traite le métadata +build comme une pré-release du MÊME numéro (pas un downgrade)", async () => {
+      // Tag déployé avec métadata build (1.3.0+build.5), latest beta = 1.3.0-beta.1.
+      // En semver pur 1.3.0-beta.1 < 1.3.0+build.5 → isUpdateAvailable false ; le
+      // fallback releaseLine (qui retire -pre/+build) doit malgré tout accepter.
+      mockDocker.currentSystemTag.mockResolvedValue("1.3.0+build.5")
+      mockPrisma.systemInfo.update.mockResolvedValue({
+        id: "singleton",
+        currentVersion: "1.3.0+build.5",
+        updateChannel: "stable",
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      })
+      mockGithub.latest.mockResolvedValue({
+        version: "1.3.0-beta.1",
+        tag: "v1.3.0-beta.1",
+        prerelease: true,
+        draft: false,
+        publishedAt: "2026-09-01T00:00:00Z",
+        url: "",
+        notes: "",
+      })
+      mockGithub.isUpdateAvailable.mockReturnValue(false)
+      mockDocker.ensureImage.mockResolvedValue({ pulled: true })
+
+      await updaterService.apply({ channel: "beta" }, "user-1")
+      await updaterService.waitForPending()
+
+      expect(mockDocker.ensureImage).toHaveBeenCalledWith(
+        "ghcr.io/fotetsa/hullbay/api:v1.3.0-beta.1",
+        "IfNotPresent",
+      )
+    })
   })
 
   describe("check", () => {
@@ -292,6 +368,51 @@ describe("UpdaterService", () => {
 
       expect(result.updateAvailable).toBe(false)
       expect(result.latestVersion).toBe("1.2.2")
+    })
+
+    it("signale une beta du MÊME numéro publiée après le stable installé comme disponible", async () => {
+      // Cas réel : instance v1.3.0 (stable), canal beta, latest = 1.3.0-beta.1.
+      // updateAvailable est basé sur la version publiée (≠ déployée), pas sur le
+      // semver — sinon le bouton "Mettre à jour" reste invisible.
+      mockDocker.currentSystemTag.mockResolvedValue("v1.3.0")
+      mockPrisma.systemInfo.update.mockResolvedValue({
+        id: "singleton",
+        currentVersion: "v1.3.0",
+        updateChannel: "stable",
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      })
+      mockGithub.listReleases.mockResolvedValue([release("1.3.0-beta.1")])
+      mockGithub.isUpdateAvailable.mockReturnValue(false)
+
+      const result = await updaterService.check("beta")
+
+      expect(result.currentVersion).toBe("v1.3.0")
+      expect(result.latestVersion).toBe("1.3.0-beta.1")
+      expect(result.updateAvailable).toBe(true)
+    })
+
+    it("N'annonce PAS une release publiée plus récemment mais de numéro INFÉRIEUR", async () => {
+      // Tri par DATE de publication : une old stable publiée après le déployé
+      // (ex. 1.2.4 publiée le 01/09 alors qu'on tourne sur 1.3.0) ne doit pas
+      // être annoncée — check et apply partagent la même garde isInstallable.
+      mockDocker.currentSystemTag.mockResolvedValue("v1.3.0")
+      mockPrisma.systemInfo.update.mockResolvedValue({
+        id: "singleton",
+        currentVersion: "v1.3.0",
+        updateChannel: "stable",
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      })
+      mockGithub.listReleases.mockResolvedValue([release("1.2.4")])
+      // isUpdateAvailable semver dit "inférieur" → false (le fallback même-numéro
+      // ne s'applique pas : releaseLine différent).
+      mockGithub.isUpdateAvailable.mockReturnValue(false)
+
+      const result = await updaterService.check("stable")
+
+      expect(result.latestVersion).toBe("1.2.4")
+      expect(result.updateAvailable).toBe(false)
     })
 
     it("réagit en mode dégradé si GitHub est rate-limité (403) : pas de throw, resert l'état connu", async () => {
@@ -349,12 +470,12 @@ describe("UpdaterService", () => {
 
       expect(result.currentVersion).toBe("1.2.2")
       expect(result.updateAvailable).toBe(true)
-      // Le placeholder est persisté corrigé (auto-réparation).
+      // Le placeholder est persisté corrigé (auto-réparation) — le canal, lui,
+      // reste le choix utilisateur (jamais réécrit par l'inférence du tag).
       expect(mockPrisma.systemInfo.update).toHaveBeenCalledWith({
         where: { id: "singleton" },
-        data: { 
+        data: {
           currentVersion: "1.2.2",
-          updateChannel: "stable"
         },
       })
     })
@@ -831,9 +952,11 @@ describe("UpdaterService", () => {
 
       // La version périmée est resynchronisée vers le tag réellement déployé.
       expect(result.currentVersion).toBe("1.2.4-beta.6")
+      // MAIS updateChannel reste le choix utilisateur : l'inférence par le tag
+      // ne s'applique qu'à la création initiale du singleton (jamais un override).
       expect(mockPrisma.systemInfo.update).toHaveBeenCalledWith({
         where: { id: "singleton" },
-        data: { currentVersion: "1.2.4-beta.6", updateChannel: "beta" },
+        data: { currentVersion: "1.2.4-beta.6" },
       })
     })
 
@@ -858,6 +981,28 @@ describe("UpdaterService", () => {
       expect(result.currentVersion).toBe("1.2.2")
       expect(mockPrisma.systemInfo.update).not.toHaveBeenCalled()
       expect(mockPrisma.systemInfo.create).not.toHaveBeenCalled()
+    })
+
+    it("ne réécrit PAS updateChannel choisi par l'utilisateur quand le tag déployé est stable", async () => {
+      // Utilisateur sur une instance stable qui a basculé le toggle vers beta.
+      mockPrisma.systemInfo.findUnique.mockResolvedValue({
+        id: "singleton",
+        currentVersion: "v1.3.0",
+        updateChannel: "beta",
+        lastCheckAt: null,
+        lastCheckResult: null,
+        updatedAt: now,
+      })
+      // Le tag réellement déployé est stable (pas de pré-release).
+      mockDocker.currentSystemTag.mockResolvedValue("v1.3.0")
+
+      const result = await updaterService.current()
+
+      // La version est déjà à jour dans la base → aucun écriture, et surtout le
+      // canal beta choisi par l'utilisateur ne doit PAS être ramené à stable.
+      expect(result.currentVersion).toBe("v1.3.0")
+      expect(result.updateChannel).toBe("beta")
+      expect(mockPrisma.systemInfo.update).not.toHaveBeenCalled()
     })
   })
 })

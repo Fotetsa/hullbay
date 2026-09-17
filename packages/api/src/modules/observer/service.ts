@@ -69,8 +69,24 @@ export function resetTrackerForTests(): void {
 export async function startObserver(): Promise<void> {
   const clusters = await prisma.cluster.findMany({ select: { id: true } });
   for (const c of clusters) {
+    activeClusters.add(c.id);
     void startObserverForCluster(c.id);
   }
+}
+
+/**
+ * Démarre l'observation d'un seul cluster, à la demande, sans attendre un
+ * redémarrage complet de l'application. Ce chemin manquait jusqu'ici :
+ * l'ensemble des clusters suivis n'était jamais rempli qu'une seule fois, au
+ * tout début du démarrage, si bien qu'un cluster fraîchement provisionné
+ * restait invisible à l'observateur jusqu'au prochain redémarrage, malgré un
+ * cluster parfaitement opérationnel. Idempotente, un appel sur un cluster
+ * déjà suivi ne fait rien de plus.
+ */
+export function startObserverForClusterOnDemand(clusterId: string): void {
+  if (activeClusters.has(clusterId)) return;
+  activeClusters.add(clusterId);
+  void startObserverForCluster(clusterId);
 }
 
 /**

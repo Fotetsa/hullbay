@@ -112,10 +112,77 @@ const HEALTH_RESPONSE = {
 
 type Handler = (route: Route) => void;
 
+/**
+ * Cette fonction reconnaît aussi les chemins comportant un identifiant
+ * variable, comme /api/clusters/:id, sans que chaque test ait besoin de
+ * connaître à l'avance l'identifiant exact qui sera appelé. Un chemin de
+ * requête réel est comparé segment par segment au motif déclaré, un segment
+ * du motif commençant par deux points acceptant n'importe quelle valeur à
+ * cette position précise.
+ */
+function pathMatches(pattern: string, actualPath: string): boolean {
+  const patternParts = pattern.split("/").filter(Boolean);
+  const actualParts = actualPath.split("/").filter(Boolean);
+  if (patternParts.length !== actualParts.length) return false;
+  return patternParts.every((part, i) => part.startsWith(":") || part === actualParts[i]);
+}
+
+type RouteDef = { method: string; pattern: string; handler: Handler };
+
+/**
+ * Gestionnaires par défaut pour toutes les mutations que le module clusters
+ * et le module serveurs peuvent déclencher depuis l'interface. Un test qui
+ * ne fournit pas son propre remplacement obtient ici une réponse de succès
+ * générique et cohérente, plutôt qu'un refus silencieux qui laisserait
+ * l'interface dans un état incertain sans que le test ne s'en aperçoive.
+ */
+const DEFAULT_MUTATIONS: RouteDef[] = [
+  {
+    method: "POST",
+    pattern: "/api/servers",
+    handler: (route) =>
+      route.fulfill({
+        status: 202,
+        contentType: "application/json",
+        body: JSON.stringify({ id: "server-generated", role: "worker", status: "provisioning" }),
+      }),
+  },
+  {
+    method: "POST",
+    pattern: "/api/servers/:id/role",
+    handler: (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ ok: true, role: "manager" }),
+      }),
+  },
+  {
+    method: "DELETE",
+    pattern: "/api/servers/:id",
+    handler: (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ ok: true }),
+      }),
+  },
+  {
+    method: "DELETE",
+    pattern: "/api/clusters/:id",
+    handler: (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ ok: true, removedServers: 0, status: "deleted" }),
+      }),
+  },
+];
+
 async function stubApi(page: Page, overrides: Record<string, Handler> = {}) {
   await page.unrouteAll();
 
-  const handlers: Record<string, Handler> = {
+  const exactHandlers: Record<string, Handler> = {
     "GET /api/system/environment": (route) =>
       route.fulfill({
         status: 200,
@@ -154,16 +221,26 @@ async function stubApi(page: Page, overrides: Record<string, Handler> = {}) {
       return route.continue();
     }
 
+    const method = route.request().method();
     const url = new URL(route.request().url());
     const pathname = url.pathname.replace(/\/$/, "");
-    const key = `${route.request().method()} ${pathname}`;
-    const handler = handlers[key];
+    const key = `${method} ${pathname}`;
 
-    if (handler) {
-      return handler(route);
-    }
+    // Priorité 1 : une correspondance exacte, qu'elle vienne des routes de
+    // lecture par défaut ou d'un remplacement fourni par le test lui-même.
+    const exact = exactHandlers[key];
+    if (exact) return exact(route);
 
-    // Bloquer les autres requêtes non mockées pour éviter les fuites vers le backend
+    // Priorité 2 : un gestionnaire de mutation par défaut, reconnu par motif
+    // de chemin plutôt que par correspondance exacte.
+    const byPattern = DEFAULT_MUTATIONS.find(
+      (r) => r.method === method && pathMatches(r.pattern, pathname),
+    );
+    if (byPattern) return byPattern.handler(route);
+
+    // Toute requête qui n'a de correspondance nulle part est bloquée
+    // explicitement, pour qu'une omission de couverture se voie immédiatement
+    // dans les résultats du test plutôt que de passer inaperçue.
     return route.fulfill({
       status: 404,
       contentType: "application/json",

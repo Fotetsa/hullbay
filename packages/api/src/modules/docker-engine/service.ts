@@ -307,7 +307,10 @@ export class DockerEngineService {
         memBytes: s.memory_stats.usage ?? 0,
         memLimit: s.memory_stats.limit ?? 0,
       };
-    } catch {
+    } catch (err){
+      console.debug(
+        `[docker-engine]impossible d'échantillonner les statistiques du conteneur ${containerId} : ${err instanceof Error ? err.message : String(err)}`
+      );
       return null;
     }
   }

@@ -8,6 +8,7 @@ import { eventBus } from "../../lib/event-bus"
 import { runWithConcurrency, CLUSTER_CONCURRENCY } from "../../lib/concurrency"
 import { TunnelError } from "../../lib/ssh-tunnel"
 import { clusterService } from "../clusters/service"
+import { migrateClusterAnchorIfNeeded } from "../../workflows/cluster-anchor";
 
 
 /**
@@ -213,14 +214,36 @@ export async function registerServersRoutes(app: FastifyInstance) {
       const server = await serversService.get(id);
       if (!server)
         return reply.code(404).send({ error: "serveur introuvable" });
+      /**
+       * On protége le quoru de la même façon que sur le changement de rôle : retirer
+       * purement et simplement le dernier manager d'un cluster revient à couper son control
+       * sans aucun moyen de revenir en arrière.
+       */
+
+      if (server.role === "manager") {
+        const activeManagers = await serversService.countReadyManagers(server.clusterId);
+        if (activeManagers <= 1) {
+          return reply.code(409).send({
+            error: "impossible de retirer le dernier manager du cluster, le quorum serait perdu",
+          });
+        }
+        const migrated = await migrateClusterAnchorIfNeeded(server.clusterId, server.id);
+        if (!migrated) {
+          return reply.code(409).send({
+            error:
+              "ce serveur héberge les services d'administration du cluster et aucun autre manager n'a pu prendre le relais, retire-le après avoir stabilisé un autre manager",
+          });
+        }
+      }
       if (server.swarmNodeId) {
         const engine = await DockerEngineService.forCluster(server.clusterId);
         /**
-         * On ne bloque jamais la suppression si le drain ou le retrait échoue, l'utilisateur
-         * veut peut-être supprimer un serveur qui n'est déjà plus joignable du tout. Mais on
-         * ne veut  non que cet échec passe complétement inaperçu, alors on le consigne, pour qu'un
-         * administrateur puisse aller vérifier manuellement si le noeud est resté visible côté Swarm.
+         * Rend visible qu'un retrait est en cours plutôt que de passer
+         * directement et silencieusement de l'état prêt à la disparition de
+         * la ligne, un état intermédiaire que l'interface peut désormais
+         * afficher pendant que le drain progresse.
          */
+        await serversService.update(id, { status: "draining" }).catch(() => {});
         await engine.drainNode(server.swarmNodeId).catch((err) => {
           req.log.warn(
             `impossible de drainer le nœud ${server.swarmNodeId} avant suppression : ${err instanceof Error ? err.message : String(err)}`,

@@ -2,6 +2,10 @@ import { describe, it, expect, vi } from "vitest"
 import { pruneOrphans, type PruneDeps, type PruneResult } from "../prune-orphans"
 import { LabelKeys } from "@hullbay/shared"
 
+vi.mock("../../lib/event-bus", () => ({
+  eventBus: { emit: vi.fn() },
+}));
+
 function fakeEngine(volumes: { Name: string; Labels?: Record<string, string> }[]) {
   const removedVolumes: string[] = []
   return {

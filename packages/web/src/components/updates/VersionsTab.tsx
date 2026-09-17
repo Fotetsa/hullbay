@@ -8,6 +8,11 @@ import { useTranslation } from "react-i18next"
 import type { UpdateRelease } from "../../lib/api"
 import { EmptyState, releaseType } from "./updatesShared"
 
+/** Vrai si deux versions désignent la MÊME release publiée (tolère le préfixe `v`). */
+function samePublishedVersion(a: string, b: string): boolean {
+  return a.replace(/^v/, "") === b.replace(/^v/, "")
+}
+
 /** Comparaison semver légère côté web : vrai si `a` est plus récent que `b`. */
 function isNewer(a: string, b: string): boolean {
   const parse = (v: string) =>
@@ -99,6 +104,7 @@ export function VersionsTab({
   currentVersion,
   running,
   onInstall,
+  latestTag,
 }: {
   releases: UpdateRelease[]
   loading: boolean
@@ -109,6 +115,8 @@ export function VersionsTab({
   currentVersion: string
   running: boolean
   onInstall: (version: string) => void
+  /** Tag de la dernière release publiée TOUS canaux confondus (hors filtre local). */
+  latestTag: string | null
 }) {
   const { t } = useTranslation()
   return (
@@ -162,9 +170,16 @@ export function VersionsTab({
           />
         ) : (
           <ul className="flex flex-col gap-3">
-            {releases.map((r, i) => {
+            {releases.map((r) => {
               const expanded = expandedTag === r.tag
-              const installable = isNewer(r.version, currentVersion)
+              // La release la plus récente TOUS canaux confondus : bouton
+              // "Installer" + badge "Dernière" alignés sur elle, quel que soit le
+              // filtre local — sauf si c'est exactement la version installée.
+              const isGlobalLatest = r.tag === latestTag
+              const installable =
+                (isGlobalLatest &&
+                  !samePublishedVersion(r.version, currentVersion)) ||
+                isNewer(r.version, currentVersion)
               const type = releaseType(r)
               return (
                 <li
@@ -185,7 +200,7 @@ export function VersionsTab({
                         {type === "stable" ? <CheckCircle /> : type === "rc" ? <Tag /> : <Beaker />}
                         {t(`updates.versions.badge.${type}`)}
                       </Badge>
-                      {i === 0 && <Badge color="blue" size="small">{t("updates.versions.latest")}</Badge>}
+                      {isGlobalLatest && <Badge color="blue" size="small">{t("updates.versions.latest")}</Badge>}
                     </div>
                     <span className="text-xs text-ui-fg-muted">
                       {r.publishedAt ? new Date(r.publishedAt).toLocaleDateString() : ""}

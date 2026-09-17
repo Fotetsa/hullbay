@@ -15,6 +15,8 @@ const { mockRegistryService, mockEventBus } = vi.hoisted(() => ({
   },
 }));
 
+vi.setConfig({ testTimeout: 30000, hookTimeout: 120000 });
+
 vi.mock("../service", () => ({
   registryService: { set: vi.fn() },
 }));

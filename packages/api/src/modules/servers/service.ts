@@ -64,6 +64,59 @@ export class ServersService {
     });
   }
 
+  /**
+   * Recale le rôle, l'état de joignabilité, et l'identifiant Swarm de chaque
+   * serveur connu d'un cluster, d'après ce que le Swarm rapporte réellement en
+   * ce moment précis. Sans ce recalage, une promotion faite hors interface, un
+   * nœud retiré directement en ligne de commande, ou une machine simplement
+   * tombée, ne se refléteraient jamais dans la base, alors que cette même
+   * base sert justement à décider qui peut encore agir comme manager et où
+   * pointer le tunnel de connexion.
+   */
+  async resyncFromSwarmNodes(
+    clusterId: string,
+    nodes: Array<{
+      ID?: string;
+      Status?: { Addr?: string; State?: string };
+      Spec?: { Role?: string };
+      Description?: { Hostname?: string };
+    }>,
+  ): Promise<void> {
+    const servers = await prisma.server.findMany({ where: { clusterId } });
+    for (const server of servers) {
+      // Un serveur encore en cours de provisionnement n'a pas de raison
+      // d'apparaître dans cette liste, on ne le touche jamais ici.
+      if (server.status === "provisioning") continue;
+
+      const match = nodes.find(
+        (n) =>
+          n.Status?.Addr === server.host ||
+          n.Description?.Hostname === server.host,
+      );
+      if (!match) continue;
+
+      const swarmRole = match.Spec?.Role === "manager" ? "manager" : "worker";
+      const reachable = match.Status?.State === "ready";
+      const newStatus = reachable ? "ready" : "down";
+
+      const data: Record<string, unknown> = {};
+      if (match.ID && match.ID !== server.swarmNodeId)
+        data.swarmNodeId = match.ID;
+      if (swarmRole !== server.role) data.role = swarmRole;
+      if (newStatus !== server.status) data.status = newStatus;
+
+      if (Object.keys(data).length > 0) {
+        await prisma.server
+          .update({ where: { id: server.id }, data })
+          .catch((err) => {
+            console.error(
+              `[servers] impossible de resynchroniser le serveur ${server.id} : ${err instanceof Error ? err.message : String(err)}`,
+            );
+          });
+      }
+    }
+  }
+
   create(data: {
     name: string;
     host: string;

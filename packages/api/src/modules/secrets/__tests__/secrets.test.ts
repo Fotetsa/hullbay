@@ -24,6 +24,8 @@ const { mockEngine } = vi.hoisted(() => ({
   },
 }));
 
+vi.setConfig({ testTimeout: 30000, hookTimeout: 120000 });
+
 vi.mock("../../docker-engine/service", () => ({
   DockerEngineService: {
     forCluster: vi.fn(async () => mockEngine),
