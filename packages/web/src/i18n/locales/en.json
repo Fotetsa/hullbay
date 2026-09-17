@@ -302,6 +302,23 @@
   },
   "integrations": {
     "pageTitle": "Container Registries",
+    "mail": {
+      "pageTitle": "Mail integration",
+      "configuredProviders": "Configured providers",
+      "configureProvider": "Configure provider",
+      "providerLabel": "Provider",
+      "apiKeyLabel": "API Key",
+      "smtpHostLabel": "SMTP host",
+      "smtpUserLabel": "User",
+      "smtpPassLabel": "Password",
+      "defaultFromLabel": "Default From",
+      "defaultFromHint": "Used as the sender for test emails.",
+      "enabled": "Enabled",
+      "disabled": "Disabled",
+      "saveButton": "Save",
+      "testButton": "Send test email",
+      "testSuccess": "Test email sent"
+    },
     "toast": {
       "saveSuccess": "Registry saved",
       "removeSuccess": "Registry removed"

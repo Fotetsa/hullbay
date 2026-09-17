@@ -54,10 +54,10 @@ export function registerMailSubscribers(): void {
 
   // Test send endpoint -> perform an actual send via mailerService
   eventBus.on("mail.test", async (evt) => {
-    const d = evt.data as { email?: string; name?: string; userId?: string }
+    const d = evt.data as { email?: string; name?: string; userId?: string; locale?: string }
     const to = await resolveRecipient(d.email, d.userId)
     if (!to) return
-    const ctx = { name: d.name }
+    const ctx = { name: d.name, locale: d.locale }
     try {
       await mailerService.send("mail.test", ctx, { to })
     } catch (err) {

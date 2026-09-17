@@ -14,7 +14,8 @@ import { useNavigate } from "react-router-dom";
  * d'authentification (saisie du secret), puis confirme avec un 1er code.
  */
 export function SettingsPage() {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
+  const locale = i18n.language?.startsWith("en") ? "en" : "fr"
   const { data: me } = useQuery({ queryKey: ["me"], queryFn: api.me })
 
   const [currentPassword, setCurrentPassword] = useState("")
@@ -97,6 +98,7 @@ export function SettingsPage() {
         to: testEmail,
         from: defaultFrom || undefined,
         provider,
+        locale,
         config: provider === "resend" ? { apiKey: resendApiKey, from: defaultFrom || undefined } : { host: smtpHost, port: Number(smtpPort || 587), user: smtpUser, password: smtpPass, from: defaultFrom || undefined },
       }),
     success: t('settings.mail.testSuccess') ?? "Test email sent",

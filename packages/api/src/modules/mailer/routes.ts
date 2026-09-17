@@ -47,6 +47,7 @@ export async function registerMailerRoutes(app: FastifyInstance) {
     from: z.string().email().optional(),
     eventName: z.string().optional(),
     name: z.string().optional(),
+    locale: z.enum(["fr", "en"]).optional(),
     // optional transient provider/config for testing before save
     provider: z.string().optional(),
     config: z.record(z.any()).optional(),
@@ -59,17 +60,17 @@ export async function registerMailerRoutes(app: FastifyInstance) {
       schema: { body: testSchema, tags: ["settings"], summary: "Tester l'envoi mail (owner)" },
     },
     async (req, reply) => {
-      const body = req.body as { to: string; from?: string; eventName?: string; name?: string; provider?: string; config?: Record<string, unknown> }
+      const body = req.body as { to: string; from?: string; eventName?: string; name?: string; locale?: "fr" | "en"; provider?: string; config?: Record<string, unknown> }
       try {
         if (body.provider && body.config) {
           // perform a one-off send without saving config
           const nextConfig = { ...body.config, ...(body.from ? { from: body.from } : {}) }
           const { mailerService } = (await import("./service")) as typeof import("./service")
-          await mailerService.sendWithConfig(body.provider, nextConfig, body.eventName ?? "mail.test", { email: body.to, name: body.name, from: body.from }, { to: body.to, from: body.from })
+          await mailerService.sendWithConfig(body.provider, nextConfig, body.eventName ?? "mail.test", { email: body.to, name: body.name, from: body.from, locale: body.locale }, { to: body.to, from: body.from })
           return { ok: true }
         }
 
-        await eventBus.emit("mail.test", { userId: currentUser(req)?.sub, email: body.to, name: body.name, from: body.from, eventName: body.eventName ?? "mail.test" })
+        await eventBus.emit("mail.test", { userId: currentUser(req)?.sub, email: body.to, name: body.name, from: body.from, locale: body.locale, eventName: body.eventName ?? "mail.test" })
         return { ok: true }
       } catch (err) {
         return reply.code(400).send({ error: err instanceof Error ? err.message : String(err) })

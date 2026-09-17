@@ -18,4 +18,12 @@ describe("MailerService (smoke)", () => {
     expect(out.text).not.toContain("[object Promise]")
     expect(out.subject).toBe("Async mail")
   })
+
+  it("uses the requested locale in rendered email templates", async () => {
+    const s = new MailerService()
+    const out = await (s as any).renderTemplate("mail_test", { locale: "en", name: "Ada", message: "Hello from Hullbay" })
+    expect(out.subject).toContain("Email test")
+    expect(out.html).toContain("Hello")
+    expect(out.html).toContain("Ada")
+  })
 })
