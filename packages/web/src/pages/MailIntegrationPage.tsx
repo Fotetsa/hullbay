@@ -7,6 +7,7 @@ import { PageHeader, PageContainer } from "../components/PageHeader"
 import { useTranslation } from "react-i18next"
 
 export function MailIntegrationPage() {
+
   const { t, i18n } = useTranslation()
   const locale = i18n.language?.startsWith("en") ? "en" : "fr"
   const { data: list } = useQuery({ queryKey: ["mailSettings"], queryFn: api.getMailSettings })
