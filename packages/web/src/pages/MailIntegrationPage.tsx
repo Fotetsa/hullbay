@@ -6,6 +6,7 @@ import { useMutationToast } from "../lib/useMutationToast"
 import { PageHeader, PageContainer } from "../components/PageHeader"
 import { useTranslation } from "react-i18next"
 
+
 export function MailIntegrationPage() {
 
   const { t, i18n } = useTranslation()
