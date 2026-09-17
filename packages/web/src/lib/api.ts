@@ -365,7 +365,7 @@ export const api = {
   getMailSettings: () => req<Array<{ id: string; provider: string; enabled: boolean; defaultFrom?: string }>>("/api/settings/mail"),
   setMailSettings: (data: { provider: string; config: Record<string, unknown>; enabled?: boolean; defaultFrom?: string }) =>
     req("/api/settings/mail", { method: "POST", body: JSON.stringify(data) }),
-  testMail: (data: { to: string; from?: string; name?: string; eventName?: string; provider?: string; config?: Record<string, unknown> }) =>
+  testMail: (data: { to: string; from?: string; name?: string; eventName?: string; provider?: string; config?: Record<string, unknown>; locale?: string }) =>
     req("/api/settings/mail/test", { method: "POST", body: JSON.stringify(data) }),
 
   // Mises à jour de l'instance (owner uniquement)
