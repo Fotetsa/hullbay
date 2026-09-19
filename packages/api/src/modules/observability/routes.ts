@@ -57,14 +57,18 @@ export async function registerObservabilityRoutes(app: FastifyInstance) {
     },
   );
 
-  app.get("/api/drift", {
-    ...viewer,
-    schema: {
-      tags: ["observability"],
-      summary: "Snapshot de drift courant (pour badges canvas)",
-      security: [{ bearerAuth: []}],
-    }
-  }, async () => {drift: driftTracker.snapshot() }),
+  app.get(
+    "/api/drift",
+    {
+      ...viewer,
+      schema: {
+        tags: ["observability"],
+        summary: "Snapshot de drift courant (pour badges canvas)",
+        security: [{ bearerAuth: [] }],
+      },
+    },
+    async () => ({ drift: driftTracker.snapshot() }),
+  );
 
   // Sur quel(s) serveur(s) un projet tourne réellement (placement des tasks Swarm).
   app.get("/api/projects/:id/placement", {

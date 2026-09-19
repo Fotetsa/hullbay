@@ -129,7 +129,7 @@ const DEFAULT_CONFIG: Record<NodeType, Record<string, unknown>> = {
   gateway: { domain: "example.com", targetPort: 80, tls: true },
   database: {
     engine: "postgres",
-    version: "16.3",
+    version: "16",
     mode: "single",
     topology: { replicas: 1 },
     storage: { sizeGb: 20 },

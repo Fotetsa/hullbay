@@ -65,8 +65,18 @@ export class EventBus {
    */
   async emit(name: string, data: Record<string, unknown> = {}): Promise<void> {
     const event: OpsEvent = { name, data, _sessionId: this.sessionId }
-    this.emitter.emit(name, event)
-    this.emitter.emit("*", event)
+    const listeners = [
+      ...this.emitter.listeners(name),
+      ...this.emitter.listeners("*"),
+    ]
+
+    for (const listener of listeners) {
+      const result = listener(event)
+      if (result && typeof result.then === "function") {
+        await result
+      }
+    }
+
     if (this.pub) {
       await this.pub.publish(REDIS_CHANNEL, JSON.stringify(event))
     }

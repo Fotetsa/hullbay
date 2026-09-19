@@ -114,6 +114,12 @@ export interface ExpansionContext {
   parentNode: DatabaseNode
   /** Slug du projet (préfixe des noms de ressources boz_<slug>_). */
   projectSlug: string
+  /**
+   * Tag Patroni résolu au moment du déploiement (dynamique, registre GHCR),
+   * consommé par le provider postgres HA pour l'image des membres. Absent
+   * (plan/preview) : le provider retombe sur le pin `PATRONI_VERSION`.
+   */
+  patroniTagOverride?: string
 }
 
 export interface DatabaseNode {

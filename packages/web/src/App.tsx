@@ -16,12 +16,13 @@ import { CanvasPage } from "./pages/CanvasPage"
 import { SettingsPage } from "./pages/SettingsPage"
 import { ServersPage } from "./pages/ServersPage"
 import { IntegrationsPage } from "./pages/IntegrationsPage"
+import { MailIntegrationPage } from "./pages/MailIntegrationPage"
 import { HealthPage } from "./pages/HealthPage"
 import { SecretsPage } from "./pages/SecretsPage"
 import { UpdatesPage } from "./pages/UpdatesPage"
 import { ClusterDetailPage } from "./pages/ClusterDetailPage";
 import { ClustersPage } from "./pages/ClustersPage";
-
+import { ResetPasswordPage } from "./pages/ResetPasswordPage";
 /**
  * Routing par URL (react-router) :
  *  - non authentifié -> /login (toutes les autres routes y redirigent)
@@ -43,7 +44,7 @@ export function App() {
           <Route path="/login" element={<Navigate to="/" replace />} />
           <Route path="/setup-domain" element={<SetupDomainPage />} />
           <Route path="/activate-mfa" element={<ActivateMfaPage />} />
-
+          <Route path="/reset-password" element={<ResetPasswordPage />} />
           <Route path="/canvas/:projectId" element={<CanvasPage />} />
 
           <Route element={<AppLayout onLogout={() => setAuthed(false)} />}>
@@ -51,18 +52,18 @@ export function App() {
             <Route path="/health" element={<HealthPage />} />
             <Route path="/servers" element={<ServersPage />} />
             <Route path="/clusters" element={<ClustersPage />} />
-            <Route path="/clusters/:clusterId"element={<ClusterDetailPage />}/>
+            <Route path="/clusters/:clusterId" element={<ClusterDetailPage />} />
             <Route path="/registries" element={<IntegrationsPage />} />
+            <Route path="/integrations/mail" element={<MailIntegrationPage />} />
             <Route path="/secrets" element={<SecretsPage />} />
             <Route path="/users" element={<UsersPage />} />
             <Route path="/audit" element={<AuditPage />} />
             <Route path="/settings" element={<SettingsPage />} />
             <Route path="/updates" element={<UpdatesPage />} />
+
           </Route>
 
           <Route path="*" element={<Navigate to="/" replace />} />
-
-          <Route path="/clusters/:clusterId" element={<ClusterDetailPage />} />
         </Routes>
       </DomainGate>
     </MeProvider>
@@ -217,9 +218,13 @@ function UnauthedGate({
     return <BootstrapPage onAuthed={onAuthed} />
   }
 
-  if (pathname !== "/login") {
+  if (pathname !== "/login" && pathname !== "/reset-password") {
     return <Navigate to="/login" replace state={{ from: pathname }} />
   }
+  if (pathname === "/reset-password") {
+    return <ResetPasswordPage />
+  }
+
   return <LoginPage onAuthed={onAuthed} />
 }
 

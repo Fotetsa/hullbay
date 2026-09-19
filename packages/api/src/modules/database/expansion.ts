@@ -103,10 +103,18 @@ export function databaseNodePreview(
  * quel dans le graphe (nœud de composition pur, sans ressources : niche).
  * `strict=true` (deploy) : refus catégorique (le graphe déployable ne doit pas
  * contenir de nœud `database`).
+ *
+ * `patroniTagOverrides` (deploy uniquement) : tags Patroni résolus dynamiquement
+ * sur le registre, indexés par majeure PG (`"16" → "v4.1.5-pg16"`). Le provider
+ * postgres HA les consomme pour les membres; plan/diff (sans IO, déterministes)
+ * n'en fournissent pas et gardent le pin.
  */
 export function expandDatabaseGraph(
   graph: ProjectGraph,
-  { strict = true }: { strict?: boolean } = {}
+  {
+    strict = true,
+    patroniTagOverrides,
+  }: { strict?: boolean; patroniTagOverrides?: Record<string, string> } = {}
 ): ExpandedProjectGraph {
   const nodes: Node[] = []
   const edges: Edge[] = []
@@ -131,10 +139,12 @@ export function expandDatabaseGraph(
     }
 
     provider.validate(config)
+    const pgMajor = config.version.replace(/^(\d+).*$/, "$1")
     const ctx: ExpansionContext = {
       parentNodeId: node.id,
       projectSlug: graph.slug,
       parentNode: { id: node.id, name: node.name, type: "database", config },
+      patroniTagOverride: patroniTagOverrides?.[pgMajor],
     }
     const expanded = provider.expand(config, ctx)
     for (const r of expanded.resources) {
@@ -214,9 +224,12 @@ export function expandDatabaseGraph(
       // (secrets[]), sans quoi /run/secrets/<ref> est absent au runtime (régressions
       // S5-11 : le lien app→base doit fournir une connexion fonctionnelle).
       const mountedNames = new Set(depCfg.secrets.map((s) => s.secretName))
-      const missingNames = connections
-        .map((conn) => conn.passwordSecretRef)
-        .filter((name) => name && !mountedNames.has(name))
+      // En HA, writer ET reader exposent le MÊME passwordSecretRef (secret de la
+      // base partagé) : le Set évite de monter deux fois le même secret dans la
+      // task — Swarm rejette un même target monté deux fois (400 InvalidArgument).
+      const missingNames = [
+        ...new Set(connections.map((conn) => conn.passwordSecretRef)),
+      ].filter((name) => name && !mountedNames.has(name))
       const mergedSecrets = [...depCfg.secrets, ...missingNames.map((n) => ({ secretName: n }))]
       // COPIE du nœud (jamais mutation d'une référence partagée) : l'expansion
       // doit rester pure — une deuxième expansion du même graphe d'entrée donne

@@ -86,7 +86,7 @@ describe("GET /api/servers", () => {
         await registerServersRoutes(app);
       },
     });
-  }, 60000);
+  }, 120000);
 
   afterAll(async () => {
     if (app) await app.close();

@@ -329,6 +329,7 @@ export async function registerAuthRoutes(app: FastifyInstance) {
         await eventBus.emit("user.role.changed", {
           userId: currentUser(req)?.sub,
           targetUserId: id,
+          email: u.email,
           role: u.role,
         });
         return u;
@@ -355,10 +356,12 @@ export async function registerAuthRoutes(app: FastifyInstance) {
       const acting = currentUser(req)?.sub;
       if (!acting) return reply.code(401).send({ error: "non authentifié" });
       try {
+        const target = await prisma.user.findUnique({ where: { id }, select: { email: true } });
         const r = await authService.deleteUser(id, acting);
         await eventBus.emit("user.deleted", {
           userId: acting,
           targetUserId: id,
+          targetEmail: target?.email,
         });
         return r;
       } catch (err) {

@@ -33,6 +33,19 @@ export interface ProvisionInput {
   isNewCluster: boolean
 }
 
+export interface SystemInfoSnapshot {
+  os: string | null
+  kernel: string | null
+  cpuCores: number | null
+  ramTotalMb: number | null
+  ramUsedMb: number | null
+  swapTotalMb: number | null
+  swapUsedMb: number | null
+  diskTotalGb: number | null
+  diskUsedGb: number | null
+  collectedAt: string
+}
+
 type ProvShared = {
   session?: SshSession;
   hostKeyFp?: string;
@@ -42,9 +55,68 @@ type ProvShared = {
   engine?: DockerEngineService;
   hadExistingSwarm?: boolean;
   isNewCluster?: boolean;
+  systemInfo?: SystemInfoSnapshot;
 };
 
+/**
+ * Transforme la sortie brute en objet typé. Chaque valeur manquante ou non
+ * numérique devient null plutôt que de faire planter tout le parsing, un
+ * serveur avec un outil manquant ne doit pas empêcher de récupérer le reste
+ * des informations. Chaque valeur écartée est quand même consignée en log de
+ * débogage, avec le nom du champ et la valeur brute reçue, pour qu'on puisse
+ * comprendre après coup pourquoi telle information manque pour tel serveur,
+ * plutôt que de se retrouver face à un simple null sans aucune piste.
+ */
+function parseSystemInfoOutput(raw: string, serverId: string): SystemInfoSnapshot {
+  const lines = raw.split("\n").map((l) => l.trim()).filter(Boolean)
+  const map = new Map<string, string>()
+  for (const line of lines) {
+    const idx = line.indexOf("=")
+    if (idx === -1) continue
+    map.set(line.slice(0, idx), line.slice(idx + 1))
+  }
+  const num = (key: string): number | null => {
+    const v = map.get(key)
+    if (!v) return null
+    const n = Number(v)
+    if (!Number.isFinite(n)) {
+      console.debug(
+        `[provision-server] serveur ${serverId}, champ ${key} : valeur non numérique reçue ("${v}"), ignorée.`
+      )
+      return null
+    }
+    return n
+  }
 
+  const result: SystemInfoSnapshot = {
+    os: map.get("OS") || null,
+    kernel: map.get("KERNEL") || null,
+    cpuCores: num("CPU"),
+    ramTotalMb: num("RAM_TOTAL_MB"),
+    ramUsedMb: num("RAM_USED_MB"),
+    swapTotalMb: num("SWAP_TOTAL_MB"),
+    swapUsedMb: num("SWAP_USED_MB"),
+    diskTotalGb: num("DISK_TOTAL_GB"),
+    diskUsedGb: num("DISK_USED_GB"),
+    collectedAt: new Date().toISOString(),
+  }
+
+  console.debug(`[provision-server] serveur ${serverId}, informations système décodées : ${JSON.stringify(result)}`)
+  return result
+}
+
+/** Commande shell unique, sans dépendance à un outil qui pourrait manquer sur une image 
+ * minimaliste (chaque bloc a son propre `|| true`/fallback, pour que l'absence d'un outil
+ * ne casse pas la collecte des autres).
+ */
+const SYSTEM_INFO_COMMAND = `
+  . /etc/os-release 2>/dev/null
+  echo "OS=\${PRETTY_NAME:-inconnu}"
+  echo "KERNEL=$(uname -r 2>/dev/null || echo inconnu)"
+  echo "CPU=$(nproc 2>/dev/null || echo 0)"
+  free -m 2>/dev/null | awk '/^Mem:/ {print "RAM_TOTAL_MB="$2; print "RAM_USED_MB="$3} /^Swap:/ {print "SWAP_TOTAL_MB="$2; print "SWAP_USED_MB="$3}'
+  df -BG / 2>/dev/null | awk 'NR==2 {gsub("G","",$2); gsub("G","",$3); print "DISK_TOTAL_GB="$2; print "DISK_USED_GB="$3}'
+`.trim()
 
 function log(serverId: string, message: string) {
   // Feedback live vers le front (room server:<id>). Jamais de secret ici.
@@ -156,6 +228,7 @@ const connectStep: Step<ProvisionInput> = {
       user: input.user,
       credential: input.credential,
       onHostKey: (fp) => (s.hostKeyFp = fp),
+      connectTimeoutMs: 15_000,
     })
     log(input.serverId, "Connecté.")
   },
@@ -178,6 +251,35 @@ const installDockerStep: Step<ProvisionInput> = {
     log(input.serverId, "Docker présent.")
   },
 }
+
+const collectSystemInfoStep: Step<ProvisionInput> = {
+  name: "collect-system-info",
+  run: async (input, ctx) => {
+    const s = ctx.shared as ProvShared;
+    log(input.serverId, "Collecte des informations système…");
+    try {
+      const res = await s.session!.exec(SYSTEM_INFO_COMMAND);
+      if (res.stderr) {
+        console.debug(
+          `[provision-server] serveur ${input.serverId}, la commande de collecte système a produit une sortie d'erreur : ${res.stderr}`,
+        );
+      }
+      s.systemInfo = parseSystemInfoOutput(res.stdout, input.serverId);
+      log(input.serverId, "Informations système récupérées.");
+    } catch (err) {
+      // Cette étape reste volontairement non bloquante : un serveur sans ces
+      // informations reste tout à fait utilisable, on ne veut pas faire
+      // échouer tout le provisionnement pour une donnée de confort. En
+      // revanche, on veut désormais savoir pourquoi la collecte a échoué,
+      // pour un serveur donné, sans avoir à deviner.
+      const msg = err instanceof Error ? err.message : String(err);
+      console.debug(
+        `[provision-server] serveur ${input.serverId}, échec de la collecte des informations système : ${msg}`,
+      );
+      log(input.serverId, "Informations système indisponibles (ignoré).");
+    }
+  },
+};
 
 const swarmJoinStep: Step<ProvisionInput> = {
   name: "swarm-join",
@@ -426,6 +528,7 @@ const persistStep: Step<ProvisionInput> = {
       privateKeyEnc: s.toolPrivateKeyEnc ?? null,
       publicKey: s.toolPublicKey ?? null,
       hostKeyFp: s.hostKeyFp ?? null,
+      systemInfo: s.systemInfo ?? null,
       lastError: null,
     });
     log(input.serverId, "Serveur enregistré et prêt.");
@@ -440,6 +543,7 @@ export async function provisionServerWorkflow(input: ProvisionInput): Promise<vo
       [
         connectStep,
         installDockerStep,
+        collectSystemInfoStep,
         swarmJoinStep,
         deploySocketProxyStep,
         deployCaddyStep,
@@ -458,7 +562,15 @@ export async function provisionServerWorkflow(input: ProvisionInput): Promise<vo
         lastError: result.error ?? "échec provisioning",
       });
       if (input.isNewCluster) {
-        await clusterService.markFailed(input.clusterId);
+        try {
+          await clusterService.markFailed(input.clusterId);
+        } catch (markErr) {
+          // L'échec de l'update DB markFailed est déjà loggé côté service (B4).
+          // On ne masque pas l'erreur métier du provisioning ici.
+          console.error(
+            `[provision-server] cluster ${input.clusterId} reste en attente de statut "failed" — ${markErr instanceof Error ? markErr.message : String(markErr)}`,
+          );
+        }
       }
       await eventBus.emit("provision.step", {
         serverId: input.serverId,

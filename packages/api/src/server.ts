@@ -18,6 +18,7 @@ import { registerServersRoutes } from "./modules/servers/routes";
 import { registerObservabilityRoutes } from "./modules/observability/routes";
 import { registerSecretsRoutes } from "./modules/secrets/routes";
 import { registerSettingsRoutes } from "./modules/settings/routes";
+import { registerMailerRoutes } from "./modules/mailer/routes";
 import { registerUpdatesRoutes } from "./modules/updates/routes";
 import { updaterService } from "./modules/updates/updater";
 import { prisma } from "./lib/prisma";
@@ -25,8 +26,10 @@ import { attachWebSocket } from "./loaders/websocket";
 import { startObserver, stopObserver } from "./modules/observer/service";
 import { registerObservabilitySubscribers } from "./modules/observability/service";
 import { registerDeploySubscribers } from "./subscribers/on-deploy-finished";
+import { registerMailSubscribers } from "./subscribers/mailer";
 import { startDriftJob } from "./jobs/reconcile-drift";
 import { startAutoScaler } from "./jobs/auto-scaler";
+import { startClusterHealthJob } from "./jobs/cluster-health";
 import fastify, { type FastifyInstance } from "fastify";
 import { stopTunnelCleanup, closeAllTunnels } from "./lib/ssh-tunnel";
 import { registerClustersRoutes } from "./modules/clusters/routes";
@@ -67,6 +70,9 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
           "req.body.newPassword",
           "req.body.credential",
           "req.body.privateKey",
+          "req.body.apiKey",
+          "req.body.smtpPassword",
+          "req.body.smtpUser",
           "req.headers.authorization",
           "req.headers.cookie",
         ],
@@ -158,6 +164,7 @@ app.setErrorHandler((error: FastifyError, request, reply) => {
     await registerObservabilityRoutes(app);
     await registerSecretsRoutes(app);
     await registerSettingsRoutes(app);
+    await registerMailerRoutes(app);
     await registerUpdatesRoutes(app);
     await registerClustersRoutes(app);
   }
@@ -184,8 +191,10 @@ app.setErrorHandler((error: FastifyError, request, reply) => {
     registerDeploySubscribers();
     registerObservabilitySubscribers();
     registerClusterSubscribers();
+    registerMailSubscribers();
     startDriftJob();
     startAutoScaler();
+    startClusterHealthJob();
   }
   return app;
 }

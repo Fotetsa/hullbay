@@ -1,10 +1,20 @@
 import type { ElementType } from "react"
 import { Text } from "@medusajs/ui"
+import type { TFunction } from "i18next"
 import type { UpdateChannel } from "../../lib/api"
 
-export const CHANNEL_LABELS: Record<UpdateChannel, { label: string; hint: string }> = {
-  stable: { label: "Stable", hint: "Versions testées, recommandé en production." },
-  beta: { label: "Beta", hint: "Versions en pré-publication, peut contenir des régressions." },
+/** Labels de canal dépendants de la langue (via la fonction de traduction). */
+export function channelLabels(t: TFunction): Record<UpdateChannel, { label: string; hint: string }> {
+  return {
+    stable: {
+      label: t("updates.channel.stable.label"),
+      hint: t("updates.channel.stable.hint"),
+    },
+    beta: {
+      label: t("updates.channel.beta.label"),
+      hint: t("updates.channel.beta.hint"),
+    },
+  }
 }
 
 export type StatusColor = "green" | "red" | "orange" | "blue" | "grey"
@@ -20,12 +30,17 @@ export function releaseType(r: { prerelease: boolean; version: string }): Releas
   return /-(?:rc)\b/i.test(r.version) ? "rc" : "beta"
 }
 
-export const STATUS_LABELS: Record<string, { label: string; color?: StatusColor }> = {
-  success: { label: "Réussi", color: "green" },
-  running: { label: "En cours", color: "blue" },
-  pending: { label: "En attente", color: "grey" },
-  failed: { label: "Échec", color: "red" },
-  rolled_back: { label: "Annulé", color: "orange" },
+/** Labels de statut d'une update, dépendants de la langue. */
+export function statusLabels(
+  t: TFunction,
+): Record<string, { label: string; color?: StatusColor }> {
+  return {
+    success: { label: t("updates.status.success"), color: "green" },
+    running: { label: t("updates.status.running"), color: "blue" },
+    pending: { label: t("updates.status.pending"), color: "grey" },
+    failed: { label: t("updates.status.failed"), color: "red" },
+    rolled_back: { label: t("updates.status.rolled_back"), color: "orange" },
+  }
 }
 
 /** Empty state de carte : grande icône dans un disque, titre + sous-texte. */

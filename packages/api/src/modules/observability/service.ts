@@ -22,6 +22,13 @@ export type NodeHealth = {
   state: string // ready | down | unknown
   availability: string // active | pause | drain
   leader: boolean
+  /** Capacité brute du nœud exposée par Docker (0 = non renseigné). */
+  memoryBytes: number
+  nanoCpus: number
+  /** OS / arch du nœud (audit & conformité). */
+  os: string
+  architecture: string
+  dockerVersion: string
 }
 
 /** Placement d'une task d'un service, enrichi du hostname du nœud (lisible). */
@@ -53,6 +60,13 @@ export type ClusterHealth = {
   swarmActive: boolean
   nodes: NodeHealth[]
   services: ServiceHealth[]
+  /** `docker system df` — utilisation disque agréée du démon. */
+  diskUsage: {
+    layersSize: number
+    images: number
+    containers: number
+    volumes: number
+  }
 }
 
 /** Projet -> nombre d'actions de drift en attente (alimenté par le job de drift). */
@@ -75,11 +89,18 @@ export class ObservabilityService {
   async clusterHealth(): Promise<ClusterHealth> {
     const cluster = await prisma.cluster.findUniqueOrThrow({ where: { id: this.clusterId } })
     const swarmActive = await this.engine.isSwarmActive()
-    if (!swarmActive) return { clusterId: this.clusterId, clusterName: cluster.name, swarmActive: false, nodes: [], services: [] }
+    const emptyDisk = { layersSize: 0, images: 0, containers: 0, volumes: 0 }
+    if (!swarmActive) return { clusterId: this.clusterId, clusterName: cluster.name, swarmActive: false, nodes: [], services: [], diskUsage: emptyDisk }
 
-    const [rawNodes, services] = await Promise.all([
+    const [rawNodes, services, df] = await Promise.all([
       this.engine.listNodes(),
       this.engine.listManagedServices(),
+      this.engine.systemDf().then((d) => ({
+        layersSize: d?.LayersSize ?? 0,
+        images: Array.isArray(d?.Images) ? d.Images.length : 0,
+        containers: Array.isArray(d?.Containers) ? d.Containers.length : 0,
+        volumes: Array.isArray(d?.Volumes) ? d.Volumes.length : 0,
+      })),
     ])
 
     const nodes: NodeHealth[] = (rawNodes as RawNode[]).map((n) => ({
@@ -90,6 +111,11 @@ export class ObservabilityService {
       state: n.Status?.State ?? "unknown",
       availability: n.Spec?.Availability ?? "active",
       leader: Boolean(n.ManagerStatus?.Leader),
+      memoryBytes: n.Description?.Resources?.MemoryBytes ?? 0,
+      nanoCpus: n.Description?.Resources?.NanoCPUs ?? 0,
+      os: n.Description?.Platform?.OS ?? "?",
+      architecture: n.Description?.Platform?.Architecture ?? "?",
+      dockerVersion: n.Description?.Engine?.EngineVersion ?? "?",
     }))
 
     // nodeId -> hostname pour rendre les placements lisibles.
@@ -120,7 +146,7 @@ export class ObservabilityService {
       })
     )
 
-    return { clusterId: this.clusterId, clusterName: cluster.name, swarmActive: true, nodes, services: metrics }
+    return { clusterId: this.clusterId, clusterName: cluster.name, swarmActive: true, nodes, services: metrics, diskUsage: df }
   }
 
   /**
@@ -186,7 +212,7 @@ export async function systemHealth(): Promise<ClusterHealth[]> {
       results.push(it.value);
     } else {
       const c = clusters[it.index]!;
-      results.push({ clusterId: c.id, clusterName: c.name, swarmActive: false, nodes: [], services: [] });
+      results.push({ clusterId: c.id, clusterName: c.name, swarmActive: false, nodes: [], services: [], diskUsage: { layersSize: 0, images: 0, containers: 0, volumes: 0 } });
       console.warn(`[observability] systemHealth cluster ${c.id} injoignable: ${String(it.reason)}`);
     }
   }
@@ -217,7 +243,12 @@ export function registerObservabilitySubscribers(): void {
 
 type RawNode = {
   ID?: string
-  Description?: { Hostname?: string }
+  Description?: {
+    Hostname?: string
+    Platform?: { OS?: string; Architecture?: string }
+    Engine?: { EngineVersion?: string }
+    Resources?: { MemoryBytes?: number; NanoCPUs?: number }
+  }
   Spec?: { Role?: string; Availability?: string }
   Status?: { State?: string }
   ManagerStatus?: { Leader?: boolean }

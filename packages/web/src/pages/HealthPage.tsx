@@ -17,6 +17,17 @@ import { useMutationToast } from "../lib/useMutationToast"
 import { PageHeader, PageContainer } from "../components/PageHeader"
 import { useTranslation } from "react-i18next"
 
+function formatBytes(bytes: number): string {
+  if (!bytes || bytes <= 0) return "0 B"
+  const units = ["B", "KiB", "MiB", "GiB", "TiB"]
+  const i = Math.min(
+    Math.floor(Math.log(bytes) / Math.log(1024)),
+    units.length - 1,
+  )
+  const value = bytes / Math.pow(1024, i)
+  return `${value.toFixed(value >= 100 ? 0 : 1)} ${units[i]}`
+}
+
 /**
  * Page Santé — rend visible l'état NATIF de Swarm (nœuds + métriques par service)
  * et le drift détecté. Lecture seule sauf le prune (owner, destructif, confirmé).
@@ -187,14 +198,57 @@ export function HealthPage() {
                        ))}
                      </Table.Body>
                    </Table>
-                 </div>
-               </Container>
+</div>
+                </Container>
 
-               {/* Services */}
-               <Container className="p-4">
-                 <Heading level="h3" className="mb-3 flex items-center gap-2">
-                   <ChartBar /> {t('health.services.title', { count: health.services.length })}
-                 </Heading>
+                {/* Disque utilisé par Docker (docker system df) */}
+                <Container className="p-4">
+                  <Heading level="h3" className="mb-3 flex items-center gap-2">
+                    {t('health.disk.title')}
+                  </Heading>
+                  <div className="flex flex-wrap gap-4">
+                    <div>
+                      <Text size="xsmall" className="text-ui-fg-muted">
+                        {t('health.disk.layersSize')}
+                      </Text>
+                      <Text className="font-medium">
+                        {health.diskUsage.layersSize > 0
+                          ? formatBytes(health.diskUsage.layersSize)
+                          : t('health.disk.sizeUnavailable')}
+                      </Text>
+                    </div>
+                    <div>
+                      <Text size="xsmall" className="text-ui-fg-muted">
+                        {t('health.disk.images')}
+                      </Text>
+                      <Text className="font-medium">
+                        {t('health.disk.count', { count: health.diskUsage.images })}
+                      </Text>
+                    </div>
+                    <div>
+                      <Text size="xsmall" className="text-ui-fg-muted">
+                        {t('health.disk.containers')}
+                      </Text>
+                      <Text className="font-medium">
+                        {t('health.disk.count', { count: health.diskUsage.containers })}
+                      </Text>
+                    </div>
+                    <div>
+                      <Text size="xsmall" className="text-ui-fg-muted">
+                        {t('health.disk.volumes')}
+                      </Text>
+                      <Text className="font-medium">
+                        {t('health.disk.count', { count: health.diskUsage.volumes })}
+                      </Text>
+                    </div>
+                  </div>
+                </Container>
+
+                {/* Services */}
+                <Container className="p-4">
+                  <Heading level="h3" className="mb-3 flex items-center gap-2">
+                    <ChartBar /> {t('health.services.title', { count: health.services.length })}
+                  </Heading>
                  <div className="overflow-x-auto">
                    <Table>
                      <Table.Header>

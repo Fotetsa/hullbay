@@ -1,6 +1,6 @@
 {
   "name": "hullbay",
-  "version": "1.2.4",
+  "version": "1.3.0",
   "private": true,
   "description": "Ops-panel GNS3-like pour piloter Docker (canvas visuel -> Docker via dockerode)",
   "workspaces": [
@@ -31,6 +31,7 @@
     "@semantic-release/github": "^12.0.9",
     "@semantic-release/npm": "^13.1.5",
     "@semantic-release/release-notes-generator": "^14.1.1",
-    "semantic-release": "^25.0.8"
+    "semantic-release": "^25.0.8",
+    "vite": "^8.2.2"
   }
 }

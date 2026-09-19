@@ -101,6 +101,16 @@ model AuditLog {
   @@index([createdAt])
 }
 
+// Mail integration settings (stores encrypted provider config)
+model MailIntegration {
+  id          String   @id @default(cuid())
+  provider    String
+  configEnc   String
+  enabled     Boolean  @default(false)
+  defaultFrom String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
 // ── Serveurs physiques du cluster Swarm (provisioning SSH one-shot) ──
 model Server {
   id            String   @id @default(cuid())
@@ -116,6 +126,7 @@ model Server {
   publicKey     String? // clé-outil publique (déposée dans authorized_keys)
   hostKeyFp     String? // empreinte SSH connue (TOFU known_hosts)
   lastError     String?
+  systemInfo   Json?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
@@ -148,6 +159,7 @@ model Cluster {
   caddyAdminUrl String
   isDefault     Boolean @default(false)
   status        String   @default("pending")
+  deletingAt    DateTime?
   servers       Server[]
   projects      Project[]
   createdAt     DateTime @default(now())
