@@ -17,7 +17,7 @@ import { prisma } from "../../../lib/prisma"
 import type { Prisma } from "@prisma/client"
 import type { ProviderKind } from "../providers/types"
 import { encryptObject, decryptObject } from "../secrets/secret-encryption-service"
-import { SENSITIVE_FIELDS_BY_KIND, PROVIDER_SEEDS, loadTestOidcSeed, loadTestSamlSeed } from "./seeds"
+import { SENSITIVE_FIELDS_BY_KIND, PROVIDER_SEEDS, loadTestOidcSeed, loadTestSamlSeed, SUPERSEDED_GENERIC_IDS } from "./seeds"
 
 /**
  * Ids des rows insérées par la migration initiale (convention "provider-<kind>",
@@ -73,6 +73,20 @@ export async function syncProviderSeedsToDb(): Promise<string[]> {
   }
 
   await prisma.authProvider.deleteMany({ where: { id: { in: LEGACY_MIGRATION_IDS } } })
+
+  // Presets historiques non paramétrés (config vide) : retirés au boot — les
+  // seeds ne les portent plus. Une row CONFIGURÉE (ancien paramétrage manuel)
+  // est conservée : on ne détruit jamais une config utilisateur.
+  const staleRows = await prisma.authProvider.findMany({
+    where: { id: { in: SUPERSEDED_GENERIC_IDS } },
+    select: { id: true, config: true },
+  })
+  const toDrop = staleRows
+    .filter((r) => !Object.entries((r.config as Record<string, unknown>) ?? {}).some(([, v]) => v !== null && v !== ""))
+    .map((r) => r.id)
+  if (toDrop.length > 0) {
+    await prisma.authProvider.deleteMany({ where: { id: { in: toDrop } } })
+  }
   return syncedIds
 }
 

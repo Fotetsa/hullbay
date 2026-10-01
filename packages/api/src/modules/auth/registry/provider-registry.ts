@@ -73,6 +73,16 @@ export class ProviderRegistry {
       // partagés par tous les tenants) et ceux du tenant défaut. Les providers
       // d'un autre tenant ne doivent jamais être résolvables ici — sinon un
       // login SSO d'un tenant voisin fuirait dans le registre partagé.
+      //
+      // LIMITATION CONNUE (documentée, non levée ici) : le CRUD admin d'un
+      // tenant liste et modifie pourtant ses providers tenant-scoped
+      // (routes/providers.routes.ts) — l'admin peut voir/modifier une row que
+      // le registre de runtime ne hydrate PAS. Conséquence assumée : un
+      // fournisseur tenant-scoped (hors tenant défaut) est administrable mais
+      // jamais utilisé par SSO. À résoudre quand le registre deviendra
+      // tenant-aware (archi Authorization, portée = session.tenantId). Voir
+      // aussi la politique de création POST (tenant défaut) qui garde le SSO
+      // stable.
       if (row.tenantId !== null && row.tenantId !== DEFAULT_TENANT_ID) {
         continue
       }

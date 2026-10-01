@@ -1,8 +1,8 @@
 /**
  * Seeds du Provider Registry : configurations de base.
  * Aucun fournisseur commercial privilégié — local est un provider comme les autres.
- * Les presets oidc/oauth2/saml/ldap sont désactivés par défaut.
- * Aucune clé vendor par défaut.
+ * Premier install = local UNIQUEMENT : plus aucun provider factice (config vide,
+ * "timeout" à 100 ms) pré-créé dans la liste.
  *
  * Test IdP (Keycloak) : JAMAIS un défaut. Il n'est enregistré QUE si les
  * variables d'env de test sont présentes (e2e/CI) — une simple configuration,
@@ -35,12 +35,15 @@ export const SENSITIVE_FIELDS_BY_KIND: Record<ProviderKind, string[]> = {
   ldap: ["bindSecret"],
 }
 
+/**
+ * Seeds "preset" historiques (config vide, désactivées) — remplacées par local
+ * seul. Une row configurée (preset paramétré par l'utilisateur dans une
+ * ancienne version) est CONSERVÉE : on ne détruit jamais une config manuelle.
+ */
+export const SUPERSEDED_GENERIC_IDS = ["oidc-generic", "oauth2-generic", "saml-generic", "ldap-generic"]
+
 export const PROVIDER_SEEDS: ProviderSeed[] = [
   { id: "local", kind: "local", name: "Local", enabled: true },
-  { id: "oidc-generic", kind: "oidc", name: "OIDC", enabled: false },
-  { id: "oauth2-generic", kind: "oauth2", name: "OAuth2", enabled: false },
-  { id: "saml-generic", kind: "saml", name: "SAML", enabled: false },
-  { id: "ldap-generic", kind: "ldap", name: "LDAP", enabled: false },
 ]
 
 /**
