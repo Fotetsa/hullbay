@@ -523,6 +523,57 @@ describe("WebAuthn / Passkeys Factor", () => {
       })
     })
 
+    it("accepte une clé sans compteur (0/0) : cas logiciel typique (Bitwarden, Windows Hello)", async () => {
+      webauthnChallengeStore.set(`auth:${userId}`, "test-auth-challenge-456")
+      vi.mocked(prisma.authIdentity.findFirst).mockResolvedValueOnce({
+        ...mockIdentity,
+        webauthnCredentials: [{ ...credentialRecord, counter: BigInt(0) }],
+      } as any)
+
+      mockVerifyAuthResponse.mockResolvedValueOnce({
+        verified: true,
+        authenticationInfo: {
+          newCounter: 0,
+        },
+      })
+
+      vi.mocked(prisma.webauthnCredential.update).mockResolvedValueOnce({} as any)
+
+      const res = await verifyWebauthnAuthentication(userId, TENANT, {
+        response: { id: "cred-id-abc" } as any,
+      })
+
+      expect(res.verified).toBe(true)
+      // Un compteur 0 ne doit ni déclencher counter_replay, ni écraser un éventuel compteur stocké.
+      expect(prisma.webauthnCredential.update).toHaveBeenCalledWith({
+        where: { id: "wc-1" },
+        data: { lastUsedAt: expect.any(Date) },
+      })
+    })
+
+    it("rejette un compteur en recul strictement positif (rejeu/copie)", async () => {
+      webauthnChallengeStore.set(`auth:${userId}`, "test-auth-challenge-456")
+      vi.mocked(prisma.authIdentity.findFirst).mockResolvedValueOnce({
+        ...mockIdentity,
+        webauthnCredentials: [credentialRecord],
+      } as any)
+
+      mockVerifyAuthResponse.mockResolvedValueOnce({
+        verified: true,
+        authenticationInfo: {
+          newCounter: 5,
+        },
+      })
+
+      await expect(
+        verifyWebauthnAuthentication(userId, TENANT, {
+          response: { id: "cred-id-abc" } as any,
+        }),
+      ).rejects.toThrow(AuthError)
+
+      expect(prisma.webauthnCredential.update).not.toHaveBeenCalled()
+    })
+
     it("rejette une clé inconnue pour ce compte", async () => {
       webauthnChallengeStore.set(`auth:${userId}`, "test-auth-challenge-456")
       vi.mocked(prisma.authIdentity.findFirst).mockResolvedValueOnce({

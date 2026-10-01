@@ -255,6 +255,12 @@ export const api = {
     req<ProviderTestResult>(`/api/auth/admin/providers/${id}/test`, {
       method: "POST",
     }),
+  // Prévol (wizard) : valide + sonde une config SANS la persister.
+  preflightAdminProvider: (kind: string, config: Record<string, unknown>) =>
+    req<AuthProviderPreflightResult>("/api/auth/admin/providers/preflight", {
+      method: "POST",
+      body: JSON.stringify({ kind, config }),
+    }),
   listAdminPendings: () => req<PendingIdentity[]>("/api/auth/admin/pendings"),
   approveAdminPending: (id: string, target: ApproveTarget) =>
     req<{ ok: boolean; message: string }>(`/api/auth/admin/pendings/${id}/approve`, {
@@ -590,6 +596,20 @@ export type ProviderTestResult = {
   message?: string;
   connectivity?: string | null;
   details?: unknown;
+};
+
+export type AuthProviderPreflightStep = {
+  step: string;
+  ok: boolean;
+  message: string;
+  latencyMs?: number;
+};
+
+export type AuthProviderPreflightResult = {
+  ok: boolean;
+  schemaValid: boolean;
+  steps: AuthProviderPreflightStep[];
+  details?: Record<string, unknown>;
 };
 
 export type PendingIdentity = {

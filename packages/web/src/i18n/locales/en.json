@@ -1,977 +1,1047 @@
 {
-  "common": {
-    "save": "Save",
-    "cancel": "Cancel",
-    "close": "Close",
-    "loading": "Loading...",
-    "error": "Error",
-    "success": "Success",
-    "delete": "Delete",
-    "confirm": "Confirm"
+ "common": {
+  "save": "Save",
+  "cancel": "Cancel",
+  "close": "Close",
+  "loading": "Loading...",
+  "error": "Error",
+  "success": "Success",
+  "delete": "Delete",
+  "confirm": "Confirm"
+ },
+ "tenantSwitcher": {
+  "switchTenant": "Switch tenant",
+  "unknownTenant": "Unknown tenant"
+ },
+ "apiErrors": {
+  "unauthorized": "Authentication required.",
+  "forbidden": "Access denied: insufficient permissions.",
+  "mfa_not_enabled": "Two-factor authentication not enabled — please set up MFA first.",
+  "token_invalid": "Invalid or expired session.",
+  "session_invalid": "Invalid or expired session.",
+  "rate_limited": "Too many attempts. Please wait before retrying.",
+  "invalid_credentials": "Invalid credentials.",
+  "identity_pending_approval": "This identity is pending administrator approval.",
+  "provider_not_found": "Authentication provider not found or disabled.",
+  "provider_conflict": "A provider with this identifier already exists.",
+  "invalid_config": "Invalid provider configuration.",
+  "unsupported_kind": "Unsupported protocol type.",
+  "cannot_disable_last_provider": "Cannot disable the last active provider.",
+  "cannot_delete_local_provider": "The local provider cannot be deleted.",
+  "cannot_delete_last_provider": "Cannot delete the last active provider.",
+  "provider_in_use": "Active users are still associated with this provider.",
+  "provider_pendings_exist": "Pending approvals still reference this provider.",
+  "untestable_kind": "This provider type cannot be tested.",
+  "ldap_unreachable": "LDAP server unreachable or invalid TLS certificate.",
+  "mfa_code_invalid": "Invalid verification code or security key signature.",
+  "mfa_token_invalid": "Verification timed out. Please try again.",
+  "mfa_not_configured": "MFA method is not configured.",
+  "user_not_found": "User not found.",
+  "validation_failed": "Invalid form data.",
+  "mfa_enrollment_missing": "No MFA enrollment in progress.",
+  "password_incorrect": "Current password is incorrect.",
+  "webauthn_not_configured": "Security key authentication is not configured on the server.",
+  "webauthn_origin_forbidden": "Request origin not allowed.",
+  "webauthn_origin_invalid": "Invalid WebAuthn origin: HTTPS required in production, no path, query or fragment.",
+  "webauthn_rpid_invalid": "Invalid RP ID or incompatible with the origin.",
+  "domain_not_configured": "A public domain must be configured before enabling this feature."
+ },
+ "bootstrap": {
+  "title": "Welcome to hullbay",
+  "description": "No accounts exist yet. Create the administrator account (owner) that will manage the infrastructure. You will then be able to delegate limited access to an employee and enable two-factor authentication.",
+  "emailLabel": "Email",
+  "emailPlaceholder": "owner@bozando.com",
+  "passwordLabel": "Password",
+  "passwordPlaceholder": "At least 8 characters",
+  "minCharsError": "At least 8 characters.",
+  "confirmPasswordLabel": "Confirm password",
+  "mismatchError": "Passwords do not match.",
+  "submitButton": "Create administrator account",
+  "toast": {
+   "accountCreated": "Account created",
+   "pleaseLogin": "Please log in.",
+   "creationFailed": "Creation failed"
+  }
+ },
+ "auth": {
+  "title": "hullbay",
+  "subtitle": "Infrastructure Console",
+  "login": {
+   "emailLabel": "Email",
+   "placeholder": "owner@bozando.com",
+   "passwordLabel": "Password",
+   "submitButton": "Sign in"
   },
-  "tenantSwitcher": {
-    "switchTenant": "Switch tenant",
-    "unknownTenant": "Unknown tenant"
+  "mfa": {
+   "instruction": "Enter the code from your authenticator app.",
+   "codePlaceholder": "123456",
+   "codeLabel": "Verification code",
+   "submitButton": "Verify",
+   "webauthnButton": "Use a security key or Passkey",
+   "orWebauthn": "or"
   },
-  "apiErrors": {
-    "unauthorized": "Authentication required.",
-    "forbidden": "Access denied: insufficient permissions.",
-    "mfa_not_enabled": "Two-factor authentication not enabled — please set up MFA first.",
-    "token_invalid": "Invalid or expired session.",
-    "session_invalid": "Invalid or expired session.",
-    "rate_limited": "Too many attempts. Please wait before retrying.",
-    "invalid_credentials": "Invalid credentials.",
-    "identity_pending_approval": "This identity is pending administrator approval.",
-    "provider_not_found": "Authentication provider not found or disabled.",
-    "provider_conflict": "A provider with this identifier already exists.",
-    "invalid_config": "Invalid provider configuration.",
-    "unsupported_kind": "Unsupported protocol type.",
-    "cannot_disable_last_provider": "Cannot disable the last active provider.",
-    "cannot_delete_local_provider": "The local provider cannot be deleted.",
-    "cannot_delete_last_provider": "Cannot delete the last active provider.",
-    "provider_in_use": "Active users are still associated with this provider.",
-    "provider_pendings_exist": "Pending approvals still reference this provider.",
-    "untestable_kind": "This provider type cannot be tested.",
-    "ldap_unreachable": "LDAP server unreachable or invalid TLS certificate.",
-    "mfa_code_invalid": "Invalid verification code or security key signature.",
-    "mfa_token_invalid": "Verification timed out. Please try again.",
-    "mfa_not_configured": "MFA method is not configured.",
-    "user_not_found": "User not found.",
-    "validation_failed": "Invalid form data.",
-    "mfa_enrollment_missing": "No MFA enrollment in progress.",
-    "password_incorrect": "Current password is incorrect.",
-    "webauthn_not_configured": "Security key authentication is not configured on the server.",
-    "webauthn_origin_forbidden": "Request origin not allowed.",
-    "webauthn_origin_invalid": "Invalid WebAuthn origin: HTTPS required in production, no path, query or fragment.",
-    "webauthn_rpid_invalid": "Invalid RP ID or incompatible with the origin.",
-    "domain_not_configured": "A public domain must be configured before enabling this feature."
+  "toast": {
+   "loginFailed": "Sign in failed",
+   "invalidCredentialsDescription": "Incorrect email or password.",
+   "mfaEnrollFailed": "Unable to start MFA setup",
+   "mfaNotEnabledDescription": "Enable MFA before continuing.",
+   "mfaEnabled": "MFA enabled",
+   "invalidCode": "Invalid code",
+   "invalidMfaDescription": "MFA code is incorrect or expired."
   },
-  "bootstrap": {
-    "title": "Welcome to hullbay",
-    "description": "No accounts exist yet. Create the administrator account (owner) that will manage the infrastructure. You will then be able to delegate limited access to an employee and enable two-factor authentication.",
-    "emailLabel": "Email",
-    "emailPlaceholder": "owner@bozando.com",
-    "passwordLabel": "Password",
-    "passwordPlaceholder": "At least 8 characters",
-    "minCharsError": "At least 8 characters.",
-    "confirmPasswordLabel": "Confirm password",
-    "mismatchError": "Passwords do not match.",
-    "submitButton": "Create administrator account",
-    "toast": {
-      "accountCreated": "Account created",
-      "pleaseLogin": "Please log in.",
-      "creationFailed": "Creation failed"
+  "rateLimited": {
+   "title": "Too many attempts",
+   "retryIn": "Try again in {{seconds}}s.",
+   "unlocked": "You can try again now"
+  },
+  "mfaModal": {
+   "title": "Enable two-factor authentication",
+   "description": "Scan the code with your authenticator app, then enter the 6-digit code.",
+   "preparing": "Preparing...",
+   "scanQrTitle": "Scan the QR code",
+   "manualEntryLabel": "Enter manually",
+   "copy": "Copy",
+   "copied": "Copied",
+   "verificationCodeLabel": "6-digit code",
+   "confirmButton": "Confirm setup",
+   "passkeyOptional": "Sign in without a code next time.",
+   "addPasskey": "Add a security key"
+  },
+  "sso": {
+   "signInWith": "Continue with {{name}}",
+   "orContinueWithLocal": "or continue with local account",
+   "failed": "SSO failed",
+   "pending": {
+    "title": "Account pending approval",
+    "description": "Account {{email}} is waiting for administrator approval. You will receive an email once your access is approved."
+   }
+  },
+  "ldap": {
+   "title": "Sign in with {{name}}",
+   "subtitle": "Enter your corporate credentials.",
+   "usernameLabel": "Username",
+   "usernamePlaceholder": "jdoe or jdoe@corp.local",
+   "submitButton": "Sign in with directory",
+   "backToLocal": "Back to standard sign in",
+   "providerNotFound": "LDAP provider not found or disabled."
+  },
+  "webauthn": {
+   "authFailed": "WebAuthn authentication failed",
+   "notSupported": "This browser does not support WebAuthn security keys.",
+   "cancelled": "WebAuthn operation was cancelled.",
+   "sessionInvalid": "Session expired or invalid. Please sign in again.",
+   "challengeExpired": "Validation timed out. Please try again.",
+   "noCredentials": "No security key is registered on this account. Sign in with a code first, then add a key in Settings → Security keys."
+  }
+ },
+ "nav": {
+  "projects": "Projects",
+  "health": "Health",
+  "logs": "Logs",
+  "servers": "Servers",
+  "clusters": "Clusters",
+  "registries": "Registries",
+  "secrets": "Secrets",
+  "users": "Users",
+  "providers": "Authentication",
+  "sessions": "Devices",
+  "settings": "Settings",
+  "updates": "Updates",
+  "logout": "Logout",
+  "ownerBadge": "Owner",
+  "versionUnknown": "Unknown version",
+  "channelStable": "Stable",
+  "channelBeta": "Beta",
+  "updateAvailable": "New",
+  "closeMenu": "Close menu",
+  "openMenu": "Open menu",
+  "skipToContent": "Skip to content",
+  "mainNavigation": "Main navigation"
+ },
+ "projects": {
+  "pageTitle": "Projects",
+  "loading": "Loading…",
+  "toast": {
+   "createSuccess": "Project created",
+   "updateSuccess": "Project updated",
+   "rebuildSuccess": "Rebuilt: {{projects}} projects, {{nodes}} nodes",
+   "deleteSuccess": "Project deleted"
+  },
+  "deleteConfirm": {
+   "title": "Delete project?",
+   "description": "\"{{name}}\" and all its nodes/links will be removed from the desired state. Docker resources already deployed must be destroyed separately from the canvas."
+  },
+  "actions": {
+   "rebuild": "Rebuild from Docker",
+   "new": "New project",
+   "rename": "Rename",
+   "delete": "Delete",
+   "cancel": "Cancel",
+   "create": "Create",
+   "save": "Save"
+  },
+  "empty": {
+   "title": "No projects",
+   "description": "Create a project, then design its architecture on the canvas (containers, networks, volumes, gateways)."
+  },
+  "createModal": {
+   "title": "New project",
+   "nameLabel": "Name",
+   "namePlaceholder": "Bozando Prod Store",
+   "descLabel": "Description",
+   "descPlaceholder": "What is this project for?"
+  },
+  "editModal": {
+   "title": "Rename project",
+   "nameLabel": "Name",
+   "slugHint": "The technical slug (Docker resource prefix) cannot be changed.",
+   "descLabel": "Description"
+  }
+ },
+ "health": {
+  "pageTitle": "Cluster Health",
+  "refresh": "Refresh",
+  "noCluster": "No cluster registered. Add a server to create your first cluster.",
+  "swarmInactive": "Swarm inactive on this cluster. Run `docker swarm init` on its manager to enable services, replicas and observability.",
+  "drift": {
+   "title": "Drift detected",
+   "description": "{{count}} project(s) diverge from desired state. Redeploy the affected project to reconcile.",
+   "badgeLabel": "{{count}} action(s)"
+  },
+  "nodes": {
+   "title": "Nodes ({{count}})",
+   "host": "Host",
+   "role": "Role",
+   "state": "State",
+   "availability": "Avail.",
+   "leader": "leader"
+  },
+  "services": {
+   "title": "Services ({{count}})",
+   "service": "Service",
+   "replicas": "Replicas",
+   "nodes": "Nodes",
+   "avgCpu": "Avg CPU",
+   "memory": "Memory",
+   "empty": "No managed services.",
+   "loading": "Loading…",
+   "notAvailable": "n/a"
+  },
+  "orphaned": {
+   "title": "Orphaned resources",
+   "description": "Managed resources (bozando.managed) whose project no longer exists. The system (bozando.system) is never touched.",
+   "analyzeButton": "Analyze",
+   "deleteButton": "Delete {{count}} orphan(s)",
+   "noOrphans": "No orphaned resources",
+   "itemLabel": "{{kind}} · {{name}} — {{reason}}"
+  },
+  "serviceDetail": {
+   "title": "Service",
+   "loading": "Loading…",
+   "metrics": {
+    "replicas": "Replicas",
+    "sampledTasks": "Sampled tasks",
+    "avgCpu": "Average CPU",
+    "memory": "Memory"
+   },
+   "placement": {
+    "title": "Task placement",
+    "empty": "No running tasks.",
+    "node": "Node",
+    "state": "State",
+    "desired": "Desired"
+   }
+  },
+  "cluster": {
+   "inactive": "inactive"
+  },
+  "disk": {
+   "title": "Disk (docker system df)",
+   "layersSize": "Layers size",
+   "sizeUnavailable": "Unavailable",
+   "images": "Images",
+   "containers": "Containers",
+   "volumes": "Volumes",
+   "count": "{{count}}"
+  }
+ },
+ "auditLog": {
+  "title": "Audit log",
+  "subtitle": "Track sensitive actions (deployments, destructions, accounts, servers).",
+  "filterAllActions": "All actions",
+  "refresh": "Refresh",
+  "eventsTitle": "Events",
+  "eventsCount": "{{count}} event(s)",
+  "emptyTitle": "No events",
+  "emptyDescription": "Sensitive actions will appear here once performed.",
+  "system": "system",
+  "targetProject": "project {{id}}",
+  "targetServer": "server {{id}}",
+  "actions": {
+   "deploy": {
+    "success": "Deployment succeeded",
+    "failed": "Deployment failed"
+   },
+   "destroy": "Destroy",
+   "rebuild": "Rebuild",
+   "server": {
+    "provisioned": "Server provisioned",
+    "removed": "Server removed",
+    "role": {
+     "changed": "Server role changed"
     }
-  },
-  "auth": {
-    "title": "hullbay",
-    "subtitle": "Infrastructure Console",
-    "login": {
-      "emailLabel": "Email",
-      "placeholder": "owner@bozando.com",
-      "passwordLabel": "Password",
-      "submitButton": "Sign in"
-    },
+   },
+   "registry": {
+    "set": "Registry set"
+   },
+   "user": {
+    "created": "User created",
+    "deleted": "User deleted",
+    "role": {
+     "changed": "User role changed"
+    }
+   },
+   "auth": {
     "mfa": {
-      "instruction": "Enter the code from your authenticator app.",
-      "codePlaceholder": "123456",
-      "codeLabel": "Verification code",
-      "submitButton": "Verify",
-      "webauthnButton": "Use a security key or Passkey",
-      "orWebauthn": "or"
-    },
-    "toast": {
-      "loginFailed": "Sign in failed",
-      "invalidCredentialsDescription": "Incorrect email or password.",
-      "mfaEnrollFailed": "Unable to start MFA setup",
-      "mfaNotEnabledDescription": "Enable MFA before continuing.",
-      "mfaEnabled": "MFA enabled",
-      "invalidCode": "Invalid code",
-      "invalidMfaDescription": "MFA code is incorrect or expired."
-    },
-    "rateLimited": {
-      "title": "Too many attempts",
-      "retryIn": "Try again in {{seconds}}s.",
-      "unlocked": "You can try again now"
-    },
-    "mfaModal": {
-      "title": "Enable two-factor authentication",
-      "description": "Scan the code with your authenticator app, then enter the 6-digit code.",
-      "preparing": "Preparing...",
-      "scanQrTitle": "Scan the QR code",
-      "manualEntryLabel": "Enter manually",
-      "copy": "Copy",
-      "copied": "Copied",
-      "verificationCodeLabel": "6-digit code",
-      "confirmButton": "Confirm setup",
-      "passkeyOptional": "Sign in without a code next time.",
-      "addPasskey": "Add a security key"
-    },
-    "sso": {
-      "signInWith": "Continue with {{name}}",
-      "orContinueWithLocal": "or continue with local account",
-      "failed": "SSO failed",
-      "pending": {
-        "title": "Account pending approval",
-        "description": "Account {{email}} is waiting for administrator approval. You will receive an email once your access is approved."
-      }
-    },
-    "ldap": {
-      "title": "Sign in with {{name}}",
-      "subtitle": "Enter your corporate credentials.",
-      "usernameLabel": "Username",
-      "usernamePlaceholder": "jdoe or jdoe@corp.local",
-      "submitButton": "Sign in with directory",
-      "backToLocal": "Back to standard sign in",
-      "providerNotFound": "LDAP provider not found or disabled."
-    },
-    "webauthn": {
-      "authFailed": "WebAuthn authentication failed",
-      "notSupported": "This browser does not support WebAuthn security keys.",
-      "cancelled": "WebAuthn operation was cancelled.",
-      "sessionInvalid": "Session expired or invalid. Please sign in again.",
-      "challengeExpired": "Validation timed out. Please try again.",
-      "noCredentials": "No security key is registered on this account. Sign in with a code first, then add a key in Settings → Security keys."
-    }
-  },
-  "nav": {
-    "projects": "Projects",
-    "health": "Health",
-    "logs": "Logs",
-    "servers": "Servers",
-    "clusters": "Clusters",
-    "registries": "Registries",
-    "secrets": "Secrets",
-    "users": "Users",
-    "providers": "Authentication",
-    "sessions": "Devices",
-    "settings": "Settings",
-    "updates": "Updates",
-    "logout": "Logout",
-    "ownerBadge": "Owner",
-    "versionUnknown": "Unknown version",
-    "channelStable": "Stable",
-    "channelBeta": "Beta",
-    "updateAvailable": "New",
-    "closeMenu": "Close menu",
-    "openMenu": "Open menu",
-    "skipToContent": "Skip to content",
-    "mainNavigation": "Main navigation"
-  },
-  "projects": {
-    "pageTitle": "Projects",
-    "loading": "Loading…",
-    "toast": {
-      "createSuccess": "Project created",
-      "updateSuccess": "Project updated",
-      "rebuildSuccess": "Rebuilt: {{projects}} projects, {{nodes}} nodes",
-      "deleteSuccess": "Project deleted"
-    },
-    "deleteConfirm": {
-      "title": "Delete project?",
-      "description": "\"{{name}}\" and all its nodes/links will be removed from the desired state. Docker resources already deployed must be destroyed separately from the canvas."
-    },
-    "actions": {
-      "rebuild": "Rebuild from Docker",
-      "new": "New project",
-      "rename": "Rename",
-      "delete": "Delete",
-      "cancel": "Cancel",
-      "create": "Create",
-      "save": "Save"
-    },
-    "empty": {
-      "title": "No projects",
-      "description": "Create a project, then design its architecture on the canvas (containers, networks, volumes, gateways)."
-    },
-    "createModal": {
-      "title": "New project",
-      "nameLabel": "Name",
-      "namePlaceholder": "Bozando Prod Store",
-      "descLabel": "Description",
-      "descPlaceholder": "What is this project for?"
-    },
-    "editModal": {
-      "title": "Rename project",
-      "nameLabel": "Name",
-      "slugHint": "The technical slug (Docker resource prefix) cannot be changed.",
-      "descLabel": "Description"
-    }
-  },
-  "health": {
-    "pageTitle": "Cluster Health",
-    "refresh": "Refresh",
-    "noCluster": "No cluster registered. Add a server to create your first cluster.",
-    "swarmInactive": "Swarm inactive on this cluster. Run `docker swarm init` on its manager to enable services, replicas and observability.",
-    "drift": {
-      "title": "Drift detected",
-      "description": "{{count}} project(s) diverge from desired state. Redeploy the affected project to reconcile.",
-      "badgeLabel": "{{count}} action(s)"
-    },
-    "nodes": {
-      "title": "Nodes ({{count}})",
-      "host": "Host",
-      "role": "Role",
-      "state": "State",
-      "availability": "Avail.",
-      "leader": "leader"
-    },
-    "services": {
-      "title": "Services ({{count}})",
-      "service": "Service",
-      "replicas": "Replicas",
-      "nodes": "Nodes",
-      "avgCpu": "Avg CPU",
-      "memory": "Memory",
-      "empty": "No managed services.",
-      "loading": "Loading…",
-      "notAvailable": "n/a"
-    },
-    "orphaned": {
-      "title": "Orphaned resources",
-      "description": "Managed resources (bozando.managed) whose project no longer exists. The system (bozando.system) is never touched.",
-      "analyzeButton": "Analyze",
-      "deleteButton": "Delete {{count}} orphan(s)",
-      "noOrphans": "No orphaned resources",
-      "itemLabel": "{{kind}} · {{name}} — {{reason}}"
-    },
-    "serviceDetail": {
-      "title": "Service",
-      "loading": "Loading…",
-      "metrics": {
-        "replicas": "Replicas",
-        "sampledTasks": "Sampled tasks",
-        "avgCpu": "Average CPU",
-        "memory": "Memory"
-      },
-      "placement": {
-        "title": "Task placement",
-        "empty": "No running tasks.",
-        "node": "Node",
-        "state": "State",
-        "desired": "Desired"
-      }
-    },
-    "cluster": {
-      "inactive": "inactive"
-    },
-    "disk": {
-      "title": "Disk (docker system df)",
-      "layersSize": "Layers size",
-      "sizeUnavailable": "Unavailable",
-      "images": "Images",
-      "containers": "Containers",
-      "volumes": "Volumes",
-      "count": "{{count}}"
-    }
-  },
-  "auditLog": {
-    "title": "Audit log",
-    "subtitle": "Track sensitive actions (deployments, destructions, accounts, servers).",
-    "filterAllActions": "All actions",
-    "refresh": "Refresh",
-    "eventsTitle": "Events",
-    "eventsCount": "{{count}} event(s)",
-    "emptyTitle": "No events",
-    "emptyDescription": "Sensitive actions will appear here once performed.",
-    "system": "system",
-    "targetProject": "project {{id}}",
-    "targetServer": "server {{id}}",
-    "actions": {
-      "deploy": { "success": "Deployment succeeded", "failed": "Deployment failed" },
-      "destroy": "Destroy",
-      "rebuild": "Rebuild",
-      "server": {
-        "provisioned": "Server provisioned",
-        "removed": "Server removed",
-        "role": { "changed": "Server role changed" }
-      },
-      "registry": { "set": "Registry set" },
-      "user": {
-        "created": "User created",
-        "deleted": "User deleted",
-        "role": { "changed": "User role changed" }
-      },
-      "auth": {
-        "mfa": { "enabled": "MFA enabled", "success": "MFA verified", "failed": "MFA failed" },
-        "login": { "success": "Sign-in succeeded", "failed": "Sign-in failed" },
-        "password": { "changed": "Password changed" },
-        "saml": { "failed": "SAML failure" },
-        "provider": { "created": "Provider created", "updated": "Provider updated", "deleted": "Provider deleted" },
-        "pending": { "created": "Pending identity", "approved": "Identity approved", "rejected": "Identity rejected" },
-        "webauthn": { "registered": "WebAuthn key registered", "deleted": "WebAuthn key deleted" },
-        "ldap": { "failed": "LDAP failed" }
-      },
-      "autoscale": { "applied": "Autoscaling applied" },
-      "prune": { "finished": "Prune finished" },
-      "secret": { "set": "Secret set", "removed": "Secret removed" }
-    },
-    "table": {
-      "date": "Date",
-      "action": "Action",
-      "user": "User",
-      "target": "Target"
-    },
-    "drawer": {
-      "title": "Event details",
-      "payload": "Payload",
-      "selectPrompt": "Select an event to view details."
-    },
-    "pagination": {
-      "pageInfo": "Page {{page}} of {{pages}}",
-      "prev": "Previous",
-      "next": "Next"
-    }
-  },
-  "servers": {
-    "title": "Servers",
-    "addServer": "Add a server",
-    "quorum": {
-      "title": "Quorum (HA control plane)",
-      "description": "{{reachable}}/{{total}} managers reachable. Recommended: odd number (3 tolerates 1 failure, 5 tolerates 2).",
-      "statusOk": "quorum OK"
-    },
-    "empty": "No servers. The first one added becomes the cluster manager."
-  },
-  "clusters": {
-    "pageTitle": "Clusters",
-    "loading": "Loading…",
-    "empty": {
-      "title": "No clusters",
-      "description": "A « Default » cluster is normally created automatically on first startup."
-    },
-    "badge": {
-      "default": "default"
-    },
-    "serverCount": "{{count}} server(s)",
-    "actions": {
-      "create": "New cluster",
-      "delete": "Delete"
-    },
-    "deleteConfirm": {
-      "title": "Delete this cluster?",
-      "description": "\"{{name}}\" is not operational (status: {{status}}) — deleting it also removes any attached server. This action is irreversible.",
-      "teardownLabel": "Also remove the {{count}} attached server(s)",
-      "teardownHint": "Drains and removes each server from the Swarm cluster before deleting.",
-      "teardownRequired": "You must confirm teardown to delete a cluster with attached servers."
-    },
-    "toast": {
-      "creationStarted": "Provisioning started",
-      "deleteSuccess": "Cluster deleted",
-      "deleteSuccessWithServers_one": "Cluster deleted ({{count}} server removed)",
-      "deleteSuccessWithServers_other": "Cluster deleted ({{count}} servers removed)",
-      "teardownStarted": "Teardown started ({{count}} server(s))",
-      "deleteError": "Deletion failed"
-    },
-    "createModal": {
-      "title": "New cluster",
-      "clusterNameLabel": "Cluster name",
-      "hint": "The first server added becomes this cluster's manager.",
-      "serverNameLabel": "Server name",
-      "hostLabel": "Host / IP",
-      "portLabel": "SSH port",
-      "userLabel": "SSH user",
-      "authMethodLabel": "Authentication method",
-      "sshKey": "SSH private key",
-      "password": "Password",
-      "errors": {
-        "name": "2 to 63 characters, letters/digits/spaces/-/_ only.",
-        "host": "Enter a valid hostname or IP address.",
-        "port": "Enter a valid port (1–65535)."
-      }
-    },
-    "status": {
-      "ready": "Ready",
-      "pending": "Pending",
-      "failed": "Failed",
-      "deleting": "Deleting"
-    },
-    "search": {
-      "placeholder": "Search a cluster…",
-      "noResults": "No cluster matches your search."
-    },
-    "filter": {
-      "statusLabel": "Status",
-      "all": "All"
-    },
-    "sort": {
-      "label": "Sort by",
-      "byName": "Name",
-      "byStatus": "Status",
-      "byServers": "Server count",
-      "ascending": "Ascending order",
-      "descending": "Descending order"
-    },
-    "detail": {
-      "back": "Back",
-      "backToClusters": "Back to clusters",
-      "loading": "Loading cluster...",
-      "notFound": {
-        "title": "Cluster not found",
-        "description": "This cluster does not exist or has been deleted."
-      },
-      "defaultBadge": "default cluster",
-      "clusterBadge": "cluster",
-      "addServer": {
-        "button": "Add a server",
-        "title": "Add a server to this cluster",
-        "toast": {
-          "started": "Provisioning started"
-        },
-        "managerLabel": "Join as manager",
-        "managerForcedHint": "No active manager in this cluster — this server must join as manager (a worker cannot join without a live manager to issue a join token).",
-        "managerOptionalHint": "Optional — leave off to join as a worker."
-      },
-      "viewAuditLog": "View audit log",
-      "tabs": {
-        "overview": "Overview",
-        "services": "Services"
-      },
-      "quorum": {
-        "title": "Quorum (HA control plane)",
-        "description": "{{reachable}}/{{total}} managers reachable. Recommended: odd number (3 tolerates 1 failure, 5 tolerates 2).",
-        "ok": "quorum OK",
-        "atRisk": "quorum at risk",
-        "atRiskBanner": "Cluster quorum at risk — at least one manager is unreachable."
-      },
-      "unreachable": "This cluster is currently unreachable — no health data available.",
-      "server": {
-        "promote": "Promote to manager",
-        "demote": "Demote to worker",
-        "remove": "Remove from cluster",
-        "leader": "leader",
-        "empty": "No servers in this cluster.",
-        "status": {
-          "ready": "Ready",
-          "provisioning": "Provisioning",
-          "error": "Error",
-          "draining": "Draining",
-          "down": "Down"
-        },
-        "sysinfo": {
-          "cpu_one": "{{count}} CPU core",
-          "cpu_other": "{{count}} CPU cores",
-          "disk": "Disk"
-        },
-        "specs": {
-          "cpus": "{{cpus}} vCPU",
-          "ram": "{{ram}} RAM",
-          "os": "{{os}} {{arch}} · Docker {{version}}"
-        }
-      },
-      "removeServerConfirm": {
-        "title": "Remove this server?",
-        "description": "\"{{name}}\" ({{host}}) will be drained then removed from the Swarm cluster. Running tasks will be rescheduled on the other nodes. This action is destructive."
-      },
-      "toast": {
-        "roleChanged": "Role changed: {{role}}",
-        "serverRemoved": "Server removed"
-      },
-      "services": {
-        "empty": "No services running on this cluster.",
-        "service": "Service",
-        "replicas": "Replicas",
-        "avgCpu": "Avg CPU",
-        "memory": "Memory"
-      }
-    }
-  },
-  "integrations": {
-    "pageTitle": "Container Registries",
-    "toast": {
-      "saveSuccess": "Registry saved",
-      "removeSuccess": "Registry removed"
-    },
-    "deleteConfirm": {
-      "title": "Remove this registry?",
-      "description": "Credentials for \"{{registry}}\" will be deleted. Private images from this registry can no longer be pulled during deployment."
-    },
-    "list": {
-      "title": "Registries",
-      "subtitle": "{{count}} registry/registries"
-    },
-    "empty": {
-      "title": "No registry",
-      "description": "Add Docker Hub, GHCR, or a private registry to deploy private images."
-    },
-    "actions": {
-      "delete": "Delete"
-    },
-    "form": {
-      "title": "Add / update a registry",
-      "registryLabel": "Registry",
-      "registryPlaceholder": "ghcr.io / docker.io / registry.example.com",
-      "registryHint": "Docker Hub = docker.io · GitHub = ghcr.io · or your private registry host.",
-      "userLabel": "Username",
-      "userPlaceholder": "Enter username...",
-      "tokenLabel": "Token / password",
-      "tokenPlaceholder": "(never shown again)",
-      "saveButton": "Save"
-    }
-  },
-  "secrets": {
-    "pageTitle": "Secrets",
-    "clusterLabel": "Cluster",
-    "clusterPlaceholder": "Select a cluster",
-    "toast": {
-      "saveSuccess": "Secret saved",
-      "removeSuccess": "Secret removed"
-    },
-    "deleteConfirm": {
-      "title": "Delete this secret?",
-      "description": "\"{{name}}\" will be deleted. Any service still referencing it will fail on the next deployment."
-    },
-    "list": {
-      "title": "Secrets",
-      "subtitle": "{{count}} secret(s)"
-    },
-    "empty": {
-      "title": "No secrets",
-      "description": "Create a secret and reference it by name in a container (mounted in /run/secrets)."
-    },
-    "badge": {
-      "encrypted": "encrypted"
-    },
-    "actions": {
-      "delete": "Delete"
-    },
-    "form": {
-      "title": "Add / replace a secret",
-      "nameLabel": "Name",
-      "namePlaceholder": "DB_PASSWORD",
-      "nameHint": "Mounted in the container at /run/secrets/<name>.",
-      "valueLabel": "Value",
-      "valuePlaceholder": "(never shown again)",
-      "saveButton": "Save"
-    }
-  },
-  "setupDomain": {
-    "loading": "Loading…",
-    "title": "Configure your domain",
-    "description": "Enter the public domain you want to use to access your hullbay instance.",
-    "domainLabel": "Public domain",
-    "domainPlaceholder": "ops.example.com",
-    "submitButton": "Save domain",
-    "saving": "Saving…",
-    "invalidDomain": "Invalid domain format. Example: ops.example.com",
-    "saveFailed": "Failed to save the domain",
-    "mfaRequired": "MFA not enabled — enable MFA before configuring the domain.",
-    "successMessage": "Domain saved. Redirecting…"
-  },
-  "users": {
-    "pageTitle": "Users",
-    "pageSubtitle": "Delegate limited access (operator/viewer) to an employee.",
-    "loading": "Loading…",
-    "toast": {
-      "createSuccess": "Account created",
-      "roleChanged": "Role changed: {{role}}",
-      "deleteSuccess": "Account deleted"
-    },
-    "deleteConfirm": {
-      "title": "Delete this account?",
-      "description": "\"{{email}}\" will immediately lose access to the console."
-    },
-    "list": {
-      "title": "Accounts",
-      "subtitle": "{{count}} account(s)"
-    },
-    "empty": {
-      "title": "No other accounts",
-      "description": "Create an operator (can deploy) or a viewer (read-only) to delegate."
-    },
-    "badge": {
-      "you": "you",
-      "mfaEnabled": "MFA enabled"
-    },
-    "actions": {
-      "new": "New user",
-      "setRole": "Set {{role}}",
-      "delete": "Delete",
-      "cancel": "Cancel",
-      "create": "Create account"
-    },
-    "createModal": {
-      "title": "New user",
-      "emailLabel": "Email",
-      "emailPlaceholder": "employee@bozando.com",
-      "passwordLabel": "Initial password",
-      "passwordPlaceholder": "At least 8 characters",
-      "passwordHint": "The user can change it in Settings and enable MFA.",
-      "roleLabel": "Role",
-      "roleViewer": "viewer — read-only",
-      "roleOperator": "operator — can deploy/destroy",
-      "roleHint": "Promotion to owner is done afterwards, explicitly from the list."
-    }
-  },
-  "providers": {
-    "pageTitle": "Authentication",
-    "pageSubtitle": "SSO & Directory (OIDC / OAuth2 / SAML / LDAP): configure providers here, approve external identities per tenant.",
-    "tab": {
-      "providers": "Providers",
-      "pendings": "Pending approvals"
-    },
-    "toast": {
-      "createSuccess": "Provider created",
-      "updateSuccess": "Provider updated",
-      "deleteSuccess": "Provider deleted",
-      "testOk": "Connection OK — valid config",
-      "testKo": "Test failed: {{message}}",
-      "enabledChanged": "Provider {{enabled}}",
-      "lastActiveProvider": "Cannot disable: at least one provider must stay active",
-      "approveSuccess": "Identity approved",
-      "rejectSuccess": "Request rejected"
-    },
-    "list": {
-      "title": "Authentication providers",
-      "subtitle": "{{count}} provider(s) configured"
-    },
-    "empty": {
-      "title": "No provider",
-      "description": "Add an OIDC, OAuth2 or SAML provider for external authentication (Google, Keycloak, Entra…)."
-    },
-    "badge": {
-      "enabled": "active",
-      "disabled": "inactive"
-    },
-    "errors": {
-      "domainNotConfigured": "Cannot enable: this provider requires a configured public domain (Settings → Domain)."
-    },
-    "actions": {
-      "new": "New provider",
-      "edit": "Edit",
-      "test": "Test connection",
-      "delete": "Delete",
-      "cancel": "Cancel",
-      "save": "Save"
-    },
-    "form": {
-      "titleCreate": "New provider",
-      "titleEdit": "Edit “{{name}}”",
-      "kindLabel": "Protocol",
-      "kindOidc": "OIDC — OpenID Connect",
-      "kindOauth2": "OAuth2 — code + userinfo",
-      "kindSaml": "SAML 2.0 — IdP initiated",
-      "kindLocal": "Local — internal accounts",
-      "kindLdap": "LDAP — enterprise directory",
-      "idLabel": "Identifier",
-      "idPlaceholder": "oidc-corp, google, keycloak…",
-      "idHint": "Referenced in the callback URL. a-z, 0-9 and dashes only.",
-      "nameLabel": "Name",
-      "namePlaceholder": "e.g. Entra Corp",
-      "enabledLabel": "Enabled",
-      "enabledHint": "An inactive provider is hidden from the sign-in screen.",
-      "configLabel": "Configuration",
-      "secretHint": "“••••••••” means: keep the current value (unchanged).",
-      "configUnsupported": "This protocol's configuration cannot be edited here. Only the name and state can be changed.",
-      "requiredErrs": "Missing or invalid required fields"
-    },
-    "field": {
-      "issuer": "Issuer (identity provider URL)",
-      "clientId": "Client ID",
-      "clientSecret": "Client secret",
-      "redirectUri": "Redirect URI (callback)",
-      "scopes": "Scopes (space-separated)",
-      "discoveryUrl": "Discovery URL (.well-known/openid-configuration)",
-      "jwksUri": "JWKS URI",
-      "authorizationUri": "Authorization URL",
-      "tokenUri": "Token URL",
-      "userinfoUri": "Userinfo URL",
-      "groupAttr": "Group attribute (optional)",
-      "idpCert": "IdP X.509 certificate (PEM)",
-      "idpIssuer": "IdP issuer",
-      "spIssuer": "Your SP issuer",
-      "entryPoint": "Entry point (ACS)",
-      "callbackUrl": "Callback URL",
-      "audience": "Audience (optional)",
-      "acceptedClockSkewMs": "Allowed clock skew (ms, optional)",
-      "ldapUrl": "LDAP server URL (e.g. ldap://ldap.corp:389 or ldaps://...)",
-      "bindDn": "Service account DN (Bind DN, optional)",
-      "bindSecret": "Service account password (Bind Secret)",
-      "searchBase": "User search base (e.g. ou=users,dc=corp)",
-      "searchFilter": "Search filter (e.g. (&(objectClass=person)(sAMAccountName={{username}})))",
-      "stableAttr": "Stable attribute (objectGUID for AD, entryUUID for OpenLDAP)",
-      "groupSearchBase": "Group search base (optional)",
-      "groupFilter": "Group search filter (optional)",
-      "timeoutMs": "Timeout (ms, optional)"
-    },
-    "test": {
-      "running": "Testing…"
-    },
-    "deleteConfirm": {
-      "title": "Delete this provider?",
-      "description": "“{{name}}” will be removed immediately. Already-federated accounts stay active; no new sign-in via this provider."
-    },
-    "pendings": {
-      "title": "Identities waiting for approval",
-      "subtitle": "{{count}} request(s) — no account is created until you approve.",
-      "empty": {
-        "title": "Nothing waiting",
-        "description": "A user from an unknown IdP will show up here for approval."
-      },
-      "emailUnknown": "unknown email",
-      "approve": "Approve",
-      "reject": "Reject",
-      "approveTitle": "Approve “{{email}}”",
-      "approveDesc": "The account will be created (or attached if the email already exists) in the chosen tenant and role.",
-      "tenantLabel": "Target tenant",
-      "roleLabel": "Role",
-      "rejectTitle": "Reject this request?",
-      "rejectDesc": "“{{email}}” will stay in rejected state. They can sign in again via the IdP.",
-      "reasonLabel": "Reason (optional)",
-      "roleHint": "The granted role lives on this tenant's Membership."
-    }
-  },
-  "sessions": {
-    "pageTitle": "Connected devices",
-    "pageSubtitle": "Active sessions on your account. Revoke any device you don't recognize.",
-    "empty": {
-      "title": "No connected device",
-      "description": "Sessions appear here after you sign in."
-    },
-    "table": {
-      "device": "Device",
-      "ip": "IP address",
-      "lastSeen": "Last active",
-      "expiresAt": "Expires",
-      "actions": "Actions"
-    },
-    "unknownDevice": "Unknown device",
-    "current": "This device",
-    "revoke": "Revoke",
-    "revoked": "Session revoked",
-    "confirm": {
-      "title": "Revoke this device?",
-      "description": "The session will be invalidated immediately. The device will have to sign in again.",
-      "currentDescription": "This is your current session: you will be signed out immediately."
-    }
-  },
-  "settings": {
-    "pageTitle": "Settings",
-    "tabs": {
-      "profile": "Profile",
-      "security": "Security",
-      "domain": "Domain"
-    },
-    "domain": {
-      "title": "Domain name",
-      "hint": "Set a public domain: required before enabling SSO providers and WebAuthn in production.",
-      "configureButton": "Configure domain"
-    },
-    "webauthn": {
-      "title": "WebAuthn / Passkeys",
-      "hint": "Tenant RP configuration, stored in the database. The origin is pre-filled from the public domain; the RP ID is derived from the origin by default. No environment variables required.",
-      "enabledLabel": "Enabled",
-      "enabledHint": "In production, enabling requires a configured public domain.",
-      "originLabel": "Origin (exact origin seen by the browser)",
-      "rpIdLabel": "RP ID",
-      "rpIdPlaceholder": "auto — derived from the origin",
-      "rpIdHint": "Leave empty to derive from the origin.",
-      "rpNameLabel": "RP Name",
-      "saveButton": "Save",
-      "configured": "configured",
-      "notConfigured": "not configured",
-      "saved": "WebAuthn configuration saved",
-      "noDomainHint": "No public domain configured — enabling will be rejected in production."
-    },
-    "account": {
-      "title": "Account",
-      "emailLabel": "Email",
-      "roleLabel": "Role"
-    },
-    "language": {
-      "title": "Language",
-      "selectLabel": "Interface language",
-      "hint": "Changes are applied immediately."
+     "enabled": "MFA enabled",
+     "success": "MFA verified",
+     "failed": "MFA failed"
+    },
+    "login": {
+     "success": "Sign-in succeeded",
+     "failed": "Sign-in failed"
     },
     "password": {
-      "title": "Password",
-      "currentLabel": "Current password",
-      "newLabel": "New password",
-      "newPlaceholder": "At least 8 characters",
-      "tooShortError": "At least 8 characters.",
-      "confirmLabel": "Confirm new password",
-      "mismatchError": "Passwords do not match.",
-      "submitButton": "Change password"
+     "changed": "Password changed"
     },
-    "passkeys": {
-      "title": "Security keys",
-      "hint": "Passkeys let you sign in with Touch ID, Windows Hello, or a hardware key instead of a code.",
-      "unsupported": "This browser does not support passkeys.",
-      "empty": "No security key registered yet.",
-      "defaultName": "Security key",
-      "nameLabel": "Key name",
-      "namePlaceholder": "e.g. MacBook Touch ID",
-      "addButton": "Add a security key",
-      "added": "Security key added",
-      "removed": "Security key removed",
-      "remove": "Remove this security key",
-      "addedAt": "Added",
-      "lastUsed": "Last used",
-      "neverUsed": "Never used",
-      "confirm": {
-        "title": "Remove this security key?",
-        "description": "\"{{name}}\" will no longer be able to sign you in. Keep at least one other sign-in method to avoid being locked out.",
-        "confirmText": "Remove"
-      },
-      "errors": {
-        "registerFailed": "Could not add the security key"
-      }
+    "saml": {
+     "failed": "SAML failure"
     },
-    "toast": {
-      "passwordChanged": "Password changed"
+    "provider": {
+     "created": "Provider created",
+     "updated": "Provider updated",
+     "deleted": "Provider deleted"
+    },
+    "pending": {
+     "created": "Pending identity",
+     "approved": "Identity approved",
+     "rejected": "Identity rejected"
+    },
+    "webauthn": {
+     "registered": "WebAuthn key registered",
+     "deleted": "WebAuthn key deleted"
+    },
+    "ldap": {
+     "failed": "LDAP failed"
     }
+   },
+   "autoscale": {
+    "applied": "Autoscaling applied"
+   },
+   "prune": {
+    "finished": "Prune finished"
+   },
+   "secret": {
+    "set": "Secret set",
+    "removed": "Secret removed"
+   }
   },
-  "updates": {
-    "version": {
-      "dev": "development (local source)",
-      "unknown": "unknown"
-    },
-    "verdict": {
-      "reload": "Reload page",
-      "failed": "The update failed",
-      "checkHistory": "Check the history for details.",
-      "rolledBackDesc": "hullbay has been restored to {{version}}.",
-      "rolledBack": "Update cancelled (rollback)",
-      "success": "Update complete",
-      "successDesc": "{{from}} → {{to}} — hullbay is up to date."
-    },
-    "confirm": {
-      "rollback": "Automatic rollback on failure.",
-      "description": "Install version {{version}} on the {{channel}} channel.",
-      "backup": "Database backup before any operation.",
-      "confirmButton": "Confirm update",
-      "intermediateBadge": "Intermediate version",
-      "title": "Confirm update",
-      "autoReversible": "The update is automatic and reversible:",
-      "progressive": "Progressive redeployment (2-3 s downtime)."
-    },
-    "steps": {
-      "restore": "Restore",
-      "status": {
-        "running": "in progress",
-        "pending": "pending",
-        "success": "succeeded",
-        "failed": "failed"
-      },
-      "pipeline": "Finalization",
-      "web": "Interface",
-      "backup": "Backup",
-      "api": "API",
-      "version": "Version",
-      "pull": "Images"
-    },
-    "versions": {
-      "latest": "Latest",
-      "filterAria": "Filter by version type",
-      "filter": {
-        "all": "All",
-        "stable": "Stable",
-        "beta": "Beta",
-        "rc": "RC"
-      },
-      "loading": "Loading…",
-      "lessDetails": "Less details",
-      "internalSource": "Source: internal",
-      "install": "Install this version",
-      "empty": {
-        "all": "GitHub releases will appear here as soon as they are published.",
-        "stable": "No stable release on this repository at the moment.",
-        "title": "No published version",
-        "rc": "No release candidate (RC) at the moment.",
-        "beta": "No beta pre-release at the moment."
-      },
-      "moreDetails": "More details",
-      "badge": {
-        "rc": "RC",
-        "beta": "Beta",
-        "stable": "Stable"
-      },
-      "viewOnGithub": "View on GitHub",
-      "noNotes": "No release notes.",
-      "title": "Published versions"
-    },
-    "toast": {
-      "channelChanged": "Channel changed to {{channel}}",
-      "applied": "Update {{version}} applied",
-      "failed": "Update failed",
-      "applyStarted": "Update started — live tracking",
-      "rollbackDesc": "hullbay has been restored to {{version}}.",
-      "rolledBack": "Update cancelled (rollback)",
-      "rollbackStarted": "Rollback started — live tracking",
-      "appliedDesc": "hullbay goes from {{from}} to {{to}}."
-    },
-    "history": {
-      "filter": {
-        "running": "In progress",
-        "failed": "Failed",
-        "all": "All",
-        "success": "Succeeded",
-        "rolledBack": "Cancelled"
-      },
-      "card": {
-        "versionFrom": "Start version",
-        "confirmRollback": "Confirm rollback",
-        "end": "End",
-        "rollback": "Rollback",
-        "start": "Start",
-        "update": "Update",
-        "versionTo": "End version"
-      },
-      "loadMore": "Show more ({{count}} remaining)",
-      "empty": {
-        "allHint": "History fills up with each update or rollback launched.",
-        "filteredTitle": "No update with this status",
-        "filteredHint": "Try another status filter.",
-        "allTitle": "No update recorded"
-      },
-      "title": "History"
-    },
-    "pipeline": {
-      "stepFailed": "A step failed",
-      "preparing": "Preparing pipeline…"
-    },
-    "hero": {
-      "recently": "recently",
-      "checkFailed": "Check failed (GitHub or network) — try again later.",
-      "lastCheck": "Last check: {{date}}",
-      "running": "Update in progress",
-      "degraded": "GitHub {{detail}} — last known result.",
-      "reconnecting": "Reconnecting…",
-      "updateAvailable": "Update available",
-      "live": "Live",
-      "upToDate": "You are up to date — {{version}} is the latest version on the {{channel}} channel.",
-      "latestPublished": "{{version}} published on {{date}} on the {{channel}} channel.",
-      "result": "Result",
-      "update": "Update"
-    },
-    "status": {
-      "running": "In progress",
-      "pending": "Pending",
-      "failed": "Failed",
-      "rolled_back": "Cancelled",
-      "success": "Succeeded"
-    },
-    "page": {
-      "betaToggle": "Beta version",
-      "subtitle": "Version and distribution channel of the hullbay instance.",
-      "checkNow": "Check now",
-      "title": "Updates",
-      "nonProdAlert": "Automatic updates are only available in production. This instance is currently running in another environment: the page remains viewable, but installing an update is disabled."
-    },
-    "channel": {
-      "stable": {
-        "label": "Stable",
-        "hint": "Tested versions, recommended for production."
-      },
-      "beta": {
-        "hint": "Pre-release versions, may contain regressions.",
-        "label": "Beta"
-      }
-    },
-    "tab": {
-      "history": "History",
-      "releases": "Published versions",
-      "ariaContenu": "Content"
-    }
+  "table": {
+   "date": "Date",
+   "action": "Action",
+   "user": "User",
+   "target": "Target"
+  },
+  "drawer": {
+   "title": "Event details",
+   "payload": "Payload",
+   "selectPrompt": "Select an event to view details."
+  },
+  "pagination": {
+   "pageInfo": "Page {{page}} of {{pages}}",
+   "prev": "Previous",
+   "next": "Next"
   }
+ },
+ "servers": {
+  "title": "Servers",
+  "addServer": "Add a server",
+  "quorum": {
+   "title": "Quorum (HA control plane)",
+   "description": "{{reachable}}/{{total}} managers reachable. Recommended: odd number (3 tolerates 1 failure, 5 tolerates 2).",
+   "statusOk": "quorum OK"
+  },
+  "empty": "No servers. The first one added becomes the cluster manager."
+ },
+ "clusters": {
+  "pageTitle": "Clusters",
+  "loading": "Loading…",
+  "empty": {
+   "title": "No clusters",
+   "description": "A « Default » cluster is normally created automatically on first startup."
+  },
+  "badge": {
+   "default": "default"
+  },
+  "serverCount": "{{count}} server(s)",
+  "actions": {
+   "create": "New cluster",
+   "delete": "Delete"
+  },
+  "deleteConfirm": {
+   "title": "Delete this cluster?",
+   "description": "\"{{name}}\" is not operational (status: {{status}}) — deleting it also removes any attached server. This action is irreversible.",
+   "teardownLabel": "Also remove the {{count}} attached server(s)",
+   "teardownHint": "Drains and removes each server from the Swarm cluster before deleting.",
+   "teardownRequired": "You must confirm teardown to delete a cluster with attached servers."
+  },
+  "toast": {
+   "creationStarted": "Provisioning started",
+   "deleteSuccess": "Cluster deleted",
+   "deleteSuccessWithServers_one": "Cluster deleted ({{count}} server removed)",
+   "deleteSuccessWithServers_other": "Cluster deleted ({{count}} servers removed)",
+   "teardownStarted": "Teardown started ({{count}} server(s))",
+   "deleteError": "Deletion failed"
+  },
+  "createModal": {
+   "title": "New cluster",
+   "clusterNameLabel": "Cluster name",
+   "hint": "The first server added becomes this cluster's manager.",
+   "serverNameLabel": "Server name",
+   "hostLabel": "Host / IP",
+   "portLabel": "SSH port",
+   "userLabel": "SSH user",
+   "authMethodLabel": "Authentication method",
+   "sshKey": "SSH private key",
+   "password": "Password",
+   "errors": {
+    "name": "2 to 63 characters, letters/digits/spaces/-/_ only.",
+    "host": "Enter a valid hostname or IP address.",
+    "port": "Enter a valid port (1–65535)."
+   }
+  },
+  "status": {
+   "ready": "Ready",
+   "pending": "Pending",
+   "failed": "Failed",
+   "deleting": "Deleting"
+  },
+  "search": {
+   "placeholder": "Search a cluster…",
+   "noResults": "No cluster matches your search."
+  },
+  "filter": {
+   "statusLabel": "Status",
+   "all": "All"
+  },
+  "sort": {
+   "label": "Sort by",
+   "byName": "Name",
+   "byStatus": "Status",
+   "byServers": "Server count",
+   "ascending": "Ascending order",
+   "descending": "Descending order"
+  },
+  "detail": {
+   "back": "Back",
+   "backToClusters": "Back to clusters",
+   "loading": "Loading cluster...",
+   "notFound": {
+    "title": "Cluster not found",
+    "description": "This cluster does not exist or has been deleted."
+   },
+   "defaultBadge": "default cluster",
+   "clusterBadge": "cluster",
+   "addServer": {
+    "button": "Add a server",
+    "title": "Add a server to this cluster",
+    "toast": {
+     "started": "Provisioning started"
+    },
+    "managerLabel": "Join as manager",
+    "managerForcedHint": "No active manager in this cluster — this server must join as manager (a worker cannot join without a live manager to issue a join token).",
+    "managerOptionalHint": "Optional — leave off to join as a worker."
+   },
+   "viewAuditLog": "View audit log",
+   "tabs": {
+    "overview": "Overview",
+    "services": "Services"
+   },
+   "quorum": {
+    "title": "Quorum (HA control plane)",
+    "description": "{{reachable}}/{{total}} managers reachable. Recommended: odd number (3 tolerates 1 failure, 5 tolerates 2).",
+    "ok": "quorum OK",
+    "atRisk": "quorum at risk",
+    "atRiskBanner": "Cluster quorum at risk — at least one manager is unreachable."
+   },
+   "unreachable": "This cluster is currently unreachable — no health data available.",
+   "server": {
+    "promote": "Promote to manager",
+    "demote": "Demote to worker",
+    "remove": "Remove from cluster",
+    "leader": "leader",
+    "empty": "No servers in this cluster.",
+    "status": {
+     "ready": "Ready",
+     "provisioning": "Provisioning",
+     "error": "Error",
+     "draining": "Draining",
+     "down": "Down"
+    },
+    "sysinfo": {
+     "cpu_one": "{{count}} CPU core",
+     "cpu_other": "{{count}} CPU cores",
+     "disk": "Disk"
+    },
+    "specs": {
+     "cpus": "{{cpus}} vCPU",
+     "ram": "{{ram}} RAM",
+     "os": "{{os}} {{arch}} · Docker {{version}}"
+    }
+   },
+   "removeServerConfirm": {
+    "title": "Remove this server?",
+    "description": "\"{{name}}\" ({{host}}) will be drained then removed from the Swarm cluster. Running tasks will be rescheduled on the other nodes. This action is destructive."
+   },
+   "toast": {
+    "roleChanged": "Role changed: {{role}}",
+    "serverRemoved": "Server removed"
+   },
+   "services": {
+    "empty": "No services running on this cluster.",
+    "service": "Service",
+    "replicas": "Replicas",
+    "avgCpu": "Avg CPU",
+    "memory": "Memory"
+   }
+  }
+ },
+ "integrations": {
+  "pageTitle": "Container Registries",
+  "toast": {
+   "saveSuccess": "Registry saved",
+   "removeSuccess": "Registry removed"
+  },
+  "deleteConfirm": {
+   "title": "Remove this registry?",
+   "description": "Credentials for \"{{registry}}\" will be deleted. Private images from this registry can no longer be pulled during deployment."
+  },
+  "list": {
+   "title": "Registries",
+   "subtitle": "{{count}} registry/registries"
+  },
+  "empty": {
+   "title": "No registry",
+   "description": "Add Docker Hub, GHCR, or a private registry to deploy private images."
+  },
+  "actions": {
+   "delete": "Delete"
+  },
+  "form": {
+   "title": "Add / update a registry",
+   "registryLabel": "Registry",
+   "registryPlaceholder": "ghcr.io / docker.io / registry.example.com",
+   "registryHint": "Docker Hub = docker.io · GitHub = ghcr.io · or your private registry host.",
+   "userLabel": "Username",
+   "userPlaceholder": "Enter username...",
+   "tokenLabel": "Token / password",
+   "tokenPlaceholder": "(never shown again)",
+   "saveButton": "Save"
+  }
+ },
+ "secrets": {
+  "pageTitle": "Secrets",
+  "clusterLabel": "Cluster",
+  "clusterPlaceholder": "Select a cluster",
+  "toast": {
+   "saveSuccess": "Secret saved",
+   "removeSuccess": "Secret removed"
+  },
+  "deleteConfirm": {
+   "title": "Delete this secret?",
+   "description": "\"{{name}}\" will be deleted. Any service still referencing it will fail on the next deployment."
+  },
+  "list": {
+   "title": "Secrets",
+   "subtitle": "{{count}} secret(s)"
+  },
+  "empty": {
+   "title": "No secrets",
+   "description": "Create a secret and reference it by name in a container (mounted in /run/secrets)."
+  },
+  "badge": {
+   "encrypted": "encrypted"
+  },
+  "actions": {
+   "delete": "Delete"
+  },
+  "form": {
+   "title": "Add / replace a secret",
+   "nameLabel": "Name",
+   "namePlaceholder": "DB_PASSWORD",
+   "nameHint": "Mounted in the container at /run/secrets/<name>.",
+   "valueLabel": "Value",
+   "valuePlaceholder": "(never shown again)",
+   "saveButton": "Save"
+  }
+ },
+ "setupDomain": {
+  "loading": "Loading…",
+  "title": "Configure your domain",
+  "description": "Enter the public domain you want to use to access your hullbay instance.",
+  "domainLabel": "Public domain",
+  "domainPlaceholder": "ops.example.com",
+  "submitButton": "Save domain",
+  "saving": "Saving…",
+  "invalidDomain": "Invalid domain format. Example: ops.example.com",
+  "saveFailed": "Failed to save the domain",
+  "mfaRequired": "MFA not enabled — enable MFA before configuring the domain.",
+  "successMessage": "Domain saved. Redirecting…"
+ },
+ "users": {
+  "pageTitle": "Users",
+  "pageSubtitle": "Delegate limited access (operator/viewer) to an employee.",
+  "loading": "Loading…",
+  "toast": {
+   "createSuccess": "Account created",
+   "roleChanged": "Role changed: {{role}}",
+   "deleteSuccess": "Account deleted"
+  },
+  "deleteConfirm": {
+   "title": "Delete this account?",
+   "description": "\"{{email}}\" will immediately lose access to the console."
+  },
+  "list": {
+   "title": "Accounts",
+   "subtitle": "{{count}} account(s)"
+  },
+  "empty": {
+   "title": "No other accounts",
+   "description": "Create an operator (can deploy) or a viewer (read-only) to delegate."
+  },
+  "badge": {
+   "you": "you",
+   "mfaEnabled": "MFA enabled"
+  },
+  "actions": {
+   "new": "New user",
+   "setRole": "Set {{role}}",
+   "delete": "Delete",
+   "cancel": "Cancel",
+   "create": "Create account"
+  },
+  "createModal": {
+   "title": "New user",
+   "emailLabel": "Email",
+   "emailPlaceholder": "employee@bozando.com",
+   "passwordLabel": "Initial password",
+   "passwordPlaceholder": "At least 8 characters",
+   "passwordHint": "The user can change it in Settings and enable MFA.",
+   "roleLabel": "Role",
+   "roleViewer": "viewer — read-only",
+   "roleOperator": "operator — can deploy/destroy",
+   "roleHint": "Promotion to owner is done afterwards, explicitly from the list."
+  }
+ },
+ "providers": {
+  "pageTitle": "Authentication",
+  "pageSubtitle": "SSO & Directory (OIDC / OAuth2 / SAML / LDAP): configure providers here, approve external identities per tenant.",
+  "tab": {
+   "providers": "Providers",
+   "pendings": "Pending approvals"
+  },
+  "toast": {
+   "createSuccess": "Provider created",
+   "updateSuccess": "Provider updated",
+   "deleteSuccess": "Provider deleted",
+   "testOk": "Connection OK — valid config",
+   "testKo": "Test failed: {{message}}",
+   "enabledChanged": "Provider {{enabled}}",
+   "lastActiveProvider": "Cannot disable: at least one provider must stay active",
+   "approveSuccess": "Identity approved",
+   "rejectSuccess": "Request rejected",
+   "lastActiveProviderDelete": "Cannot delete: at least one provider (the one handling sign-in) must stay active"
+  },
+  "list": {
+   "title": "Authentication providers",
+   "subtitle": "{{count}} provider(s) configured"
+  },
+  "empty": {
+   "title": "No provider",
+   "description": "Add an OIDC, OAuth2 or SAML provider for external authentication (Google, Keycloak, Entra…)."
+  },
+  "badge": {
+   "enabled": "active",
+   "disabled": "inactive"
+  },
+  "errors": {
+   "domainNotConfigured": "Cannot enable: this provider requires a configured public domain (Settings → Domain)."
+  },
+  "actions": {
+   "new": "New provider",
+   "edit": "Edit",
+   "test": "Test connection",
+   "delete": "Delete",
+   "cancel": "Cancel",
+   "save": "Save"
+  },
+  "form": {
+   "titleCreate": "New provider",
+   "titleEdit": "Edit “{{name}}”",
+   "kindLabel": "Protocol",
+   "kindOidc": "OIDC — OpenID Connect",
+   "kindOauth2": "OAuth2 — code + userinfo",
+   "kindSaml": "SAML 2.0 — IdP initiated",
+   "kindLocal": "Local — internal accounts",
+   "kindLdap": "LDAP — enterprise directory",
+   "idLabel": "Identifier",
+   "idPlaceholder": "oidc-corp, google, keycloak…",
+   "idHint": "Referenced in the callback URL. a-z, 0-9 and dashes only.",
+   "nameLabel": "Name",
+   "namePlaceholder": "e.g. Entra Corp",
+   "enabledLabel": "Enabled",
+   "enabledHint": "An inactive provider is hidden from the sign-in screen.",
+   "configLabel": "Configuration",
+   "secretHint": "“••••••••” means: keep the current value (unchanged).",
+   "configUnsupported": "This protocol's configuration cannot be edited here. Only the name and state can be changed.",
+   "requiredErrs": "Missing or invalid required fields"
+  },
+  "field": {
+   "issuer": "Issuer (identity provider URL)",
+   "clientId": "Client ID",
+   "clientSecret": "Client secret",
+   "redirectUri": "Redirect URI (callback)",
+   "scopes": "Scopes (space-separated)",
+   "discoveryUrl": "Discovery URL (.well-known/openid-configuration)",
+   "jwksUri": "JWKS URI",
+   "authorizationUri": "Authorization URL",
+   "tokenUri": "Token URL",
+   "userinfoUri": "Userinfo URL",
+   "groupAttr": "Group attribute (optional)",
+   "idpCert": "IdP X.509 certificate (PEM)",
+   "idpIssuer": "IdP issuer",
+   "spIssuer": "Your SP issuer",
+   "entryPoint": "Entry point (ACS)",
+   "callbackUrl": "Callback URL",
+   "audience": "Audience (optional)",
+   "acceptedClockSkewMs": "Allowed clock skew (ms, optional)",
+   "ldapUrl": "LDAP server URL (e.g. ldap://ldap.corp:389 or ldaps://...)",
+   "bindDn": "Service account DN (Bind DN, optional)",
+   "bindSecret": "Service account password (Bind Secret)",
+   "searchBase": "User search base (e.g. ou=users,dc=corp)",
+   "searchFilter": "Search filter (e.g. (&(objectClass=person)(sAMAccountName={{username}})))",
+   "stableAttr": "Stable attribute (objectGUID for AD, entryUUID for OpenLDAP)",
+   "groupSearchBase": "Group search base (optional)",
+   "groupFilter": "Group search filter (optional)",
+   "timeoutMs": "Timeout (ms, optional)"
+  },
+  "test": {
+   "running": "Testing…"
+  },
+  "deleteConfirm": {
+   "title": "Delete this provider?",
+   "description": "“{{name}}” will be removed immediately. Already-federated accounts stay active; no new sign-in via this provider."
+  },
+  "pendings": {
+   "title": "Identities waiting for approval",
+   "subtitle": "{{count}} request(s) — no account is created until you approve.",
+   "empty": {
+    "title": "Nothing waiting",
+    "description": "A user from an unknown IdP will show up here for approval."
+   },
+   "emailUnknown": "unknown email",
+   "approve": "Approve",
+   "reject": "Reject",
+   "approveTitle": "Approve “{{email}}”",
+   "approveDesc": "The account will be created (or attached if the email already exists) in the chosen tenant and role.",
+   "tenantLabel": "Target tenant",
+   "roleLabel": "Role",
+   "rejectTitle": "Reject this request?",
+   "rejectDesc": "“{{email}}” will stay in rejected state. They can sign in again via the IdP.",
+   "reasonLabel": "Reason (optional)",
+   "roleHint": "The granted role lives on this tenant's Membership."
+  },
+  "wizard": {
+   "stepIdentity": "Identity",
+   "stepConfig": "Configuration",
+   "stepVerify": "Verification",
+   "continue": "Continue",
+   "back": "Back",
+   "managedHint": "Auto-generated by Hullbay (public base; editable after creation).",
+   "importPem": "Import a .pem file",
+   "verifyTitle": "Configuration check",
+   "verifyDescription": "Hullbay probes the configuration (reachability + schema) without saving it. Unreachable URL = creation blocked.",
+   "verifyRunning": "Probing…",
+   "verifyOk": "Valid and reachable configuration",
+   "verifyKo": "Configuration rejected",
+   "verifyBlockedHint": "Fix the configuration and re-run the check before enabling. (Turn “Enabled” off to save an unchecked config.)"
+  },
+  "preflight": {
+   "discovery": "OIDC discovery (.well-known)",
+   "authorization_uri": "Authorization URL",
+   "token_uri": "Token URL",
+   "entry_point": "Entry point (ACS)",
+   "bind": "LDAP bind (service account)"
+  },
+  "detail": {
+   "title": "Provider details",
+   "masked": "masked",
+   "configTitle": "Configuration",
+   "noConfig": "No configuration.",
+   "noSelection": "Select a provider from the list."
+  }
+ },
+ "sessions": {
+  "pageTitle": "Connected devices",
+  "pageSubtitle": "Active sessions on your account. Revoke any device you don't recognize.",
+  "empty": {
+   "title": "No connected device",
+   "description": "Sessions appear here after you sign in."
+  },
+  "table": {
+   "device": "Device",
+   "ip": "IP address",
+   "lastSeen": "Last active",
+   "expiresAt": "Expires",
+   "actions": "Actions"
+  },
+  "unknownDevice": "Unknown device",
+  "current": "This device",
+  "revoke": "Revoke",
+  "revoked": "Session revoked",
+  "confirm": {
+   "title": "Revoke this device?",
+   "description": "The session will be invalidated immediately. The device will have to sign in again.",
+   "currentDescription": "This is your current session: you will be signed out immediately."
+  }
+ },
+ "settings": {
+  "pageTitle": "Settings",
+  "tabs": {
+   "profile": "Profile",
+   "security": "Security",
+   "domain": "Domain"
+  },
+  "domain": {
+   "title": "Domain name",
+   "hint": "Set a public domain: required before enabling SSO providers and WebAuthn in production.",
+   "configureButton": "Configure domain"
+  },
+  "webauthn": {
+   "title": "WebAuthn / Passkeys",
+   "hint": "Tenant RP configuration, stored in the database. The origin is pre-filled from the public domain; the RP ID is derived from the origin by default. No environment variables required.",
+   "enabledLabel": "Enabled",
+   "enabledHint": "In production, enabling requires a configured public domain.",
+   "originLabel": "Origin (exact origin seen by the browser)",
+   "rpIdLabel": "RP ID",
+   "rpIdPlaceholder": "auto — derived from the origin",
+   "rpIdHint": "Leave empty to derive from the origin.",
+   "rpNameLabel": "RP Name",
+   "saveButton": "Save",
+   "configured": "configured",
+   "notConfigured": "not configured",
+   "saved": "WebAuthn configuration saved",
+   "noDomainHint": "No public domain configured — enabling will be rejected in production."
+  },
+  "account": {
+   "title": "Account",
+   "emailLabel": "Email",
+   "roleLabel": "Role"
+  },
+  "language": {
+   "title": "Language",
+   "selectLabel": "Interface language",
+   "hint": "Changes are applied immediately."
+  },
+  "password": {
+   "title": "Password",
+   "currentLabel": "Current password",
+   "newLabel": "New password",
+   "newPlaceholder": "At least 8 characters",
+   "tooShortError": "At least 8 characters.",
+   "confirmLabel": "Confirm new password",
+   "mismatchError": "Passwords do not match.",
+   "submitButton": "Change password"
+  },
+  "passkeys": {
+   "title": "Security keys",
+   "hint": "Passkeys let you sign in with Touch ID, Windows Hello, or a hardware key instead of a code.",
+   "unsupported": "This browser does not support passkeys.",
+   "empty": "No security key registered yet.",
+   "defaultName": "Security key",
+   "nameLabel": "Key name",
+   "namePlaceholder": "e.g. MacBook Touch ID",
+   "addButton": "Add a security key",
+   "added": "Security key added",
+   "removed": "Security key removed",
+   "remove": "Remove this security key",
+   "addedAt": "Added",
+   "lastUsed": "Last used",
+   "neverUsed": "Never used",
+   "confirm": {
+    "title": "Remove this security key?",
+    "description": "\"{{name}}\" will no longer be able to sign you in. Keep at least one other sign-in method to avoid being locked out.",
+    "confirmText": "Remove"
+   },
+   "errors": {
+    "registerFailed": "Could not add the security key"
+   }
+  },
+  "toast": {
+   "passwordChanged": "Password changed"
+  }
+ },
+ "updates": {
+  "version": {
+   "dev": "development (local source)",
+   "unknown": "unknown"
+  },
+  "verdict": {
+   "reload": "Reload page",
+   "failed": "The update failed",
+   "checkHistory": "Check the history for details.",
+   "rolledBackDesc": "hullbay has been restored to {{version}}.",
+   "rolledBack": "Update cancelled (rollback)",
+   "success": "Update complete",
+   "successDesc": "{{from}} → {{to}} — hullbay is up to date."
+  },
+  "confirm": {
+   "rollback": "Automatic rollback on failure.",
+   "description": "Install version {{version}} on the {{channel}} channel.",
+   "backup": "Database backup before any operation.",
+   "confirmButton": "Confirm update",
+   "intermediateBadge": "Intermediate version",
+   "title": "Confirm update",
+   "autoReversible": "The update is automatic and reversible:",
+   "progressive": "Progressive redeployment (2-3 s downtime)."
+  },
+  "steps": {
+   "restore": "Restore",
+   "status": {
+    "running": "in progress",
+    "pending": "pending",
+    "success": "succeeded",
+    "failed": "failed"
+   },
+   "pipeline": "Finalization",
+   "web": "Interface",
+   "backup": "Backup",
+   "api": "API",
+   "version": "Version",
+   "pull": "Images"
+  },
+  "versions": {
+   "latest": "Latest",
+   "filterAria": "Filter by version type",
+   "filter": {
+    "all": "All",
+    "stable": "Stable",
+    "beta": "Beta",
+    "rc": "RC"
+   },
+   "loading": "Loading…",
+   "lessDetails": "Less details",
+   "internalSource": "Source: internal",
+   "install": "Install this version",
+   "empty": {
+    "all": "GitHub releases will appear here as soon as they are published.",
+    "stable": "No stable release on this repository at the moment.",
+    "title": "No published version",
+    "rc": "No release candidate (RC) at the moment.",
+    "beta": "No beta pre-release at the moment."
+   },
+   "moreDetails": "More details",
+   "badge": {
+    "rc": "RC",
+    "beta": "Beta",
+    "stable": "Stable"
+   },
+   "viewOnGithub": "View on GitHub",
+   "noNotes": "No release notes.",
+   "title": "Published versions"
+  },
+  "toast": {
+   "channelChanged": "Channel changed to {{channel}}",
+   "applied": "Update {{version}} applied",
+   "failed": "Update failed",
+   "applyStarted": "Update started — live tracking",
+   "rollbackDesc": "hullbay has been restored to {{version}}.",
+   "rolledBack": "Update cancelled (rollback)",
+   "rollbackStarted": "Rollback started — live tracking",
+   "appliedDesc": "hullbay goes from {{from}} to {{to}}."
+  },
+  "history": {
+   "filter": {
+    "running": "In progress",
+    "failed": "Failed",
+    "all": "All",
+    "success": "Succeeded",
+    "rolledBack": "Cancelled"
+   },
+   "card": {
+    "versionFrom": "Start version",
+    "confirmRollback": "Confirm rollback",
+    "end": "End",
+    "rollback": "Rollback",
+    "start": "Start",
+    "update": "Update",
+    "versionTo": "End version"
+   },
+   "loadMore": "Show more ({{count}} remaining)",
+   "empty": {
+    "allHint": "History fills up with each update or rollback launched.",
+    "filteredTitle": "No update with this status",
+    "filteredHint": "Try another status filter.",
+    "allTitle": "No update recorded"
+   },
+   "title": "History"
+  },
+  "pipeline": {
+   "stepFailed": "A step failed",
+   "preparing": "Preparing pipeline…"
+  },
+  "hero": {
+   "recently": "recently",
+   "checkFailed": "Check failed (GitHub or network) — try again later.",
+   "lastCheck": "Last check: {{date}}",
+   "running": "Update in progress",
+   "degraded": "GitHub {{detail}} — last known result.",
+   "reconnecting": "Reconnecting…",
+   "updateAvailable": "Update available",
+   "live": "Live",
+   "upToDate": "You are up to date — {{version}} is the latest version on the {{channel}} channel.",
+   "latestPublished": "{{version}} published on {{date}} on the {{channel}} channel.",
+   "result": "Result",
+   "update": "Update"
+  },
+  "status": {
+   "running": "In progress",
+   "pending": "Pending",
+   "failed": "Failed",
+   "rolled_back": "Cancelled",
+   "success": "Succeeded"
+  },
+  "page": {
+   "betaToggle": "Beta version",
+   "subtitle": "Version and distribution channel of the hullbay instance.",
+   "checkNow": "Check now",
+   "title": "Updates",
+   "nonProdAlert": "Automatic updates are only available in production. This instance is currently running in another environment: the page remains viewable, but installing an update is disabled."
+  },
+  "channel": {
+   "stable": {
+    "label": "Stable",
+    "hint": "Tested versions, recommended for production."
+   },
+   "beta": {
+    "hint": "Pre-release versions, may contain regressions.",
+    "label": "Beta"
+   }
+  },
+  "tab": {
+   "history": "History",
+   "releases": "Published versions",
+   "ariaContenu": "Content"
+  }
+ }
 }

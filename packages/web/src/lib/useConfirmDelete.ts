@@ -23,6 +23,7 @@ export function useConfirmDelete<TVars>({
   invalidate,
   confirm,
   onSuccess,
+  onError,
 }: {
   mutationFn: (vars: TVars) => Promise<unknown>;
   success?: string | ((response: unknown) => string);
@@ -34,6 +35,7 @@ export function useConfirmDelete<TVars>({
     cancelText?: string;
   };
   onSuccess?: (vars: TVars) => void;
+  onError?: (err: Error, vars: TVars) => void;
 }) {
   const prompt = usePrompt();
   const mutation = useMutationToast<unknown, TVars>({
@@ -41,6 +43,7 @@ export function useConfirmDelete<TVars>({
     success: success as any,
     invalidate,
     onSuccess: (_d, vars) => onSuccess?.(vars),
+    onError: (err, vars) => onError?.(err, vars),
   });
 
   return async (vars: TVars) => {

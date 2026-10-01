@@ -421,19 +421,23 @@ export async function verifyWebauthnAuthentication(
   // Garde : un compteur non strictement croissant signale une copie du
   // credential ou une réinitialisation (rejeu). On refuse — sans jamais
   // persister le nouveau compteur — pour empêcher que la copie devienne la
-  // référence officielle.
-  if (Number(verification.authenticationInfo.newCounter) <= Number(credentialRow.counter)) {
+  // référence officielle. Conformément à la spec WebAuthn, un compteur à 0
+  // signifie « non supporté / état inconnu » : on ne refuse que le recul réel
+  // entre valeurs strictement positives (couverture assurée par la lib).
+  const newCounter = Number(verification.authenticationInfo.newCounter)
+  if (newCounter > 0 && newCounter <= Number(credentialRow.counter)) {
     void eventBus.emit(AUTH_AUDIT_EVENTS.mfaFailed, { userId, factor: "webauthn", reason: "counter_replay" }).catch(() => {})
     throw new AuthError("mfa_code_invalid", "clé de sécurité compromise ou rejouée", 401)
   }
 
-  // Met à jour le compteur et la date de dernière utilisation
+  // Met à jour le compteur et la date de dernière utilisation. Un compteur 0
+  // (clé sans support compteur) n'écrase jamais une valeur enregistrée positive.
   await prisma.webauthnCredential.update({
     where: { id: credentialRow.id },
-    data: {
-      counter: BigInt(verification.authenticationInfo.newCounter),
-      lastUsedAt: new Date(),
-    },
+    data:
+      newCounter > 0
+        ? { counter: BigInt(newCounter), lastUsedAt: new Date() }
+        : { lastUsedAt: new Date() },
   })
 
   void eventBus.emit(AUTH_AUDIT_EVENTS.mfaSuccess, { userId, factor: "webauthn" }).catch(() => {})

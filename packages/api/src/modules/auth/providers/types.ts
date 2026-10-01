@@ -79,6 +79,12 @@ export type AuthErrorCode =
   | "identity_pending_approval"
   | "session_revoked"
   | "session_invalid"
+  // Admin API providers (routes/providers.routes.ts) — codes levés dans les
+  // transactions d'écriture, convertis en réponse par le handler.
+  | "cannot_disable_last_provider"
+  | "cannot_delete_last_provider"
+  | "provider_in_use"
+  | "provider_pendings_exist"
 
 export class AuthError extends Error {
   code: AuthErrorCode
