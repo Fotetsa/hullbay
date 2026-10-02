@@ -445,6 +445,17 @@ export const api = {
       method: "POST",
       body: JSON.stringify(data),
     }),
+  setSecretBatch: (
+    clusterId: string,
+    items: Array<{ name: string; value: string }>,
+  ) =>
+    req<{ ok: true; created: number; items: Array<{ name: string; ok: true }> }>(
+      `/api/clusters/${clusterId}/secrets/batch`,
+      {
+        method: "POST",
+        body: JSON.stringify({ items }),
+      },
+    ),
   deleteSecret: (clusterId: string, name: string) =>
     req<{ ok: true }>(
       `/api/clusters/${clusterId}/secrets/${encodeURIComponent(name)}`,

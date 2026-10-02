@@ -24,9 +24,36 @@ import type { TenantScopedRequest } from "../auth/tenancy/tenant-resolver"
 
 const operator = { preHandler: requireRole("operator") }
 
-const CreateSecretSchema = z.object({
-  name: z.string().min(1).regex(/^[a-zA-Z0-9_.-]+$/, "nom invalide (alnum . _ - seulement)"),
-  value: z.string().min(1),
+const SECRET_NAME_RE = /^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$/
+const normalizeSecretName = (value: unknown) => {
+  if (typeof value !== "string") return value
+  const trimmed = value.trim()
+  return trimmed
+}
+
+const SecretNameSchema = z.preprocess(
+  normalizeSecretName,
+  z
+    .string()
+    .min(1, "nom requis")
+    .max(128, "nom trop long")
+    .regex(SECRET_NAME_RE, "nom invalide (lettres, chiffres, . _ - seulement)")
+    .refine((value) => !value.includes(".."), "nom invalide : .. interdit"),
+)
+
+const SecretValueSchema = z.preprocess(
+  (value) => (typeof value === "string" ? value.trim() : value),
+  z.string().min(1, "valeur requise").max(65535, "valeur trop longue"),
+)
+
+const SecretItemSchema = z.object({
+  name: SecretNameSchema,
+  value: SecretValueSchema,
+})
+
+const CreateSecretSchema = SecretItemSchema
+const BatchCreateSecretSchema = z.object({
+  items: z.array(SecretItemSchema).min(1, "aucun secret à créer").max(100, "trop de secrets dans le lot"),
 })
 
 const clusterParams = z.object({ clusterId: z.string() })
@@ -92,10 +119,9 @@ export async function registerSecretsRoutes(app: FastifyInstance) {
         await engine.upsertSecret(name, value);
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
-        // Cas typique : secret référencé par un service en cours → suppression refusée.
-        return reply.code(409).send({ error: message });
+        const code = (err as { statusCode?: number })?.statusCode ?? 409;
+        return reply.code(code >= 400 && code < 600 ? code : 409).send({ error: message });
       }
-      // Audit SANS la valeur.
       await eventBus.emit("secret.set", {
         userId: currentUser(req)?.sub,
         clusterId,
@@ -104,6 +130,48 @@ export async function registerSecretsRoutes(app: FastifyInstance) {
       return { ok: true, name };
     },
   );
+
+  app.post(
+    "/api/clusters/:clusterId/secrets/batch",
+    {
+      ...operator,
+      schema: {
+        params: clusterParams,
+        body: BatchCreateSecretSchema,
+        tags: ["secrets"],
+        summary: "Créer ou mettre à jour un lot de secrets en une seule requête",
+        security: [{ bearerAuth: [] }],
+      },
+    },
+    async (req, reply) => {
+      const { clusterId } = req.params as { clusterId: string }
+      if (!(await ensureClusterInTenant(clusterId, req, reply))) return reply
+
+      const { items } = req.body as { items: Array<{ name: string; value: string }> }
+      const engine = await DockerEngineService.forCluster(clusterId)
+
+      try {
+        for (const item of items) {
+          await engine.upsertSecret(item.name, item.value)
+          await eventBus.emit("secret.set", {
+            userId: currentUser(req)?.sub,
+            clusterId,
+            name: item.name,
+          })
+        }
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err)
+        const code = (err as { statusCode?: number })?.statusCode ?? 409
+        return reply.code(code >= 400 && code < 600 ? code : 409).send({ error: message })
+      }
+
+      return {
+        ok: true,
+        created: items.length,
+        items: items.map((item) => ({ name: item.name, ok: true })),
+      }
+    },
+  )
 
   app.delete(
     "/api/clusters/:clusterId/secrets/:name",

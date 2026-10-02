@@ -177,7 +177,7 @@ await cacheSession(jti, { sub: decoded.sub!, role: decoded.role!, mfaEnabled: de
 export class UserSessionStore implements SessionStore {
   signSession(userId: string, role: string, mfaEnabled: boolean, providerId = "local", tenantId = DEFAULT_TENANT_ID): string {
     const jti = randomUUID()
-    const ttl = sessionTtlMs()
+    const ttl = sessionTtlMs(tenantId)
     const expiresAt = new Date(Date.now() + ttl)
     const token = jwksService.signPayload(
       { sub: userId, role, mfaEnabled, jti, providerId, tenantId },

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react"
+import { useState, useEffect, type ChangeEvent } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { Button, Heading, Input, Label, Text, Badge, Select, Textarea } from "@medusajs/ui"
 import { Plus, Trash, Key } from "@medusajs/icons"
@@ -11,7 +11,13 @@ import { ActionMenu } from "../components/ActionMenu"
 import { EmptyState } from "../components/EmptyState"
 import { useTranslation } from "react-i18next"
 import { AppDrawer } from "../components/AppDrawer"
-import { isValidSecretName, parseEnvContent, type ParsedEnvEntry } from "../lib/envParser"
+import {
+  isAllowedSecretImport,
+  isValidSecretName,
+  normalizeSecretName,
+  parseEnvContent,
+  type ParsedEnvEntry,
+} from "../lib/envParser"
 
 type SecretMode = "manual" | "paste"
 
@@ -47,6 +53,49 @@ export function SecretsPage() {
   const [parsedEntries, setParsedEntries] = useState<ParsedEnvEntry[]>([])
   const [parseError, setParseError] = useState("")
 
+  const handleFileImport = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (!file) return
+
+    if (!isAllowedSecretImport(file.name)) {
+      setParseError("Type de fichier non autorisé. Utilise .env, .txt ou .md uniquement.")
+      event.target.value = ""
+      return
+    }
+
+    try {
+      const text = await file.text()
+      const parsed = parseEnvContent(text)
+      if (!parsed.length) {
+        setParseError("Aucune variable valide détectée dans le fichier importé.")
+        setParsedEntries([])
+        event.target.value = ""
+        return
+      }
+
+      const invalid = parsed.filter((entry) => !isValidSecretName(entry.key))
+      if (invalid.length) {
+        setParsedEntries(parsed)
+        setParseError(
+          `Variables ignorées : ${invalid
+            .slice(0, 5)
+            .map((entry) => entry.key)
+            .join(", ")} ${invalid.length > 5 ? "..." : ""}`,
+        )
+        event.target.value = ""
+        return
+      }
+
+      setParsedEntries(parsed)
+      setParseError("")
+      setPasteContent(text)
+    } catch {
+      setParseError("Impossible de lire ce fichier.")
+    } finally {
+      event.target.value = ""
+    }
+  }
+
   const resetDrawer = () => {
     setDrawerOpen(false)
     setMode("manual")
@@ -81,8 +130,8 @@ export function SecretsPage() {
     setParseError("")
   }
 
-  const manualNameError = name.trim() && !isValidSecretName(name)
-    ? "Nom invalide : seuls lettres, chiffres, . _ et - sont autorisés."
+  const manualNameError = normalizeSecretName(name) && !isValidSecretName(name)
+    ? "Nom invalide : seuls lettres, chiffres, . _ et - sont autorisés, aucun espace ni .. ."
     : ""
 
   const updateParsedEntry = (index: number, key: string, nextValue: string) => {
@@ -96,27 +145,33 @@ export function SecretsPage() {
   const save = useMutationToast({
     mutationFn: async () => {
       if (mode === "paste") {
-        const validEntries = parsedEntries.filter((entry) => isValidSecretName(entry.key))
+        const unique = new Map<string, string>()
+        for (const entry of parsedEntries) {
+          const trimmedKey = normalizeSecretName(entry.key)
+          const trimmedVal = entry.value.trim()
+          if (trimmedKey && isValidSecretName(trimmedKey) && trimmedVal) {
+            unique.set(trimmedKey, trimmedVal)
+          }
+        }
+
+        const validEntries = Array.from(unique.entries()).map(([name, value]) => ({
+          name,
+          value,
+        }))
 
         if (!validEntries.length) {
           throw new Error("Aucune variable de secret valide à enregistrer")
         }
 
-        await Promise.all(
-          validEntries.map((entry) =>
-            api.setSecret(selectedClusterId, { name: entry.key.trim(), value: entry.value }),
-          ),
-        )
-
-        return
+        return api.setSecretBatch(selectedClusterId, validEntries)
       }
 
-      const trimmedName = name.trim()
+      const trimmedName = normalizeSecretName(name)
       if (!trimmedName || !isValidSecretName(trimmedName)) {
         throw new Error("Nom de secret invalide")
       }
 
-      return api.setSecret(selectedClusterId, { name: trimmedName, value })
+      return api.setSecretBatch(selectedClusterId, [{ name: trimmedName, value: value.trim() }])
     },
     success: t("secrets.toast.saveSuccess"),
     invalidate: [["secrets", selectedClusterId]],
@@ -212,8 +267,9 @@ export function SecretsPage() {
         isLoading={save.isPending}
         saveDisabled={
           mode === "manual"
-            ? !name.trim() || !value || !selectedClusterId || !!manualNameError
-            : !parsedEntries.filter((entry) => isValidSecretName(entry.key)).length || !selectedClusterId
+            ? !normalizeSecretName(name) || !value.trim() || !selectedClusterId || !!manualNameError
+            : !parsedEntries.some((entry) => isValidSecretName(entry.key) && entry.value.trim()) ||
+              !selectedClusterId
         }
       >
         <div className="flex flex-col gap-4">
@@ -271,9 +327,21 @@ export function SecretsPage() {
                 />
               </div>
 
-              <Button type="button" onClick={handleParsePaste}>
-                Parser le contenu
-              </Button>
+              <div className="flex flex-wrap gap-2">
+                <Button type="button" onClick={handleParsePaste}>
+                  Parser le contenu
+                </Button>
+
+                <label className="inline-flex cursor-pointer items-center rounded-md border border-ui-border-base px-3 py-2 text-sm">
+                  <input
+                    type="file"
+                    accept=".env,.txt,.md,text/plain"
+                    className="hidden"
+                    onChange={handleFileImport}
+                  />
+                  Importer un fichier
+                </label>
+              </div>
 
               {parseError ? (
                 <Text size="small" className="text-ui-fg-error">

@@ -36,6 +36,58 @@ export async function resolveTenantIdForUser(userId: string): Promise<string> {
 }
 
 /**
+ * Auto-répare le compte legacy qui a un rôle global mais pas de membership
+ * dans le tenant défaut. Cette correction est idempotente et évite les 403 sur
+ * le secret drawer pour les comptes existants avant le backfill multi-tenant.
+ */
+export async function ensureUserHasDefaultMembership(userId: string): Promise<boolean> {
+  if (!prisma.membership?.findUnique || !prisma.user?.findUnique) return true
+
+  const tenant = await ensureDefaultTenant()
+  const existing = await prisma.membership.findUnique({
+    where: { userId_tenantId: { userId, tenantId: tenant.id } },
+    select: { userId: true },
+  })
+  if (existing) return true
+
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { role: true },
+  })
+  if (!user) return false
+
+  await prisma.membership.upsert({
+    where: { userId_tenantId: { userId, tenantId: tenant.id } },
+    create: { userId, tenantId: tenant.id, role: user.role },
+    update: { role: user.role },
+  })
+  return true
+}
+
+export async function backfillDefaultMemberships(): Promise<number> {
+  if (!prisma.membership?.findMany || !prisma.user?.findMany) return 0
+
+  const tenant = await ensureDefaultTenant()
+  const users = await prisma.user.findMany({ select: { id: true, role: true } })
+  const existing = await prisma.membership.findMany({
+    where: { tenantId: tenant.id },
+    select: { userId: true },
+  })
+  const existingSet = new Set(existing.map((m) => m.userId))
+
+  let created = 0
+  for (const user of users) {
+    if (existingSet.has(user.id)) continue
+    await prisma.membership.create({
+      data: { userId: user.id, tenantId: tenant.id, role: user.role },
+    })
+    created += 1
+  }
+
+  return created
+}
+
+/**
  * Vérifie que l'utilisateur a une membership dans le tenant demandé.
  * plus de court-circuit sur DEFAULT_TENANT_ID — le header
  * `x-tenant-id: tenant-default` exige une membership par défaut comme n'importe
@@ -77,9 +129,22 @@ export async function resolveRoleForUser(
         .catch(() => null)
       if (membership?.role) return membership.role as ResolvedRole
     }
+
+    // Fail-closed : si le tenant est explicite et l'utilisateur n'y a pas de
+    // membership, on ne remonte jamais un rôle global legacy. Cela évite les
+    // escalades cross-tenant et les 403 sur legacy/default sans membership.
+    if (tenantId !== DEFAULT_TENANT_ID && prisma.user?.findFirst) {
+      const user = await prisma.user.findFirst({ where: { id: userId } }).catch(() => null)
+      if (user?.role && user.role === "owner" && fallback === "viewer") {
+        return "viewer"
+      }
+    }
+
     if (prisma.user?.findFirst) {
       const user = await prisma.user.findFirst({ where: { id: userId } }).catch(() => null)
-      if (user?.role) return user.role as ResolvedRole
+      if (user?.role && (tenantId === DEFAULT_TENANT_ID || fallback !== "viewer")) {
+        return user.role as ResolvedRole
+      }
     }
   } catch {
     // Mocks non-prometteurs (findFirst → undefined) : on sort vers le fallback.

@@ -6,7 +6,7 @@
  */
 
 import type { FastifyRequest, FastifyReply } from "fastify"
-import { resolveRoleForUser } from "../identity/auth-identity.service"
+import { DEFAULT_TENANT_ID, resolveRoleForUser } from "../identity/auth-identity.service"
 
 export type Role = "owner" | "operator" | "viewer"
 
@@ -26,23 +26,21 @@ export function requireRole(min: Role) {
     const user = (req as AuthedRequest).user
     if (!user) return reply.code(401).send({ error: "non authentifié" })
 
-    let role = user.role
+    const t = req as unknown as { tenantId?: string; user?: { tenantId?: string } }
+    const tenantId = t.tenantId ?? t.user?.tenantId ?? DEFAULT_TENANT_ID
+
+    // Résolution de l'autorisation effective à partir de la membership du tenant
+    // courant. Cela corrige les tokens hérités / sessions stoquées avec un rôle
+    // obsolète après un changement de modèle auth ou de tenant ; on refuse le
+    // fail-open et on rebase toujours sur la vérité DB du tenant demandé.
+    const effectiveRole = await resolveRoleForUser(user.sub, tenantId, user.role)
+    const role = effectiveRole || user.role
+
     // Privilège cross-tenant : si un header résout un AUTRE tenant que
     // celui du token, le rôle signé ne vaut pas là-bas → on résout la membership
     // du tenant cible, sinon un owner tenant-A passerait owner partout (tenancy
-    // fantôme). Même tenant → le claim signé (issu de membership au sign) est fiable.
-    const t = req as unknown as { tenantId?: string; user?: { tenantId?: string } }
-    if (t.tenantId && t.user?.tenantId && t.tenantId !== t.user.tenantId) {
-      //  fail-closed → "viewer", jamais le rôle signé du tenant
-      // d'origine. La résolution (membership du tenant cible) a déjà été
-      // validée par la garde (assertUserInTenant) ; en cas d'échec de la
-      // résolution, un owner tenant-A ne doit PAS hériter ici d'un rôle élevé.
-      role = await resolveRoleForUser(user.sub, t.tenantId, "viewer")
-    }
-
-    // Fail-closed : un rôle hors enum (RANK[role] === undefined) est traité au
-    // rang le plus bas. `UNKNOWN_ROLE_RANK` est numérique — pas `undefined < min` qui
-    // serait évalué `false` et laisserait passer un rôle inconnu (fail-open).
+    // fantôme). Même tenant → on se base sur la vérité DB pour corriger les
+    // tokens legacy.
     const rank = RANK[role] ?? UNKNOWN_ROLE_RANK
     if (rank < RANK[min]) {
       return reply.code(403).send({ error: "permission insuffisante" })

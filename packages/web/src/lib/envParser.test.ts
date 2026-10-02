@@ -1,28 +1,32 @@
-import assert from "node:assert/strict"
-import test from "node:test"
+import { describe, expect, it } from "vitest"
 
 import { isValidSecretName, parseEnvContent } from "./envParser"
 
-test("isValidSecretName accepte les noms de secrets valides", () => {
-  assert.equal(isValidSecretName("JWT_SECRET"), true)
-  assert.equal(isValidSecretName("DB_HOST"), true)
-  assert.equal(isValidSecretName("APP-1"), true)
-  assert.equal(isValidSecretName("token.value"), true)
-})
+describe("env parser", () => {
+  it("accepte les noms de secrets valides", () => {
+    expect(isValidSecretName("JWT_SECRET")).toBe(true)
+    expect(isValidSecretName("DB_HOST")).toBe(true)
+    expect(isValidSecretName("APP-1")).toBe(true)
+    expect(isValidSecretName("token.value")).toBe(true)
+  })
 
-test("isValidSecretName rejette les noms invalides", () => {
-  assert.equal(isValidSecretName(""), false)
-  assert.equal(isValidSecretName("mounir@abu.com"), false)
-  assert.equal(isValidSecretName("my secret"), false)
-  assert.equal(isValidSecretName("foo/bar"), false)
-})
+  it("rejette les noms invalides", () => {
+    expect(isValidSecretName("")).toBe(false)
+    expect(isValidSecretName("mounir@abu.com")).toBe(false)
+    expect(isValidSecretName("my secret")).toBe(false)
+    expect(isValidSecretName("foo/bar")).toBe(false)
+    expect(isValidSecretName("..")).toBe(false)
+    expect(isValidSecretName("abc..def")).toBe(false)
+    expect(isValidSecretName("  JWT_SECRET  ")).toBe(true)
+  })
 
-test("parseEnvContent ignore les valeurs non valides selon les contraintes de secrets", () => {
-  const entries = parseEnvContent("JWT_SECRET=demo\nEMAIL=hello@example.com\nSPACE KEY=value\n")
+  it("ignore les valeurs non valides selon les contraintes de secrets", () => {
+    const entries = parseEnvContent("JWT_SECRET=demo\nEMAIL=hello@example.com\nSPACE KEY=value\n")
 
-  assert.deepEqual(entries, [
-    { key: "JWT_SECRET", value: "demo" },
-    { key: "EMAIL", value: "hello@example.com" },
-    { key: "SPACE KEY", value: "value" },
-  ])
+    expect(entries).toEqual([
+      { key: "JWT_SECRET", value: "demo" },
+      { key: "EMAIL", value: "hello@example.com" },
+      { key: "SPACE KEY", value: "value" },
+    ])
+  })
 })
