@@ -8,7 +8,7 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify"
 import { authService } from "../service"
 import { sessionManager } from "../core/session-manager"
-import { assertUserInTenant, DEFAULT_TENANT_ID } from "../identity/auth-identity.service"
+import { assertUserInTenant, DEFAULT_TENANT_ID, ensureUserHasDefaultMembership } from "../identity/auth-identity.service"
 import { effectiveTenantId, tenantFromHeader } from "../tenancy/tenant-resolver"
 
 const PUBLIC_PATHS = new Set([
@@ -88,8 +88,13 @@ export function registerAuthGuard(app: FastifyInstance) {
         user?: unknown
         tenantId?: string
       }
+
       request.user = { ...decoded, tenantId: decoded.tenantId ?? DEFAULT_TENANT_ID }
       request.tenantId = effectiveTenantId(req)
+
+      if (request.tenantId === DEFAULT_TENANT_ID) {
+        await ensureUserHasDefaultMembership(decoded.sub).catch(() => undefined)
+      }
 
       // MFA non activée : seules les routes de setup sont accessibles
       if (!decoded.mfaEnabled && !isMfaSetupPath(path)) {
