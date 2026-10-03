@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react"
 import { useQuery } from "@tanstack/react-query"
-import { Button, Container, Heading, Input, Label, Text, Badge, Select } from "@medusajs/ui"
+import { Button, Heading, Input, Label, Text, Badge, Select, Textarea } from "@medusajs/ui"
 import { Plus, Trash, Key } from "@medusajs/icons"
 import { api } from "../lib/api"
 import { useMutationToast } from "../lib/useMutationToast"
@@ -10,6 +10,10 @@ import { ListContainer, ListRow } from "../components/ListContainer"
 import { ActionMenu } from "../components/ActionMenu"
 import { EmptyState } from "../components/EmptyState"
 import { useTranslation } from "react-i18next"
+import { AppDrawer } from "../components/AppDrawer"
+import { isValidSecretName, parseEnvContent, type ParsedEnvEntry } from "../lib/envParser"
+
+type SecretMode = "manual" | "paste"
 
 /**
  * Gestion des Docker Secrets : valeurs sensibles stockées HORS labels/env.
@@ -19,7 +23,6 @@ import { useTranslation } from "react-i18next"
 export function SecretsPage() {
   const { t } = useTranslation()
 
-  // 1. Récupération des clusters + sélection du cluster par défaut
   const { data: clusters } = useQuery({ queryKey: ["clusters"], queryFn: api.listClusters })
   const [selectedClusterId, setSelectedClusterId] = useState<string>("")
 
@@ -30,45 +33,117 @@ export function SecretsPage() {
     }
   }, [clusters, selectedClusterId])
 
-  // 2. Liste des secrets du cluster sélectionné (guard si pas encore choisi)
   const { data: secrets } = useQuery({
     queryKey: ["secrets", selectedClusterId],
     queryFn: () => api.listSecrets(selectedClusterId),
     enabled: Boolean(selectedClusterId),
   })
 
+  const [drawerOpen, setDrawerOpen] = useState(false)
+  const [mode, setMode] = useState<SecretMode>("manual")
   const [name, setName] = useState("")
   const [value, setValue] = useState("")
+  const [pasteContent, setPasteContent] = useState("")
+  const [parsedEntries, setParsedEntries] = useState<ParsedEnvEntry[]>([])
+  const [parseError, setParseError] = useState("")
+
+  const resetDrawer = () => {
+    setDrawerOpen(false)
+    setMode("manual")
+    setName("")
+    setValue("")
+    setPasteContent("")
+    setParsedEntries([])
+    setParseError("")
+  }
+
+  const handleParsePaste = () => {
+    const parsed = parseEnvContent(pasteContent)
+    if (!parsed.length) {
+      setParseError("Aucune variable détectée dans le contenu collé.")
+      setParsedEntries([])
+      return
+    }
+
+    const invalid = parsed.filter((entry) => !isValidSecretName(entry.key))
+    if (invalid.length) {
+      setParsedEntries(parsed)
+      setParseError(
+        `Variables ignorées : ${invalid
+          .slice(0, 5)
+          .map((entry) => entry.key)
+          .join(", ")} ${invalid.length > 5 ? "..." : ""}`,
+      )
+      return
+    }
+
+    setParsedEntries(parsed)
+    setParseError("")
+  }
+
+  const manualNameError = name.trim() && !isValidSecretName(name)
+    ? "Nom invalide : seuls lettres, chiffres, . _ et - sont autorisés."
+    : ""
+
+  const updateParsedEntry = (index: number, key: string, nextValue: string) => {
+    setParsedEntries((current) =>
+      current.map((entry, idx) =>
+        idx === index ? { ...entry, key, value: nextValue } : entry,
+      ),
+    )
+  }
 
   const save = useMutationToast({
-    mutationFn: () => api.setSecret(selectedClusterId, { name, value }),
-    success: t('secrets.toast.saveSuccess'),
+    mutationFn: async () => {
+      if (mode === "paste") {
+        const validEntries = parsedEntries.filter((entry) => isValidSecretName(entry.key))
+
+        if (!validEntries.length) {
+          throw new Error("Aucune variable de secret valide à enregistrer")
+        }
+
+        await Promise.all(
+          validEntries.map((entry) =>
+            api.setSecret(selectedClusterId, { name: entry.key.trim(), value: entry.value }),
+          ),
+        )
+
+        return
+      }
+
+      const trimmedName = name.trim()
+      if (!trimmedName || !isValidSecretName(trimmedName)) {
+        throw new Error("Nom de secret invalide")
+      }
+
+      return api.setSecret(selectedClusterId, { name: trimmedName, value })
+    },
+    success: t("secrets.toast.saveSuccess"),
     invalidate: [["secrets", selectedClusterId]],
     onSuccess: () => {
-      setName("")
-      setValue("")
+      resetDrawer()
     },
   })
 
   const removeSecret = useConfirmDelete<string>({
     mutationFn: (n) => api.deleteSecret(selectedClusterId, n),
-    success: t('secrets.toast.removeSuccess'),
+    success: t("secrets.toast.removeSuccess"),
     invalidate: [["secrets", selectedClusterId]],
     confirm: (n) => ({
-      title: t('secrets.deleteConfirm.title'),
-      description: t('secrets.deleteConfirm.description', { name: n }),
+      title: t("secrets.deleteConfirm.title"),
+      description: t("secrets.deleteConfirm.description", { name: n }),
     }),
   })
 
   return (
     <PageContainer size="2xl">
-      <PageHeader title={t('secrets.pageTitle')} />
+      <PageHeader title={t("secrets.pageTitle")} />
 
       <div className="mb-4">
-        <Label size="small">{t('secrets.clusterLabel')}</Label>
+        <Label size="small">{t("secrets.clusterLabel")}</Label>
         <Select value={selectedClusterId} onValueChange={setSelectedClusterId}>
           <Select.Trigger>
-            <Select.Value placeholder={t('secrets.clusterPlaceholder')} />
+            <Select.Value placeholder={t("secrets.clusterPlaceholder")} />
           </Select.Trigger>
           <Select.Content>
             {clusters?.map((c) => (
@@ -78,16 +153,22 @@ export function SecretsPage() {
         </Select>
       </div>
 
+      <div className="mb-4 flex justify-end">
+        <Button onClick={() => setDrawerOpen(true)} disabled={!selectedClusterId}>
+          <Plus /> Ajouter un secret
+        </Button>
+      </div>
+
       <div className="mb-6">
         <ListContainer
-          title={t('secrets.list.title')}
-          subtitle={secrets ? t('secrets.list.subtitle', { count: secrets.length }) : undefined}
+          title={t("secrets.list.title")}
+          subtitle={secrets ? t("secrets.list.subtitle", { count: secrets.length }) : undefined}
           isEmpty={secrets?.length === 0}
           empty={
             <EmptyState
               icon={Key}
-              title={t('secrets.empty.title')}
-              description={t('secrets.empty.description')}
+              title={t("secrets.empty.title")}
+              description={t("secrets.empty.description")}
             />
           }
         >
@@ -97,7 +178,7 @@ export function SecretsPage() {
                 <Key className="text-ui-fg-muted" />
                 <Heading level="h3">{s.name}</Heading>
                 <Badge size="2xsmall" color="green">
-                  {t('secrets.badge.encrypted')}
+                  {t("secrets.badge.encrypted")}
                 </Badge>
               </div>
               <ActionMenu
@@ -105,7 +186,7 @@ export function SecretsPage() {
                   {
                     actions: [
                       {
-                        label: t('secrets.actions.delete'),
+                        label: t("secrets.actions.delete"),
                         icon: <Trash />,
                         variant: "danger",
                         onClick: () => removeSecret(s.name),
@@ -119,40 +200,129 @@ export function SecretsPage() {
         </ListContainer>
       </div>
 
-      <Container className="p-6">
-        <Heading level="h3" className="mb-3">
-          {t('secrets.form.title')}
-        </Heading>
-        <div className="flex flex-col gap-3">
-          <div>
-            <Label size="small">{t('secrets.form.nameLabel')}</Label>
-            <Input
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder={t('secrets.form.namePlaceholder')}
-            />
-            <Text size="xsmall" className="mt-1 text-ui-fg-muted">
-              {t('secrets.form.nameHint')}
-            </Text>
+      <AppDrawer
+        isOpen={drawerOpen}
+        onClose={() => {
+          resetDrawer()
+        }}
+        title="Ajouter un secret"
+        description="Ajoutez un secret à la main ou collez directement un fichier .env."
+        onSave={() => save.mutate()}
+        saveLabel="Enregistrer"
+        isLoading={save.isPending}
+        saveDisabled={
+          mode === "manual"
+            ? !name.trim() || !value || !selectedClusterId || !!manualNameError
+            : !parsedEntries.filter((entry) => isValidSecretName(entry.key)).length || !selectedClusterId
+        }
+      >
+        <div className="flex flex-col gap-4">
+          <div className="flex gap-2">
+            <Button
+              type="button"
+              variant={mode === "manual" ? "primary" : "secondary"}
+              onClick={() => setMode("manual")}
+            >
+              Valeur par valeur
+            </Button>
+            <Button
+              type="button"
+              variant={mode === "paste" ? "primary" : "secondary"}
+              onClick={() => setMode("paste")}
+            >
+              Coller un .env
+            </Button>
           </div>
-          <div>
-            <Label size="small">{t('secrets.form.valueLabel')}</Label>
-            <Input
-              type="password"
-              value={value}
-              onChange={(e) => setValue(e.target.value)}
-              placeholder={t('secrets.form.valuePlaceholder')}
-            />
-          </div>
-          <Button
-            onClick={() => save.mutate()}
-            isLoading={save.isPending}
-            disabled={!name.trim() || !value || !selectedClusterId}
-          >
-            <Plus /> {t('secrets.form.saveButton')}
-          </Button>
+
+          {mode === "manual" ? (
+            <>
+              <div>
+                <Label size="small">{t("secrets.form.nameLabel")}</Label>
+                <Input
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder={t("secrets.form.namePlaceholder")}
+                  aria-invalid={Boolean(manualNameError)}
+                />
+                <Text size="xsmall" className={manualNameError ? "mt-1 text-ui-fg-error" : "mt-1 text-ui-fg-muted"}>
+                  {manualNameError || t("secrets.form.nameHint")}
+                </Text>
+              </div>
+
+              <div>
+                <Label size="small">{t("secrets.form.valueLabel")}</Label>
+                <Input
+                  type="password"
+                  value={value}
+                  onChange={(e) => setValue(e.target.value)}
+                  placeholder={t("secrets.form.valuePlaceholder")}
+                />
+              </div>
+            </>
+          ) : (
+            <>
+              <div>
+                <Label size="small">Contenu .env</Label>
+                <Textarea
+                  value={pasteContent}
+                  onChange={(e) => setPasteContent(e.target.value)}
+                  placeholder={"DB_HOST=localhost\nDB_PORT=5432\nTOKEN=\"abc\""}
+                  className="min-h-[180px]"
+                />
+              </div>
+
+              <Button type="button" onClick={handleParsePaste}>
+                Parser le contenu
+              </Button>
+
+              {parseError ? (
+                <Text size="small" className="text-ui-fg-error">
+                  {parseError}
+                </Text>
+              ) : null}
+
+              {parsedEntries.length > 0 ? (
+                <div className="space-y-3">
+                  <Text size="small" className="text-ui-fg-muted">
+                    {parsedEntries.length} variable(s) détectée(s)
+                  </Text>
+
+                  <div className="max-h-64 overflow-y-auto rounded-md border border-ui-border-base bg-ui-bg-subtle p-2">
+                    <div className="space-y-2">
+                      {parsedEntries.map((entry, index) => {
+                        const invalidKey = !!entry.key && !isValidSecretName(entry.key)
+                        return (
+                          <div key={`${entry.key}-${index}`} className="space-y-1 rounded-md bg-ui-bg-base p-2">
+                            <div className="grid grid-cols-[1fr_1fr] gap-2">
+                              <Input
+                                value={entry.key}
+                                onChange={(e) => updateParsedEntry(index, e.target.value, entry.value)}
+                                placeholder="NOM_DE_LA_VARIABLE"
+                                aria-invalid={invalidKey}
+                              />
+                              <Input
+                                type="password"
+                                value={entry.value}
+                                onChange={(e) => updateParsedEntry(index, entry.key, e.target.value)}
+                                placeholder="Valeur"
+                              />
+                            </div>
+                            {invalidKey ? (
+                              <Text size="xsmall" className="text-ui-fg-error">
+                                Nom invalide : seuls lettres, chiffres, . _ et - sont autorisés.
+                              </Text>
+                            ) : null}
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+            </>
+          )}
         </div>
-      </Container>
+      </AppDrawer>
     </PageContainer>
   )
 }
