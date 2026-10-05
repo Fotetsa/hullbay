@@ -87,7 +87,7 @@ async function buildApp(role: "owner" | "operator" = "owner", reqTenant: string 
   app.setValidatorCompiler(validatorCompiler)
   app.setSerializerCompiler(serializerCompiler)
 
-  vi.mocked(prisma.membership.findUnique).mockImplementation(async ({ where }: any) => {
+  vi.mocked(prisma.membership.findUnique as any).mockImplementation(async ({ where }: any) => {
     const target = where?.userId_tenantId
     if (!target || !target.tenantId) return null
     return { userId: "u-admin", tenantId: target.tenantId, role } as any
@@ -132,7 +132,7 @@ beforeAll(() => {
 beforeEach(() => {
   vi.clearAllMocks()
   providerRegistry.clear()
-  vi.mocked(prisma.membership.findUnique).mockImplementation(async ({ where }: any) => {
+  vi.mocked(prisma.membership.findUnique as any).mockImplementation(async ({ where }: any) => {
     const target = where?.userId_tenantId
     if (!target || !target.tenantId) return null
     const role = target.userId === "u-admin" ? (target.tenantId === "t-1" ? "owner" : "owner") : "viewer"

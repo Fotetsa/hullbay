@@ -66,7 +66,7 @@ describe("LDAP & WebAuthn Routes", () => {
   beforeEach(async () => {
     vi.clearAllMocks()
     authRateLimiter.clear()
-    vi.mocked(prisma.membership.findUnique).mockImplementation(async ({ where }: any) => {
+    vi.mocked(prisma.membership.findUnique as any).mockImplementation(async ({ where }: any) => {
       const target = where?.userId_tenantId
       if (!target || !target.userId || !target.tenantId) return null
       if (target.userId === "u-1" && target.tenantId === "t-webauthn") {

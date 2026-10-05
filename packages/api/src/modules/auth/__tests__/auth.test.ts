@@ -85,7 +85,7 @@ describe("Auth Routes", () => {
         vi.clearAllMocks();
 
         vi.mocked(prisma.tenant.upsert).mockResolvedValue({ id: "tenant-default", slug: "default" } as any);
-        vi.mocked(prisma.membership.findUnique).mockImplementation(async ({ where }: any) => {
+        vi.mocked(prisma.membership.findUnique as any).mockImplementation(async ({ where }: any) => {
             const pk = where?.userId_tenantId;
             if (!pk || !pk.userId || !pk.tenantId) return null;
 
