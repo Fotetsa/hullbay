@@ -119,7 +119,9 @@ export async function resolveRoleForUser(
   fallback: string = "viewer",
 ): Promise<ResolvedRole> {
   try {
-    // Prisma partiellement mocké en tests : modèles absents → on saute l'étape.
+    // Résolution explicite du rôle pour le tenant courant : la membership locale
+    // a priorité absolue. On ne remonte jamais un rôle global à partir d'un
+    // tenant explicite non-default sans membership valide.
     if (prisma.membership?.findUnique) {
       const membership = await prisma.membership
         .findUnique({
@@ -130,25 +132,21 @@ export async function resolveRoleForUser(
       if (membership?.role) return membership.role as ResolvedRole
     }
 
-    // Fail-closed : si le tenant est explicite et l'utilisateur n'y a pas de
-    // membership, on ne remonte jamais un rôle global legacy. Cela évite les
-    // escalades cross-tenant et les 403 sur legacy/default sans membership.
-    if (tenantId !== DEFAULT_TENANT_ID && prisma.user?.findFirst) {
-      const user = await prisma.user.findFirst({ where: { id: userId } }).catch(() => null)
-      if (user?.role && user.role === "owner" && fallback === "viewer") {
-        return "viewer"
-      }
+    // Fail-closed pour tout tenant explicite autre que le tenant défaut.
+    if (tenantId !== DEFAULT_TENANT_ID) {
+      return "viewer"
     }
 
+    // Seul le tenant par défaut conserve le fallback legacy, pour les comptes
+    // hérités sans membership explicite.
     if (prisma.user?.findFirst) {
       const user = await prisma.user.findFirst({ where: { id: userId } }).catch(() => null)
-      if (user?.role && (tenantId === DEFAULT_TENANT_ID || fallback !== "viewer")) {
-        return user.role as ResolvedRole
-      }
+      if (user?.role) return user.role as ResolvedRole
     }
   } catch {
-    // Mocks non-prometteurs (findFirst → undefined) : on sort vers le fallback.
+    // Ignore et on retombe sur le fallback par défaut ci-dessous.
   }
+
   return (fallback as ResolvedRole) || "viewer"
 }
 

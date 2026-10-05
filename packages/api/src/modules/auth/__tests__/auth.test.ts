@@ -7,7 +7,7 @@ import { email } from "zod/v4";
 import { error } from "console";
 import { registerAuthGuard, registerAuthRoutes } from "../routes";
 import { sessionManager } from "../core/session-manager";
-import { ensureUserHasDefaultMembership } from "../identity/auth-identity.service";
+import { ensureUserHasDefaultMembership, resolveRoleForUser } from "../identity/auth-identity.service";
 import { requireRole } from "../authorization/rbac";
 
 
@@ -85,6 +85,22 @@ describe("Auth Routes", () => {
         vi.clearAllMocks();
 
         vi.mocked(prisma.tenant.upsert).mockResolvedValue({ id: "tenant-default", slug: "default" } as any);
+        vi.mocked(prisma.membership.findUnique).mockImplementation(async ({ where }: any) => {
+            const pk = where?.userId_tenantId;
+            if (!pk || !pk.userId || !pk.tenantId) return null;
+
+            const roleByUser: Record<string, string> = {
+                "owner-id": "owner",
+                "operator-id": "operator",
+                "viewer-id": "viewer",
+                "no-mfa-id": "operator",
+            };
+
+            const role = roleByUser[pk.userId];
+            if (!role) return null;
+
+            return { userId: pk.userId, tenantId: pk.tenantId, role } as any;
+        });
 
         //Simulons une authentification en configurant verifyToken pour renvoyer des rôles spécifiques en fonction du token fourni
         vi.mocked(authService.verifyToken).mockImplementation((token: string) => {
@@ -142,6 +158,15 @@ describe("Auth Routes", () => {
 
         expect(reply.code).not.toHaveBeenCalledWith(403);
         expect(reply.send).not.toHaveBeenCalled();
+    });
+
+    it("ne doit pas retomber sur le rôle global sur un tenant explicite non-default sans membership", async () => {
+        vi.mocked(prisma.membership.findUnique).mockResolvedValue(null);
+        vi.mocked(prisma.user.findFirst).mockResolvedValue({ id: "owner-id", role: "owner" } as any);
+
+        const role = await resolveRoleForUser("owner-id", "tenant-foo");
+
+        expect(role).toBe("viewer");
     });
 
     /**
