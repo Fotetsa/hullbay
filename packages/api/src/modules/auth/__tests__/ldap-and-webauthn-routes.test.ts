@@ -48,6 +48,9 @@ vi.mock("../../../lib/prisma", () => ({
     user: {
       findUnique: vi.fn(),
     },
+    membership: {
+      findUnique: vi.fn(),
+    },
   },
 }))
 
@@ -63,6 +66,17 @@ describe("LDAP & WebAuthn Routes", () => {
   beforeEach(async () => {
     vi.clearAllMocks()
     authRateLimiter.clear()
+    vi.mocked(prisma.membership.findUnique as any).mockImplementation(async ({ where }: any) => {
+      const target = where?.userId_tenantId
+      if (!target || !target.userId || !target.tenantId) return null
+      if (target.userId === "u-1" && target.tenantId === "t-webauthn") {
+        return { userId: "u-1", tenantId: "t-webauthn", role: "operator" } as any
+      }
+      if (target.userId === "u-owner" && target.tenantId === "tenant-default") {
+        return { userId: "u-owner", tenantId: "tenant-default", role: "owner" } as any
+      }
+      return null
+    })
     app = await buildTestApp({
       routes: async (a) => {
         // La garde est déjà enregistrée par buildApp (skipRoutes ne la saute pas).

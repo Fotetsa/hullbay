@@ -33,7 +33,7 @@ vi.mock("../../../lib/prisma", () => {
   const authIdentity = { count: vi.fn(), create: vi.fn() }
   const pendingIdentity = { findFirst: vi.fn(), findMany: vi.fn(), create: vi.fn(), update: vi.fn(), count: vi.fn() }
   const user = { findUnique: vi.fn(), create: vi.fn() }
-  const membership = { upsert: vi.fn() }
+  const membership = { upsert: vi.fn(), findUnique: vi.fn() }
   const auditLog = { create: vi.fn(() => Promise.resolve({ id: "audit-1" })) }
   // Transaction par défaut : délègue au MÊME client mocké (count/update/delete
   // redirigés vers les mêmes vi.fn). Les tests du workflow d'approbation la
@@ -86,6 +86,13 @@ async function buildApp(role: "owner" | "operator" = "owner", reqTenant: string 
   const app = Fastify({ logger: false })
   app.setValidatorCompiler(validatorCompiler)
   app.setSerializerCompiler(serializerCompiler)
+
+  vi.mocked(prisma.membership.findUnique as any).mockImplementation(async ({ where }: any) => {
+    const target = where?.userId_tenantId
+    if (!target || !target.tenantId) return null
+    return { userId: "u-admin", tenantId: target.tenantId, role } as any
+  })
+
   app.addHook("preHandler", async (req) => {
     const r = req as FastifyRequest & { user?: unknown; tenantId?: string }
     r.user = { sub: "u-admin", role, mfaEnabled: true }
@@ -125,6 +132,12 @@ beforeAll(() => {
 beforeEach(() => {
   vi.clearAllMocks()
   providerRegistry.clear()
+  vi.mocked(prisma.membership.findUnique as any).mockImplementation(async ({ where }: any) => {
+    const target = where?.userId_tenantId
+    if (!target || !target.tenantId) return null
+    const role = target.userId === "u-admin" ? (target.tenantId === "t-1" ? "owner" : "owner") : "viewer"
+    return { userId: "u-admin", tenantId: target.tenantId, role } as any
+  })
 })
 
 describe("Providers admin (owner) — CRUD", () => {

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react"
+import { useState, useEffect, type ChangeEvent } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { Button, Heading, Input, Label, Text, Badge, Select, Textarea } from "@medusajs/ui"
 import { Plus, Trash, Key } from "@medusajs/icons"
