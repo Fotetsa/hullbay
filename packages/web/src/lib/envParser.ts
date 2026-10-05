@@ -3,21 +3,10 @@ export type ParsedEnvEntry = {
   value: string
 }
 
-export const VALID_SECRET_NAME_RE = /^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$/
-
-export function normalizeSecretName(name: string): string {
-  return String(name).trim()
-}
+export const VALID_SECRET_NAME_RE = /^[A-Za-z0-9_.-]+$/
 
 export function isValidSecretName(name: string): boolean {
-  const normalized = normalizeSecretName(name)
-  if (!normalized || normalized.includes("..")) return false
-  return VALID_SECRET_NAME_RE.test(normalized)
-}
-
-export function isAllowedSecretImport(fileName: string): boolean {
-  const ext = fileName.split(".").pop()?.toLowerCase() ?? ""
-  return ["env", "txt", "md"].includes(ext)
+  return VALID_SECRET_NAME_RE.test(String(name).trim())
 }
 
 function stripQuotes(value: string): string {
