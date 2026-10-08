@@ -33,6 +33,10 @@ if [ "$(id -u)" -ne 0 ]; then
   SUDO="sudo"
 fi
 
+# Toutes les commandes docker passent par $SUDO (ou root) : un utilisateur
+# non-root avec sudo n'a pas besoin du groupe docker pour installer.
+DOCKER="$SUDO docker"
+
 # --------------------------------------------------------------------------- #
 # 1. Docker (idempotent)
 # --------------------------------------------------------------------------- #
@@ -44,34 +48,47 @@ else
 fi
 
 # Docker Compose v2 (plugin) requis.
-if ! docker compose version >/dev/null 2>&1; then
+if ! $DOCKER compose version >/dev/null 2>&1; then
   die "Docker Compose v2 absent. Mets Docker à jour (docker compose v2 requis)."
 fi
 
 # --------------------------------------------------------------------------- #
 # 2. Swarm (idempotent)
 # --------------------------------------------------------------------------- #
-SWARM_STATE="$(docker info --format '{{.Swarm.LocalNodeState}}' 2>/dev/null || echo inactive)"
+SWARM_STATE="$($DOCKER info --format '{{.Swarm.LocalNodeState}}' 2>/dev/null || echo inactive)"
 if [ "$SWARM_STATE" = "active" ]; then
   log "Mode Swarm déjà actif."
 else
   ADVERTISE_ADDR="$(hostname -I 2>/dev/null | awk '{print $1}')"
   log "Initialisation du Swarm (advertise-addr=${ADVERTISE_ADDR:-auto})..."
   if [ -n "$ADVERTISE_ADDR" ]; then
-    docker swarm init --advertise-addr "$ADVERTISE_ADDR" >/dev/null
+    $DOCKER swarm init --advertise-addr "$ADVERTISE_ADDR" >/dev/null
   else
-    docker swarm init >/dev/null
+    $DOCKER swarm init >/dev/null
   fi
 fi
 
 # --------------------------------------------------------------------------- #
 # 3. Overlay système partagé (Caddy <-> services exposés)
+#    Vérifie l'EXISTENCE ET l'attachabilité : un overlay non-attachable fait
+#    rester api/caddy en "Created" (Cannot attach : not manually attachable).
 # --------------------------------------------------------------------------- #
-if docker network inspect boz_system >/dev/null 2>&1; then
-  log "Réseau overlay boz_system déjà présent."
+if $DOCKER network inspect boz_system >/dev/null 2>&1; then
+  ATTACHABLE="$($DOCKER network inspect boz_system --format '{{.Attachable}}' 2>/dev/null || echo false)"
+  if [ "$ATTACHABLE" = "true" ]; then
+    log "Réseau overlay boz_system déjà présent (attachable)."
+  else
+    warn "boz_system présent mais NON-attachable — suppression puis recréation..."
+    if ! $DOCKER network rm boz_system >/dev/null 2>&1; then
+      warn "Conteneurs encore connectés : down avant suppression."
+      $DOCKER compose down --remove-orphans >/dev/null 2>&1 || true
+      $DOCKER network rm boz_system >/dev/null 2>&1 || die "Impossible de supprimer boz_system non-attachable."
+    fi
+    $DOCKER network create -d overlay --attachable boz_system >/dev/null
+  fi
 else
   log "Création de l'overlay attachable boz_system..."
-  docker network create -d overlay --attachable boz_system >/dev/null
+  $DOCKER network create -d overlay --attachable boz_system >/dev/null
 fi
 
 # --------------------------------------------------------------------------- #
@@ -121,8 +138,43 @@ fi
 # 6. Démarrage
 # --------------------------------------------------------------------------- #
 log "Démarrage de l'ops-panel (pull des images GHCR + up)..."
-docker compose pull
-docker compose up -d
+$DOCKER compose pull
+# up peut échouer une 1re fois (race overlay swarm) : pas de set -e ici, la
+# garde de la section 7 relance up sur les services non démarrés.
+$DOCKER compose up -d >/dev/null 2>&1 || true
+
+# --------------------------------------------------------------------------- #
+# 7. Garde-fou final : TOUS les services doivent être démarrés, sinon exit 1.
+#    Empêche un install "réussi" en façade avec des conteneurs en Created/Exited.
+#    Relance up sur les services non démarrés (race transitoire overlay swarm :
+#    premier attach sur un overlay tout juste créé peut échouer "network not
+#    found" puis réussir au retry).
+# --------------------------------------------------------------------------- #
+log "Vérification de l'état de tous les conteneurs..."
+UP_ALL=0
+for ATTEMPT in $(seq 1 8); do
+  FAILED=""
+  for SVC in postgres redis socket-proxy api web caddy; do
+    ST="$($DOCKER compose ps --format '{{.Service}}\t{{.Status}}' 2>/dev/null | grep -E "^${SVC}[[:space:]]" | cut -f2 || true)"
+    case "$ST" in
+      Up*) : ;;
+      *)   FAILED="${FAILED} ${SVC}[${ST:-absent}]" ;;
+    esac
+  done
+  if [ -z "$FAILED" ]; then UP_ALL=1; break; fi
+  if [ "$ATTEMPT" -lt 8 ]; then
+    warn "Services pas encore démarrés :${FAILED} — relance up (tentative ${ATTEMPT}/8)..."
+    $DOCKER compose up -d >/dev/null 2>&1 || true
+    sleep 10
+  fi
+done
+
+if [ "$UP_ALL" != "1" ]; then
+  echo ""
+  $DOCKER compose ps 2>/dev/null || true
+  die "Services non démarrés :${FAILED}. Résolu puis relance install.sh."
+fi
+log "Tous les conteneurs sont démarrés (incl. postgres healthy)."
 
 log "Attente de la santé de l'api..."
 for _ in $(seq 1 30); do
