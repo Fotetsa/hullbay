@@ -169,6 +169,39 @@ describe("Auth Routes", () => {
         expect(role).toBe("viewer");
     });
 
+    it("ne doit pas fuiter le rôle global vers un tenant explicite MÊME sans aucune membership (ré-gression #170)", async () => {
+        vi.mocked(prisma.membership.findUnique).mockResolvedValue(null);
+        vi.mocked(prisma.user.findFirst).mockResolvedValue({
+            id: "owner-a", role: "owner", memberships: [],
+        } as any);
+
+        // L'utilisateur est owner global (compte legacy) mais n'a AUCUNE
+        // membership dans le tenant explicite : fail-closed, pas de rôle.
+        const role = await resolveRoleForUser("owner-a", "tenant-b");
+
+        expect(role).toBe("viewer");
+    });
+
+    it("doit garder le fallback legacy sur le tenant par DÉFAUT pour un compte sans membership (rétrocompatibilité)", async () => {
+        vi.mocked(prisma.membership.findUnique).mockResolvedValue(null);
+        vi.mocked(prisma.user.findFirst).mockResolvedValue({ id: "legacy-owner", role: "owner" } as any);
+
+        const role = await resolveRoleForUser("legacy-owner", "tenant-default");
+
+        expect(role).toBe("owner");
+    });
+
+    it("ne doit PAS renvoyer le rôle global même passé en fallback explicite (token stale, fail-closed #170)", async () => {
+        vi.mocked(prisma.membership.findUnique).mockResolvedValue(null);
+        // Le rôle du JWT (owner) est transmis en 3e argument — il ne doit JAMAIS
+        // fuiter sur un tenant explicite : c'est exactement le scénario d'attaque.
+        vi.mocked(prisma.user.findFirst).mockResolvedValue({ id: "owner-x", role: "owner" } as any);
+
+        const role = await resolveRoleForUser("owner-x", "tenant-b", "owner");
+
+        expect(role).toBe("viewer");
+    });
+
     /**
      * POST /api/auth/bootstrap
      */
@@ -785,6 +818,66 @@ expect(response.statusCode).toBe(200);
             });
 
             expect(response.statusCode).toBe(401);
+        });
+
+        it("devrait REJETER un token stale owner sur un tenant où la membership est viewer (#170 fail-closed)", async () => {
+            // Un membership EXISTE dans tenant-b mais au rang viewer : le token
+            // (claim owner, émis pour un autre contexte) ne doit PAS remonter le
+            // rôle global du user. Fail-open historique = 200 (owner partout).
+            vi.mocked(prisma.membership.findUnique).mockResolvedValue({
+                userId: "owner-id", tenantId: "tenant-b", role: "viewer",
+            } as any);
+
+            const response = await app.inject({
+                method: "GET",
+                url: "/api/users",
+                headers: {
+                    authorization: `Bearer ${mockOwnerToken}`,
+                    "x-tenant-id": "tenant-b",
+                },
+            });
+
+            expect(response.statusCode).toBe(403);
+            expect(response.json()).toMatchObject({
+                error: "permission insuffisante",
+                code: "tenant_forbidden",
+            });
+        });
+
+        it("devrait rejeter (403 tenant_forbidden) sans AUCUNE membership dans le tenant ciblé, rôle global owner en base (#170)", async () => {
+            vi.mocked(prisma.membership.findUnique).mockResolvedValue(null);
+            vi.mocked(prisma.user.findFirst).mockResolvedValue({ id: "owner-id", role: "owner" } as any);
+
+            const response = await app.inject({
+                method: "GET",
+                url: "/api/users",
+                headers: {
+                    authorization: `Bearer ${mockOwnerToken}`,
+                    "x-tenant-id": "tenant-b",
+                },
+            });
+
+            expect(response.statusCode).toBe(403);
+        });
+
+        it("devrait ACCEPTER le même token sur le tenant où l'utilisateur est réellement owner (contrôle positif)", async () => {
+            vi.mocked(prisma.membership.findUnique).mockResolvedValue({
+                userId: "owner-id", tenantId: "tenant-a", role: "owner",
+            } as any);
+            vi.mocked(authService.listUsers).mockResolvedValue([
+                { id: "1", email: "u1@hullbay.local", role: "viewer" },
+            ] as any);
+
+            const response = await app.inject({
+                method: "GET",
+                url: "/api/users",
+                headers: {
+                    authorization: `Bearer ${mockOwnerToken}`,
+                    "x-tenant-id": "tenant-a",
+                },
+            });
+
+            expect(response.statusCode).toBe(200);
         });
     });
 

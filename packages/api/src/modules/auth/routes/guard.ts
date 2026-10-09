@@ -10,6 +10,8 @@ import { authService } from "../service"
 import { sessionManager } from "../core/session-manager"
 import { assertUserInTenant, DEFAULT_TENANT_ID, ensureUserHasDefaultMembership } from "../identity/auth-identity.service"
 import { effectiveTenantId, tenantFromHeader } from "../tenancy/tenant-resolver"
+import { eventBus } from "../../../lib/event-bus"
+import { AUTH_AUDIT_EVENTS } from "../audit-events"
 
 const PUBLIC_PATHS = new Set([
   "/api/auth/login",
@@ -78,6 +80,13 @@ export function registerAuthGuard(app: FastifyInstance) {
       if (headerTenant) {
         const allowed = await assertUserInTenant(decoded.sub, headerTenant)
         if (!allowed) {
+          // Tente d'accéder à un tenant où l'utilisateur n'a AUCUNE membership
+          // (même un token owner ne passe pas : fail-closed). Audité — #170.
+          await eventBus.emit(AUTH_AUDIT_EVENTS.tenantForbidden, {
+            userId: decoded.sub,
+            tenantId: headerTenant,
+            reason: "no_membership",
+          })
           return reply
             .code(403)
             .send({ error: "accès refusé à ce tenant", code: "tenant_forbidden" })
