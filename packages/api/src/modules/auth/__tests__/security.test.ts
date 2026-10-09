@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from "vitest";
 import type { FastifyInstance } from "fastify";
-import { scryptSync } from "node:crypto";
+import { scryptSync, randomUUID } from "node:crypto";
 import jwt from "jsonwebtoken";
 import { generateSecret, generateSync } from "otplib";
 import { buildTestApp } from "../../../__tests__/helpers/build-test-app";
@@ -10,6 +10,7 @@ import { authRateLimiter } from "../rate-limit";
 import { prisma } from "../../../lib/prisma";
 import { encryptSecret } from "../crypto";
 import { registerDeploySubscribers } from "../../../subscribers/on-deploy-finished";
+import { jwksService } from "../jwks/jwks.service";
 
 // Tests SÉCURITÉ du module auth (true service, prisma mocké) :
 // rate-limiting composé, anti-énumération, cloisonnement des audiences JWT et
@@ -405,6 +406,32 @@ describe("Auth hardening", () => {
       const call = auditCallBy("auth.password.changed");
       expect(call).toBeDefined();
       expect(call![0].data.userId).toBe(IDENTITY_USER.userId);
+    });
+
+    it("journalise auth.tenant_forbidden sur un rejet cross-tenant (rôle legacy ignoré)", async () => {
+      // Token stale signé owner sur tenant-défaut, mais aucun membership en base
+      // pour tenant-b → resolveRoleForUser FAIL-CLOSED à "viewer" (#170).
+      const stale = jwksService.signPayload(
+        { sub: "u-2", role: "operator", mfaEnabled: true, jti: randomUUID(), tenantId: "tenant-default" },
+        { expiresIn: 43200, audience: "session" },
+      );
+
+      const res = await app.inject({
+        method: "GET",
+        url: "/api/users",
+        headers: { authorization: `Bearer ${stale}`, "x-tenant-id": "tenant-b" },
+      });
+      expect(res.statusCode).toBe(403);
+      await flush();
+
+      const call = auditCallBy("auth.tenant_forbidden");
+      expect(call).toBeDefined();
+      expect(call![0].data.userId).toBe("u-2");
+      expect(call![0].data.payload).toMatchObject({
+        tenantId: "tenant-b",
+        requiredRole: "owner",
+        effectiveRole: "viewer",
+      });
     });
   });
 });

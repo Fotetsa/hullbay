@@ -15,6 +15,7 @@ export const AUTH_AUDIT_EVENTS = {
   passwordChanged: "auth.password.changed",
   samlFailed: "auth.saml.failed",
   ldapFailed: "auth.ldap.failed",
+  tenantForbidden: "auth.tenant_forbidden",
   webauthnRegistered: "auth.webauthn.registered",
   webauthnDeleted: "auth.webauthn.deleted",
   // CRUD providers + workflow approbation.
