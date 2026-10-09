@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.4.1](https://github.com/Fotetsa/hullbay/compare/v1.4.0...v1.4.1) (2026-10-09)
+
+
+### Bug Fixes
+
+* **auth:** fermer l'escalade fail-open cross-tenant ([#170](https://github.com/Fotetsa/hullbay/issues/170)) ([#171](https://github.com/Fotetsa/hullbay/issues/171)) ([9cc616f](https://github.com/Fotetsa/hullbay/commit/9cc616f59467cc9065662df01ae08ba29690756f))
+* **tests:** cast prisma.membership.findUnique to any for type compatibility ([197da6a](https://github.com/Fotetsa/hullbay/commit/197da6a216fe7aedb7b86fa68c6106e1c0fc72b9))
+
 ## [1.4.0](https://github.com/Fotetsa/hullbay/compare/v1.3.0...v1.4.0) (2026-10-02)
 
 
