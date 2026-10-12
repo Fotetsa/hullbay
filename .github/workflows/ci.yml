@@ -37,6 +37,22 @@ jobs:
     name: Tests
     runs-on: ubuntu-latest
 
+    # Ajout d'un service PostgreSQL éphémère pour les tests d'intégration
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: test_db
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
     strategy:
       matrix:
         node-version: [20, 22]
@@ -63,3 +79,5 @@ jobs:
         run: npm run test --workspace @hullbay/api
         env:
           NODE_ENV: test
+          DATABASE_URL: postgresql://test:test@localhost:5432/test_db
+          JWT_SECRET: test-secret-for-ci-only
