@@ -45,6 +45,7 @@ import { stopTunnelCleanup, closeAllTunnels } from "./lib/ssh-tunnel";
 import { registerClustersRoutes } from "./modules/clusters/routes";
 import { registerClusterSubscribers } from "./subscribers/clusters";
 import { registerSystemRoutes } from "./modules/system/routes";
+import { backfillDefaultMemberships } from "./modules/auth/identity/auth-identity.service";
 
 
 
@@ -192,6 +193,11 @@ app.setErrorHandler((error: FastifyError, request, reply) => {
 
     // Seed du singleton SystemInfo (version courante = tag déployé via IMAGE_TAG).
     await seedSystemInfo();
+
+    // Backfill idempotent des comptes hérités sans membership par défaut.
+    await backfillDefaultMemberships().catch((err) => {
+      console.warn(`[auth] backfill memberships ignoré : ${err}`);
+    });
 
     // Registry des providers d'auth : AuthProvider = source de vérité.
     // Les seeds sont synchronisées en base, puis le registre est hydraté depuis

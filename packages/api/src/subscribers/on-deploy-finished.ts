@@ -35,6 +35,7 @@ const AUDITED: Record<string, string> = {
   "auth.password.changed": "auth.password.changed",
   "auth.saml.failed": "auth.saml.failed",
   "auth.ldap.failed": "auth.ldap.failed",
+  "auth.tenant_forbidden": "auth.tenant_forbidden",
   "auth.webauthn.registered": "auth.webauthn.registered",
   "auth.webauthn.deleted": "auth.webauthn.deleted",
   // CRUD providers + approbation des identités externes.

@@ -16,6 +16,7 @@
  "apiErrors": {
   "unauthorized": "Authentification requise.",
   "forbidden": "Accès refusé : permissions insuffisantes.",
+  "tenant_forbidden": "Accès refusé : vous n'appartenez pas à ce tenant.",
   "mfa_not_enabled": "Double authentification non activée — veuillez d'abord configurer la MFA.",
   "token_invalid": "Session invalide ou expirée.",
   "session_invalid": "Session invalide ou expirée.",

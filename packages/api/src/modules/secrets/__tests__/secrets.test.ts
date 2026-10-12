@@ -180,6 +180,50 @@ describe("Routes /api/clusters/:clusterId/secrets", () => {
       );
     });
 
+    it("devrait accepter un lot de secrets via la route batch", async () => {
+      mockEngine.upsertSecret.mockResolvedValue(undefined);
+
+      const response = await app.inject({
+        method: "POST",
+        url: `/api/clusters/${mockClusterId}/secrets/batch`,
+        headers: { authorization: `Bearer ${mockOperatorToken}` },
+        payload: {
+          items: [
+            { name: "DB_HOST", value: "localhost" },
+            { name: "JWT_SECRET", value: "supersecret" },
+          ],
+        },
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toEqual({
+        ok: true,
+        created: 2,
+        items: [
+          { name: "DB_HOST", ok: true },
+          { name: "JWT_SECRET", ok: true },
+        ],
+      });
+      expect(mockEngine.upsertSecret).toHaveBeenCalledTimes(2);
+    });
+
+    it("devrait rejeter un lot contenant un nom invalide", async () => {
+      const response = await app.inject({
+        method: "POST",
+        url: `/api/clusters/${mockClusterId}/secrets/batch`,
+        headers: { authorization: `Bearer ${mockOperatorToken}` },
+        payload: {
+          items: [
+            { name: "DB_HOST", value: "localhost" },
+            { name: "bad name", value: "broken" },
+          ],
+        },
+      });
+
+      expect(response.statusCode).toBe(400);
+      expect(mockEngine.upsertSecret).not.toHaveBeenCalled();
+    });
+
     it("devrait retourner 400 si le nom contient des caractères invalides", async () => {
       const response = await app.inject({
         method: "POST",

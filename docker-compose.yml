@@ -56,6 +56,7 @@ services:
       SWARM: 1
       IMAGES: 1
       VOLUMES: 1
+      SECRETS: 1
       # Autorise les écritures (POST) — requis pour créer services/réseaux/volumes.
       POST: 1
       # BLOQUÉ explicitement : exec, conteneurs bruts, montage hôte arbitraire.

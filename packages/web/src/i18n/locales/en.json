@@ -16,6 +16,7 @@
  "apiErrors": {
   "unauthorized": "Authentication required.",
   "forbidden": "Access denied: insufficient permissions.",
+  "tenant_forbidden": "Access denied: you do not belong to this tenant.",
   "mfa_not_enabled": "Two-factor authentication not enabled — please set up MFA first.",
   "token_invalid": "Invalid or expired session.",
   "session_invalid": "Invalid or expired session.",

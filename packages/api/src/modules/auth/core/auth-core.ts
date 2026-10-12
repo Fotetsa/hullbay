@@ -17,6 +17,7 @@ import { startTotpEnrollment, totpUri, verifyTotpCode } from "../mfa/totp"
 import {
   DEFAULT_TENANT_ID,
   ensureDefaultTenant,
+  ensureUserHasDefaultMembership,
   resolveRoleForUser,
   resolveTenantIdForUser,
 } from "../identity/auth-identity.service"
@@ -159,6 +160,7 @@ export async function login(email: string, password: string) {
   // lui-même porte le tenant (jamais déduit au moment de la
   // vérification MFA).
   const tenantId = await resolveTenantIdForUser(result.userId)
+  await ensureUserHasDefaultMembership(result.userId)
   if (result.mfaRequired) {
     return { mfaRequired: true as const, pendingToken: sessionManager.signPending(result.userId, tenantId) }
   }
@@ -441,8 +443,8 @@ export async function deleteUser(userId: string, actingUserId: string, tenantId:
   return { ok: true as const }
 }
 
-export function issueToken(userId: string, role: string, mfaEnabled: boolean): string {
-  return sessionManager.signSession(userId, role, mfaEnabled)
+export function issueToken(userId: string, role: string, mfaEnabled: boolean, tenantId: string = DEFAULT_TENANT_ID): string {
+  return sessionManager.signSession(userId, role, mfaEnabled, "local", tenantId)
 }
 
 export function verifyToken(token: string) {
