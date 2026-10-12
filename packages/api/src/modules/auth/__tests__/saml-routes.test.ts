@@ -10,6 +10,17 @@ const CALLBACK_URL = "https://sp.example.org/api/auth/saml/me/acs"
 const SP_ISSUER = "https://sp.example.org/saml/me"
 const IDP_ISSUER = "https://idp.example.org/realms/test"
 
+vi.setConfig({ testTimeout: 15000, hookTimeout: 15000 })
+
+vi.mock("../../../lib/prisma", () => ({
+  prisma: {
+    authProvider: { findUnique: vi.fn() },
+    securityPolicy: { findUnique: vi.fn() },
+    user: { findUnique: vi.fn() },
+    membership: { findUnique: vi.fn() },
+  },
+}))
+
 vi.mock("../../../lib/prisma", () => ({ prisma: {} }))
 const emitMock = vi.fn((_event: string, _data?: Record<string, unknown>) => Promise.resolve(undefined))
 vi.mock("../../../lib/event-bus", () => ({

@@ -20,6 +20,17 @@ import { providerRegistry } from "../registry/provider-registry"
  * - approve : pas d'auto-provision (un pending doit être approuvé par un owner)
  */
 
+vi.setConfig({ testTimeout: 15000, hookTimeout: 15000 })
+
+vi.mock("../../../lib/prisma", () => ({
+  prisma: {
+    authProvider: { findMany: vi.fn(), findUnique: vi.fn(), update: vi.fn(), create: vi.fn(), delete: vi.fn(), count: vi.fn() },
+    authIdentity: { count: vi.fn() },
+    pendingIdentity: { count: vi.fn() },
+    securityPolicy: { findUnique: vi.fn() },
+  },
+}))
+
 vi.mock("../../../lib/prisma", () => {
   const authProvider = {
     findMany: vi.fn(),

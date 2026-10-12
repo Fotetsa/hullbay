@@ -153,14 +153,18 @@ model Tenant {
 
   memberships         Membership[]
   // Phase 5B : ressources tenant-scopées — §4.4 du plan.
-  projects            Project[]
-  clusters            Cluster[]
-  servers             Server[]
-  registryCredentials RegistryCredential[]
-  settings            Settings[]
-  auditLogs           AuditLog[]
-  authProviders       AuthProvider[]
-  securityPolicies    SecurityPolicy[]
+  projects                 Project[]
+  clusters                 Cluster[]
+  servers                  Server[]
+  registryCredentials      RegistryCredential[]
+  settings                 Settings[]
+  auditLogs                AuditLog[]
+  authProviders            AuthProvider[]
+  securityPolicies         SecurityPolicy[]
+  roles                    Role[]
+  teams                    Team[]
+  plicies                  Policy[]
+  externalGroupMappings    ExternalGroupMapping[]
 }
 
 // Rôle = propriété de la MEMBERSHIP, pas du User. Phase 2 : tenant par défaut unique.
@@ -169,12 +173,16 @@ model Membership {
   userId    String
   tenantId  String
   role      String   // owner | operator | viewer
+  roleId    String?
   createdAt DateTime @default(now())
 
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user        User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tenant      Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  roleRef     Role? @relation(fields: [tenantId, roleId], references: [tenantId, id], onDelete: SetNull)
+  TeamMembers TeamMember[]
 
   @@unique([userId, tenantId])
+  @@unique([tenantId, id])
 }
 
 // Providers d'authentification. id généré — JAMAIS de défaut vendor (correction N°4).
@@ -193,6 +201,8 @@ model AuthProvider {
   tenantId  String?
   tenant    Tenant?  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   @@index([tenantId])
+
+  externalGroupMappings    ExternalGroupMapping[]
 }
 
 // Identité inconnue d'un provider → ligne "pending" (jamais de User créé en auto).
@@ -389,4 +399,176 @@ model SystemUpdate {
   @@index([status])
   @@index([createdAt])
   @@index([rollbackOfId])
+}
+
+model Role {
+  id          String   @id @default(cuid())
+  tenantId    String
+  name        String
+  description String?
+  isSystem    Boolean  @default(false)
+  isPreset    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tenant          Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  rolePermissions RolePermission[]
+  teamRoles       TeamRole[]
+  memberships     Membership[]
+  policyBindings  PolicyBinding[]
+
+  @@unique([tenantId, name])
+  @@unique([tenantId, id])
+  @@index([tenantId])
+}
+
+model Permission {
+  id          String   @id @default(cuid())
+  key         String   @unique
+  resource    String
+  action      String
+  description String?
+  createdAt   DateTime @default(now())
+
+  rolePermissions RolePermission[]
+
+  @@index([resource, action])
+}
+
+model RolePermission {
+  id           String @id @default(cuid())
+  roleId       String
+  permissionId String
+  scopeType    String
+  scopeId      String
+
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@unique([roleId, permissionId, scopeType, scopeId])
+  @@index([roleId])
+  @@index([permissionId])
+  @@index([scopeType, scopeId])
+}
+
+model Team {
+  id          String   @id @default(cuid())
+  tenantId    String
+  name        String
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tenant                Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  members               TeamMember[]
+  roles                 TeamRole[]
+  externalGroupMappings ExternalGroupMapping[]
+  policyBindings        PolicyBinding[]
+
+  @@unique([tenantId, name])
+  @@unique([tenantId, id])
+  @@index([tenantId])
+}
+
+model TeamMember {
+  id           String   @id @default(cuid())
+  tenantId     String
+  teamId       String
+  membershipId String
+  joinedAt     DateTime @default(now())
+
+  team       Team       @relation(fields: [tenantId, teamId], references: [tenantId, id], onDelete: Cascade)
+  membership Membership @relation(fields: [tenantId, membershipId], references: [tenantId, id], onDelete: Cascade)
+
+  @@unique([teamId, membershipId])
+  @@unique([tenantId, id])
+  @@index([tenantId])
+  @@index([membershipId])
+}
+
+model TeamRole {
+  id        String @id @default(cuid())
+  tenantId  String
+  teamId    String
+  roleId    String
+  scopeType String
+  scopeId   String
+
+  team Team @relation(fields: [tenantId, teamId], references: [tenantId, id], onDelete: Cascade)
+  role Role @relation(fields: [tenantId, roleId], references: [tenantId, id], onDelete: Cascade)
+
+  @@unique([teamId, roleId, scopeType, scopeId])
+  @@unique([tenantId, id])
+  @@index([tenantId])
+  @@index([teamId])
+  @@index([roleId])
+  @@index([scopeType, scopeId])
+}
+
+model Policy {
+  id          String   @id @default(cuid())
+  tenantId    String
+  name        String
+  description String?
+  effect      String
+  conditions  Json
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tenant   Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  bindings PolicyBinding[]
+
+  @@unique([tenantId, name])
+  @@unique([tenantId, id])
+  @@index([tenantId])
+}
+
+model PolicyBinding {
+  id        String  @id @default(cuid())
+  tenantId  String
+  policyId  String
+  roleId    String?
+  teamId    String?
+  scopeType String?
+  scopeId   String?
+
+  policy Policy @relation(fields: [tenantId, policyId], references: [tenantId, id], onDelete: Cascade)
+  role   Role?  @relation(fields: [tenantId, roleId], references: [tenantId, id], onDelete: Cascade)
+  team   Team?  @relation(fields: [tenantId, teamId], references: [tenantId, id], onDelete: Cascade)
+
+  @@unique([tenantId, id])
+  @@index([tenantId])
+  @@index([policyId])
+  @@index([roleId])
+  @@index([teamId])
+  @@index([scopeType, scopeId])
+}
+
+// La relation vers AuthProvider reste une clé étrangère simple, pas composite.
+// AuthProvider.tenantId peut être vide pour un fournisseur global, partagé par
+// tous les tenants. Une clé composite exigerait une égalité stricte entre les
+// deux tenants, ce qui ne serait jamais vrai pour un fournisseur global, et
+// PostgreSQL ne sait pas exprimer nativement une contrainte du type égaux ou
+// l'un des deux est vide sans un déclencheur écrit à la main. La règle réelle,
+// le tenant du mapping doit soit correspondre au tenant du fournisseur, soit
+// le fournisseur doit être global, est donc vérifiée par le service applicatif
+// au moment de la création d'un mapping, documentée ici comme limite assumée
+// de cette phase plutôt que contournée en silence.
+model ExternalGroupMapping {
+  id                String   @id @default(cuid())
+  tenantId          String
+  providerId        String
+  externalGroupName String
+  teamId            String
+  createdAt         DateTime @default(now())
+
+  tenant   Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  provider AuthProvider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  team     Team         @relation(fields: [tenantId, teamId], references: [tenantId, id], onDelete: Cascade)
+
+  @@unique([tenantId, providerId, externalGroupName])
+  @@unique([tenantId, id])
+  @@index([tenantId])
+  @@index([providerId])
+  @@index([teamId])
 }

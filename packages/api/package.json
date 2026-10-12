@@ -17,7 +17,8 @@
     "backfill:identity": "node src/modules/auth/scripts/backfill-identity.mjs",
     "backfill:tenant": "node src/modules/auth/scripts/backfill-tenant.mjs",
     "backfill:membership": "node src/modules/auth/scripts/backfill-membership.mjs",
-    "secrets:rotate": "node src/modules/auth/scripts/rotate-secrets.mjs"
+    "secrets:rotate": "node src/modules/auth/scripts/rotate-secrets.mjs",
+    "seed:authorization": "node src/modules/authorization/scripts/seed-authorization.mjs"
   },
   "dependencies": {
     "@fastify/cors": "^10.0.1",
