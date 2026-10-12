@@ -37,7 +37,7 @@ jobs:
     name: Tests
     runs-on: ubuntu-latest
 
-    # Ajout d'un service PostgreSQL éphémère pour les tests d'intégration
+    # Service PostgreSQL éphémère pour les tests d'intégration
     services:
       postgres:
         image: postgres:15
@@ -74,6 +74,11 @@ jobs:
 
       - name: Génération du client prisma
         run: npx prisma generate --schema packages/api/prisma/schema.prisma
+
+      - name: Applique les migrations Prisma
+        run: npx prisma migrate deploy --schema packages/api/prisma/schema.prisma
+        env:
+          DATABASE_URL: postgresql://test:test@localhost:5432/test_db
 
       - name: Run Tests
         run: npm run test --workspace @hullbay/api
