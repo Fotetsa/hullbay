@@ -137,42 +137,40 @@ async function ensurePermissions() {
   return byKey;
 }
 
+// Un preset déjà présent n'est jamais retouché : si un administrateur a retiré ou
+// ajouté des permissions, le peuplement ne les réinitialise pas. Les permissions
+// ne sont posées qu'à la création du rôle, dans la même transaction.
 async function ensurePresetsForTenant(tenantId, permissionByKey) {
-  for (const preset of PRESETS) {
-    const role = await prisma.role.upsert({
-      where: { tenantId_name: { tenantId, name: preset.name } },
-      update: {},
-      create: { tenantId, name: preset.name, isPreset: true, isSystem: false },
-    });
+  await prisma.$transaction(async (tx) => {
+    for (const preset of PRESETS) {
+      const existing = await tx.role.findUnique({
+        where: { tenantId_name: { tenantId, name: preset.name } },
+      });
+      if (existing) continue;
 
-    for (const key of preset.keys) {
-      const permission = permissionByKey.get(key);
-      if (!permission) continue;
-      await prisma.rolePermission.upsert({
-        where: {
-          roleId_permissionId_scopeType_scopeId: {
-            roleId: role.id,
-            permissionId: permission.id,
-            scopeType: "tenant",
-            scopeId: tenantId,
-          },
-        },
-        update: {},
-        create: {
+      const role = await tx.role.create({
+        data: { tenantId, name: preset.name, isPreset: true, isSystem: false },
+      });
+      await tx.rolePermission.createMany({
+        data: preset.keys.map((key) => ({
           roleId: role.id,
-          permissionId: permission.id,
+          permissionId: permissionByKey.get(key).id,
           scopeType: "tenant",
           scopeId: tenantId,
-        },
+        })),
+        skipDuplicates: true,
       });
     }
-  }
 
-
-  await prisma.role.upsert({
-    where: { tenantId_name: { tenantId, name: "Root" } },
-    update: {},
-    create: { tenantId, name: "Root", isPreset: false, isSystem: true },
+    // Root : réservé et protégé, jamais attribué, aucune permission.
+    const root = await tx.role.findUnique({
+      where: { tenantId_name: { tenantId, name: "Root" } },
+    });
+    if (!root) {
+      await tx.role.create({
+        data: { tenantId, name: "Root", isPreset: false, isSystem: true },
+      });
+    }
   });
 }
 

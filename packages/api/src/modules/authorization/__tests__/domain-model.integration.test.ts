@@ -8,22 +8,25 @@ const suffix = Date.now();
 
 let tenantA: { id: string };
 let tenantB: { id: string };
-let userId: string;
 let roleA: { id: string };
+let roleA2: { id: string };
 let roleB: { id: string };
 let teamA: { id: string };
 let teamB: { id: string };
 let membershipA: { id: string };
 let membershipB: { id: string };
 let policyA: { id: string };
-let providerId: string;
+let clusterA: { id: string };
+let clusterB: { id: string };
+let providerA: { id: string };
+let providerB: { id: string };
+let providerGlobal: { id: string };
 
-function runSeed() {
+const runSeed = () =>
   execSync("node src/modules/authorization/scripts/seed-authorization.mjs", {
     cwd: process.cwd(),
     stdio: "pipe",
   });
-}
 
 beforeAll(async () => {
   tenantA = await prisma.tenant.create({
@@ -32,16 +35,18 @@ beforeAll(async () => {
   tenantB = await prisma.tenant.create({
     data: { name: "B", slug: `tenant-b-${suffix}` },
   });
-  const user = await prisma.user.create({
-    data: { email: `iso-${suffix}@test.local` },
+  const userA = await prisma.user.create({
+    data: { email: `iso-a-${suffix}@test.local` },
   });
-  userId = user.id;
   const userB = await prisma.user.create({
     data: { email: `iso-b-${suffix}@test.local` },
   });
 
   roleA = await prisma.role.create({
     data: { tenantId: tenantA.id, name: "Role A" },
+  });
+  roleA2 = await prisma.role.create({
+    data: { tenantId: tenantA.id, name: "Role A2" },
   });
   roleB = await prisma.role.create({
     data: { tenantId: tenantB.id, name: "Role B" },
@@ -53,7 +58,7 @@ beforeAll(async () => {
     data: { tenantId: tenantB.id, name: "Team B" },
   });
   membershipA = await prisma.membership.create({
-    data: { userId, tenantId: tenantA.id, role: "operator" },
+    data: { userId: userA.id, tenantId: tenantA.id, role: "operator" },
   });
   membershipB = await prisma.membership.create({
     data: { userId: userB.id, tenantId: tenantB.id, role: "viewer" },
@@ -66,32 +71,50 @@ beforeAll(async () => {
       conditions: {},
     },
   });
-  const provider = await prisma.authProvider.create({
-    data: { kind: "oidc", name: `prov-${suffix}`, tenantId: tenantA.id },
+  clusterA = await prisma.cluster.create({
+    data: {
+      tenantId: tenantA.id,
+      name: "ca",
+      dockerHost: "",
+      caddyAdminUrl: "",
+    },
   });
-  providerId = provider.id;
+  clusterB = await prisma.cluster.create({
+    data: {
+      tenantId: tenantB.id,
+      name: "cb",
+      dockerHost: "",
+      caddyAdminUrl: "",
+    },
+  });
+  providerA = await prisma.authProvider.create({
+    data: { kind: "oidc", name: `pa-${suffix}`, tenantId: tenantA.id },
+  });
+  providerB = await prisma.authProvider.create({
+    data: { kind: "oidc", name: `pb-${suffix}`, tenantId: tenantB.id },
+  });
+  providerGlobal = await prisma.authProvider.create({
+    data: { kind: "oidc", name: `pg-${suffix}`, tenantId: null },
+  });
 
-  // Le seed s'applique à tous les tenants, y compris A et B.
   runSeed();
 }, 120000);
 
 afterAll(async () => {
   await prisma.authProvider
-    .delete({ where: { id: providerId } })
+    .deleteMany({
+      where: { id: { in: [providerA.id, providerB.id, providerGlobal.id] } },
+    })
     .catch(() => {});
-  await prisma.tenant.delete({ where: { id: tenantA.id } }).catch((e) => {
-    throw e;
-  });
-  await prisma.tenant.delete({ where: { id: tenantB.id } }).catch((e) => {
-    throw e;
-  });
+  await prisma.tenant.delete({ where: { id: tenantA.id } });
+  await prisma.tenant.delete({ where: { id: tenantB.id } });
   await prisma.user.deleteMany({
     where: { email: { contains: String(suffix) } },
   });
   await prisma.$disconnect();
 });
 
-describe("isolation entre tenants (rejet par la base elle-même)", () => {
+describe("34.1 isolation entre tenants", () => {
   it("Membership A vers Role B", async () => {
     await expect(
       prisma.membership.update({
@@ -100,7 +123,6 @@ describe("isolation entre tenants (rejet par la base elle-même)", () => {
       }),
     ).rejects.toThrow();
   });
-
   it("TeamMember : équipe A avec adhésion B", async () => {
     await expect(
       prisma.teamMember.create({
@@ -112,7 +134,6 @@ describe("isolation entre tenants (rejet par la base elle-même)", () => {
       }),
     ).rejects.toThrow();
   });
-
   it("TeamRole : équipe A avec rôle B", async () => {
     await expect(
       prisma.teamRole.create({
@@ -125,7 +146,6 @@ describe("isolation entre tenants (rejet par la base elle-même)", () => {
       }),
     ).rejects.toThrow();
   });
-
   it("PolicyBinding : policy A avec rôle B", async () => {
     await expect(
       prisma.policyBinding.create({
@@ -133,7 +153,6 @@ describe("isolation entre tenants (rejet par la base elle-même)", () => {
       }),
     ).rejects.toThrow();
   });
-
   it("PolicyBinding : policy A avec équipe B", async () => {
     await expect(
       prisma.policyBinding.create({
@@ -141,21 +160,43 @@ describe("isolation entre tenants (rejet par la base elle-même)", () => {
       }),
     ).rejects.toThrow();
   });
-
   it("ExternalGroupMapping : tenant A avec équipe B", async () => {
     await expect(
       prisma.externalGroupMapping.create({
         data: {
           tenantId: tenantA.id,
-          providerId,
+          providerId: providerA.id,
           externalGroupName: "g",
           teamId: teamB.id,
         },
       }),
     ).rejects.toThrow();
   });
-
-  it("l'association correcte, elle, est acceptée", async () => {
+  it("ExternalGroupMapping : tenant A avec provider du tenant B", async () => {
+    await expect(
+      prisma.externalGroupMapping.create({
+        data: {
+          tenantId: tenantA.id,
+          providerId: providerB.id,
+          externalGroupName: "g",
+          teamId: teamA.id,
+        },
+      }),
+    ).rejects.toThrow();
+  });
+  it("ExternalGroupMapping : provider global accepté", async () => {
+    await expect(
+      prisma.externalGroupMapping.create({
+        data: {
+          tenantId: tenantA.id,
+          providerId: providerGlobal.id,
+          externalGroupName: "glob",
+          teamId: teamA.id,
+        },
+      }),
+    ).resolves.toBeDefined();
+  });
+  it("l'association correcte est acceptée", async () => {
     await expect(
       prisma.teamMember.create({
         data: {
@@ -169,15 +210,26 @@ describe("isolation entre tenants (rejet par la base elle-même)", () => {
 });
 
 describe("contraintes d'intégrité", () => {
-  it("PolicyBinding sans rôle ni équipe est refusé", async () => {
+  it("PolicyBinding sans rôle ni équipe refusé", async () => {
     await expect(
       prisma.policyBinding.create({
         data: { tenantId: tenantA.id, policyId: policyA.id },
       }),
     ).rejects.toThrow();
   });
-
-  it("une policy n'accepte que allow ou deny", async () => {
+  it("PolicyBinding avec scopeType sans scopeId refusé", async () => {
+    await expect(
+      prisma.policyBinding.create({
+        data: {
+          tenantId: tenantA.id,
+          policyId: policyA.id,
+          roleId: roleA.id,
+          scopeType: "project",
+        },
+      }),
+    ).rejects.toThrow();
+  });
+  it("Policy.effect limité à allow ou deny", async () => {
     await expect(
       prisma.policy.create({
         data: {
@@ -189,7 +241,6 @@ describe("contraintes d'intégrité", () => {
       }),
     ).rejects.toThrow();
   });
-
   it("supprimer un rôle attribué met seulement roleId à NULL", async () => {
     const role = await prisma.role.create({
       data: { tenantId: tenantA.id, name: "Temporaire" },
@@ -207,14 +258,11 @@ describe("contraintes d'intégrité", () => {
   });
 });
 
-describe("unicité", () => {
-  it("deux rôles de même nom dans un tenant sont refusés", async () => {
+describe("34.2 unicité", () => {
+  it("nom de rôle unique par tenant, mais réutilisable dans un autre tenant", async () => {
     await expect(
       prisma.role.create({ data: { tenantId: tenantA.id, name: "Role A" } }),
     ).rejects.toThrow();
-  });
-
-  it("le même nom est permis dans deux tenants différents", async () => {
     await prisma.role.create({
       data: { tenantId: tenantA.id, name: "Commun" },
     });
@@ -222,24 +270,69 @@ describe("unicité", () => {
       prisma.role.create({ data: { tenantId: tenantB.id, name: "Commun" } }),
     ).resolves.toBeDefined();
   });
-
-  it("deux équipes de même nom dans un tenant sont refusées", async () => {
+  it("nom d'équipe unique par tenant", async () => {
     await expect(
       prisma.team.create({ data: { tenantId: tenantA.id, name: "Team A" } }),
     ).rejects.toThrow();
   });
-
-  it("la clé d'une permission est unique", async () => {
+  it("clé de permission unique globalement", async () => {
     await expect(
       prisma.permission.create({
         data: { key: "project.read", resource: "project", action: "read" },
       }),
     ).rejects.toThrow();
   });
+  it("RolePermission unique par scope, et même scope permis sur plusieurs rôles", async () => {
+    const p = await prisma.permission.findUniqueOrThrow({
+      where: { key: "project.read" },
+    });
+    const data = { permissionId: p.id, ...tenantScope(tenantA.id) };
+    await prisma.rolePermission.create({ data: { roleId: roleA.id, ...data } });
+    await expect(
+      prisma.rolePermission.create({ data: { roleId: roleA.id, ...data } }),
+    ).rejects.toThrow();
+    await expect(
+      prisma.rolePermission.create({ data: { roleId: roleA2.id, ...data } }),
+    ).resolves.toBeDefined();
+  });
+  it("TeamRole unique par scope", async () => {
+    const data = {
+      tenantId: tenantA.id,
+      teamId: teamA.id,
+      roleId: roleA.id,
+      ...tenantScope(tenantA.id),
+    };
+    await prisma.teamRole.create({ data });
+    await expect(prisma.teamRole.create({ data })).rejects.toThrow();
+  });
+  it("nom de policy unique par tenant", async () => {
+    await expect(
+      prisma.policy.create({
+        data: {
+          tenantId: tenantA.id,
+          name: "Policy A",
+          effect: "deny",
+          conditions: {},
+        },
+      }),
+    ).rejects.toThrow();
+  });
+  it("ExternalGroupMapping unique par tenant, provider et groupe", async () => {
+    const data = {
+      tenantId: tenantA.id,
+      providerId: providerA.id,
+      externalGroupName: "dup",
+      teamId: teamA.id,
+    };
+    await prisma.externalGroupMapping.create({ data });
+    await expect(
+      prisma.externalGroupMapping.create({ data }),
+    ).rejects.toThrow();
+  });
 });
 
-describe("scopes", () => {
-  it("accepte les six types connus et refuse un type inconnu", () => {
+describe("34.3 scopes", () => {
+  it("valide les six types connus, refuse un type inconnu", () => {
     for (const t of [
       "tenant",
       "cluster",
@@ -250,46 +343,91 @@ describe("scopes", () => {
     ]) {
       expect(isValidScopeType(t)).toBe(true);
     }
-    expect(isValidScopeType("inconnu")).toBe(false);
+    expect(isValidScopeType("unknown")).toBe(false);
   });
-
-  it("le scope global d'un tenant s'écrit tenant:<id>", () => {
+  it("le scope global s'écrit tenant:<id>", () => {
     expect(tenantScope("t1")).toEqual({ scopeType: "tenant", scopeId: "t1" });
+  });
+  it("scope tenant d'un autre tenant refusé pour un rôle du tenant courant", async () => {
+    const p = await prisma.permission.findUniqueOrThrow({
+      where: { key: "project.deploy" },
+    });
+    await expect(
+      prisma.rolePermission.create({
+        data: {
+          roleId: roleA.id,
+          permissionId: p.id,
+          ...tenantScope(tenantB.id),
+        },
+      }),
+    ).rejects.toThrow();
+  });
+  it("cluster d'un autre tenant refusé, cluster du même tenant accepté", async () => {
+    const p = await prisma.permission.findUniqueOrThrow({
+      where: { key: "cluster.update" },
+    });
+    await expect(
+      prisma.rolePermission.create({
+        data: {
+          roleId: roleA.id,
+          permissionId: p.id,
+          scopeType: "cluster",
+          scopeId: clusterB.id,
+        },
+      }),
+    ).rejects.toThrow();
+    await expect(
+      prisma.rolePermission.create({
+        data: {
+          roleId: roleA.id,
+          permissionId: p.id,
+          scopeType: "cluster",
+          scopeId: clusterA.id,
+        },
+      }),
+    ).resolves.toBeDefined();
+  });
+  it("TeamRole : cluster d'un autre tenant refusé", async () => {
+    await expect(
+      prisma.teamRole.create({
+        data: {
+          tenantId: tenantA.id,
+          teamId: teamA.id,
+          roleId: roleA2.id,
+          scopeType: "cluster",
+          scopeId: clusterB.id,
+        },
+      }),
+    ).rejects.toThrow();
   });
 });
 
-describe("rôle Root", () => {
-  async function root() {
-    return prisma.role.findUniqueOrThrow({
+describe("34.4 rôle Root", () => {
+  const root = () =>
+    prisma.role.findUniqueOrThrow({
       where: { tenantId_name: { tenantId: tenantA.id, name: "Root" } },
     });
-  }
 
-  it("existe, est système, et n'est attribué à personne", async () => {
+  it("existe en un seul exemplaire, système, attribué à personne", async () => {
     const r = await root();
     expect(r.isSystem).toBe(true);
+    expect(
+      await prisma.role.count({
+        where: { tenantId: tenantA.id, name: "Root" },
+      }),
+    ).toBe(1);
     expect(await prisma.membership.count({ where: { roleId: r.id } })).toBe(0);
   });
-
-  it("ne peut pas être supprimé", async () => {
+  it("ne peut pas être supprimé, renommé, ni perdre son marqueur", async () => {
     const r = await root();
     await expect(prisma.role.delete({ where: { id: r.id } })).rejects.toThrow();
-  });
-
-  it("ne peut pas être renommé", async () => {
-    const r = await root();
     await expect(
-      prisma.role.update({ where: { id: r.id }, data: { name: "Autre" } }),
+      prisma.role.update({ where: { id: r.id }, data: { name: "X" } }),
     ).rejects.toThrow();
-  });
-
-  it("ne peut pas perdre son marqueur système", async () => {
-    const r = await root();
     await expect(
       prisma.role.update({ where: { id: r.id }, data: { isSystem: false } }),
     ).rejects.toThrow();
   });
-
   it("ne peut recevoir aucune permission", async () => {
     const r = await root();
     const p = await prisma.permission.findUniqueOrThrow({
@@ -301,62 +439,111 @@ describe("rôle Root", () => {
       }),
     ).rejects.toThrow();
   });
+  it("ne peut être attribué ni à une adhésion ni à une équipe", async () => {
+    const r = await root();
+    await expect(
+      prisma.membership.update({
+        where: { id: membershipA.id },
+        data: { roleId: r.id },
+      }),
+    ).rejects.toThrow();
+    await expect(
+      prisma.teamRole.create({
+        data: {
+          tenantId: tenantA.id,
+          teamId: teamA.id,
+          roleId: r.id,
+          ...tenantScope(tenantA.id),
+        },
+      }),
+    ).rejects.toThrow();
+  });
 });
 
-describe("presets et peuplement", () => {
-  async function keysOf(name: string) {
+describe("34.5 presets", () => {
+  const keysOf = async (tenantId: string, name: string) => {
     const role = await prisma.role.findUniqueOrThrow({
-      where: { tenantId_name: { tenantId: tenantA.id, name } },
+      where: { tenantId_name: { tenantId, name } },
       include: { rolePermissions: { include: { permission: true } } },
     });
     return role.rolePermissions.map((rp) => rp.permission.key).sort();
-  }
+  };
 
-  it("Viewer, Operator et Owner ont le bon nombre de permissions", async () => {
-    expect((await keysOf("Viewer")).length).toBe(2);
-    expect((await keysOf("Operator")).length).toBe(19);
-    expect((await keysOf("Owner")).length).toBe(50);
+  it("nombre exact de permissions : Viewer 2, Operator 19, Owner 50", async () => {
+    expect((await keysOf(tenantA.id, "Viewer")).length).toBe(2);
+    expect((await keysOf(tenantA.id, "Operator")).length).toBe(19);
+    expect((await keysOf(tenantA.id, "Owner")).length).toBe(50);
   });
-
-  it("Viewer contient exactement project.read et logs.read", async () => {
-    expect(await keysOf("Viewer")).toEqual(["logs.read", "project.read"]);
-  });
-
-  it("Operator contient tout Viewer, mais aucune permission d'infrastructure", async () => {
-    const op = await keysOf("Operator");
+  it("Viewer exact, Operator sans permission d'infrastructure", async () => {
+    expect(await keysOf(tenantA.id, "Viewer")).toEqual([
+      "logs.read",
+      "project.read",
+    ]);
+    const op = await keysOf(tenantA.id, "Operator");
     expect(op).toContain("project.deploy");
     expect(op).toContain("audit.read");
     expect(op).not.toContain("cluster.delete");
     expect(op).not.toContain("prune.apply");
   });
+  it("presets : isPreset vrai, isSystem faux", async () => {
+    for (const name of ["Owner", "Operator", "Viewer"]) {
+      const r = await prisma.role.findUniqueOrThrow({
+        where: { tenantId_name: { tenantId: tenantA.id, name } },
+      });
+      expect(r.isPreset).toBe(true);
+      expect(r.isSystem).toBe(false);
+    }
+  });
+});
 
-  it("le catalogue complet compte 50 permissions", async () => {
-    expect(await prisma.permission.count()).toBeGreaterThanOrEqual(50);
+describe("34.6 migration, peuplement, compatibilité", () => {
+  const counts = async () => ({
+    perms: await prisma.permission.count(),
+    rolesA: await prisma.role.count({ where: { tenantId: tenantA.id } }),
+    rolePermsA: await prisma.rolePermission.count({
+      where: { role: { tenantId: tenantA.id } },
+    }),
   });
 
-  it("une seconde exécution du peuplement ne crée aucun doublon", async () => {
-    const before = {
-      perms: await prisma.permission.count(),
-      roles: await prisma.role.count({ where: { tenantId: tenantA.id } }),
-      rolePerms: await prisma.rolePermission.count({
-        where: { role: { tenantId: tenantA.id } },
-      }),
-    };
+  it("une seconde exécution ne crée aucun doublon (permissions, presets, Root)", async () => {
+    const before = await counts();
     runSeed();
-    const after = {
-      perms: await prisma.permission.count(),
-      roles: await prisma.role.count({ where: { tenantId: tenantA.id } }),
-      rolePerms: await prisma.rolePermission.count({
-        where: { role: { tenantId: tenantA.id } },
-      }),
-    };
-    expect(after).toEqual(before);
+    expect(await counts()).toEqual(before);
+    for (const name of ["Owner", "Operator", "Viewer", "Root"]) {
+      expect(
+        await prisma.role.count({ where: { tenantId: tenantA.id, name } }),
+      ).toBe(1);
+    }
   }, 60000);
 
-  it("le peuplement ne modifie pas Membership.role", async () => {
+  it("le peuplement ne réinitialise pas les permissions personnalisées d'un preset", async () => {
+    const op = await prisma.role.findUniqueOrThrow({
+      where: { tenantId_name: { tenantId: tenantB.id, name: "Operator" } },
+    });
+    const audit = await prisma.permission.findUniqueOrThrow({
+      where: { key: "audit.read" },
+    });
+    await prisma.rolePermission.deleteMany({
+      where: { roleId: op.id, permissionId: audit.id },
+    });
+    runSeed();
+    expect(
+      await prisma.rolePermission.count({
+        where: { roleId: op.id, permissionId: audit.id },
+      }),
+    ).toBe(0);
+  }, 60000);
+
+  it("Membership.role, tenants et adhésions existants sont préservés", async () => {
     const m = await prisma.membership.findUniqueOrThrow({
       where: { id: membershipA.id },
     });
     expect(m.role).toBe("operator");
+    expect(
+      await prisma.tenant.findUnique({ where: { id: tenantA.id } }),
+    ).not.toBeNull();
+    expect(
+      await prisma.membership.findUnique({ where: { id: membershipB.id } }),
+    ).not.toBeNull();
   });
 });
