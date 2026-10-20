@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.5.0](https://github.com/Fotetsa/hullbay/compare/v1.4.0...v1.5.0) (2026-10-20)
+
+
+### Features
+
+* **authorization:** modele de domaine autorisation (phase 1) ([#174](https://github.com/Fotetsa/hullbay/issues/174)) ([4e1ebf7](https://github.com/Fotetsa/hullbay/commit/4e1ebf7329db3331cdafbc019a57cdb936b9ce7b))
+
+
+### Bug Fixes
+
+* **auth:** fermer l'escalade fail-open cross-tenant ([#170](https://github.com/Fotetsa/hullbay/issues/170)) ([#171](https://github.com/Fotetsa/hullbay/issues/171)) ([9cc616f](https://github.com/Fotetsa/hullbay/commit/9cc616f59467cc9065662df01ae08ba29690756f))
+* **deploy:** fiabiliser install.sh réseau non-attachable + garde démarrage ([#172](https://github.com/Fotetsa/hullbay/issues/172)) ([9c143eb](https://github.com/Fotetsa/hullbay/commit/9c143ebfc9814a91a16b70b1d1e64b14dd6b5931))
+* **tests:** cast prisma.membership.findUnique to any for type compatibility ([197da6a](https://github.com/Fotetsa/hullbay/commit/197da6a216fe7aedb7b86fa68c6106e1c0fc72b9))
+
 ## [1.4.0](https://github.com/Fotetsa/hullbay/compare/v1.3.0...v1.4.0) (2026-10-02)
 
 
