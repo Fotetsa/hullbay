@@ -16,3 +16,15 @@ Dette isolée dans `engine/legacy-role-resolver.ts`, retirée en Phase 7. Si `ro
 
 ## Limites
 Policies : point d'extension seulement. Aucun audit des refus (Phase 9). `tenant_mismatch` et `resource_not_found` sont distincts dans la décision : la couche route devra répondre de façon uniforme pour ne pas révéler l'existence d'une ressource d'un autre tenant.
+
+## Contrat de sécurité du Subject
+`subject.tenantId` est un contexte de sécurité issu de la session authentifiée (UserSession, claim signé), jamais de req.body, req.params ni req.query. Le seul chemin prévu pour construire un Subject est `subjectFromSession(req.user)`. En Phase 3, les routes l'utilisent obligatoirement ; un tenant venant du client ne peut qu'être comparé au tenant authentifié, jamais le remplacer.
+
+## Convention du scope tenant
+Représentation canonique unique : `scopeType = "tenant"`, `scopeId = <tenantId>`. Pas de `scopeId = null`. Documentée dans `scope.ts`.
+
+## Cross-scope
+Être dans le même tenant ne franchit jamais un scope plus étroit : la ressource doit être couverte par le scope de la permission, et pour un rôle d'équipe aussi par son périmètre d'attribution (intersection). Verrouillé par des tests négatifs (cluster A vers projet B, projet A vers projet B, attribution d'équipe sur projet A vers projet B).
+
+## require()
+Simple wrapper de `can()` : mêmes décisions, `ForbiddenError` porte la décision complète (reason et sources).
