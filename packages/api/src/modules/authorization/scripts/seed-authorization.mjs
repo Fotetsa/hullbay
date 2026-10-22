@@ -122,45 +122,23 @@ const PRESETS = [
 async function ensurePermissions() {
   const byKey = new Map();
   for (const [key, resource, action] of PERMISSIONS) {
-    const permission = await prisma.permission.upsert({
-      where: { key },
-      update: {},
-      create: { key, resource, action },
-    });
+    let permission = await prisma.permission.findUnique({ where: { key } });
+    if (!permission) {
+      permission = await prisma.permission.create({
+        data: { key, resource, action },
+      });
+    }
     byKey.set(key, permission);
   }
   return byKey;
 }
 
 async function ensurePresetsForTenant(tenantId, permissionByKey) {
-  if (!tenantId || typeof tenantId !== "string") {
-    console.error(`[SEED] ERREUR CRITIQUE: tenantId invalide reçu:`, tenantId);
-    throw new Error(
-      "tenantId est requis et doit être une chaîne de caractères valide",
-    );
-  }
+  if (!tenantId || typeof tenantId !== "string") return;
 
-  await prisma.$transaction(async (tx) => {
-    for (const preset of PRESETS) {
-      const existing = await tx.role.findUnique({
-        where: {
-          tenantId_name: {
-            tenantId,
-            name: preset.name,
-          },
-        },
-        include: {
-          rolePermissions: true,
-        },
-      });
-
-      if (existing) {
-        // Le rôle existe déjà. On ne fait RIEN pour préserver les personnalisations de l'administrateur.
-        continue;
-      }
-
-      // Le rôle n'existe pas. On le crée AVEC ses permissions par défaut en une seule opération atomique.
-      await tx.role.create({
+  for (const preset of PRESETS) {
+    try {
+      await prisma.role.create({
         data: {
           tenantId,
           name: preset.name,
@@ -171,7 +149,7 @@ async function ensurePresetsForTenant(tenantId, permissionByKey) {
               const perm = permissionByKey.get(key);
               if (!perm) {
                 throw new Error(
-                  `[SEED] Permission introuvable dans le catalogue : ${key}`,
+                  `Permission introuvable dans le catalogue : ${key}`,
                 );
               }
               return {
@@ -183,48 +161,46 @@ async function ensurePresetsForTenant(tenantId, permissionByKey) {
           },
         },
       });
+    } catch (error) {
+      if (error.code === "P2002" || error.code === "P2003") {
+        continue;
+      }
+      throw error;
     }
+  }
 
-    // Gestion du rôle Root
-    const root = await tx.role.findUnique({
-      where: {
-        tenantId_name: {
-          tenantId,
-          name: "Root",
-        },
+  try {
+    await prisma.role.create({
+      data: {
+        tenantId,
+        name: "Root",
+        isPreset: false,
+        isSystem: true,
       },
     });
-
-    if (!root) {
-      await tx.role.create({
-        data: {
-          tenantId,
-          name: "Root",
-          isPreset: false,
-          isSystem: true,
-        },
-      });
+  } catch (error) {
+    if (error.code === "P2002" || error.code === "P2003") {
+      console.warn("Le rôle 'Root' existe déjà ou le tenant a été supprimé.");
+    } else {
+      throw error;
     }
-  });
+  }
 }
 
 async function main() {
-  console.log("[SEED] Début du peuplement du modèle d'autorisation...");
+  console.log("Début du peuplement du modèle d'autorisation...");
 
   const permissionByKey = await ensurePermissions();
-  console.log("[SEED] Permissions vérifiées/créées.");
+  console.log("Permissions vérifiées ou créées.");
 
   const tenants = await prisma.tenant.findMany({ select: { id: true } });
-  console.log(
-    `[SEED] ${tenants.length} tenant(s) trouvé(s) en base de données.`,
-  );
+  console.log(`${tenants.length} tenant(s) trouvé(s) en base de données.`);
 
   for (const tenant of tenants) {
-    console.log(`[SEED] Traitement du tenant ID: ${tenant.id}`);
     await ensurePresetsForTenant(tenant.id, permissionByKey);
   }
 
-  console.log("[SEED] Peuplement terminé avec succès.");
+  console.log("Peuplement terminé avec succès.");
 }
 
 main()

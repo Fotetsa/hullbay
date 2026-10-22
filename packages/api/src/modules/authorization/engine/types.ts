@@ -1,6 +1,18 @@
 import type { ScopeType } from "../scope";
 import type { CatalogEntry } from "../catalog/resource-catalog";
 
+/**
+ * Contexte de sécurité, pas une entrée utilisateur.
+ *
+ * Invariant : `tenantId` provient toujours de la session authentifiée
+ * (UserSession -> tenantId du token signé, résolu par la garde d'authentification).
+ * Il ne doit jamais venir de req.body, req.params, req.query ni d'un en-tête
+ * contrôlé par le client.
+ *
+ * Le moteur ne peut pas le vérifier (il ignore l'authentification). C'est pourquoi
+ * le seul chemin prévu pour construire un Subject est `subjectFromSession()`
+ * (subject.ts). Ne construis pas { userId, tenantId } à la main dans une route.
+ */
 export type Subject = { userId: string; tenantId: string };
 export type Resource = { type: ScopeType; id: string };
 

@@ -12,6 +12,7 @@ import type {
   ResourceRecord,
   RoleRecord,
 } from "../engine/types";
+import { subjectFromSession } from "../subject";
 
 const T1 = "t1";
 const T2 = "t2";
@@ -55,6 +56,12 @@ const RESOURCES: ResourceRecord[] = [
     parents: { project: "p1", cluster: "c1" },
   },
 ];
+const HIER: ResourceRecord[] = [
+  { type: "cluster", id: "cA", tenantId: T1, parents: {} },
+  { type: "cluster", id: "cB", tenantId: T1, parents: {} },
+  { type: "project", id: "pA", tenantId: T1, parents: { cluster: "cA" } },
+  { type: "project", id: "pB", tenantId: T1, parents: { cluster: "cB" } },
+];
 
 function build(
   partial: Partial<MemoryGrantData> = {},
@@ -77,6 +84,21 @@ function build(
   });
   return { authz, data };
 }
+function buildHier(partial: Partial<MemoryGrantData>) {
+  const data: MemoryGrantData = {
+    memberships: [
+      { id: "m1", userId: "u1", tenantId: T1, legacyRole: "", roleId: null },
+    ],
+    roles: [],
+    teamMembers: [],
+    teamRoles: [],
+    ...partial,
+  };
+  return createAuthorization({
+    grants: new MemoryGrantRepository(data),
+    resources: new MemoryResourceRepository(HIER),
+  });
+}
 
 const subject = { userId: "u1", tenantId: T1 };
 const direct = (r: ReturnType<typeof role>, m = {}) => ({
@@ -91,6 +113,11 @@ const direct = (r: ReturnType<typeof role>, m = {}) => ({
     },
   ],
   roles: [r],
+});
+const deployP = (id: string) => ({
+  subject,
+  action: "project.deploy",
+  resource: { type: "project" as const, id },
 });
 
 describe("moteur : refus par défaut et entrées invalides", () => {
@@ -578,5 +605,167 @@ describe("moteur : fail closed et policies", () => {
     await expect(
       authz.require({ subject, action: "project.read" }),
     ).resolves.toMatchObject({ allowed: true });
+  });
+});
+
+describe("cross-scope : être dans le même tenant ne franchit jamais un scope plus étroit", () => {
+  it("permission scopée au cluster A : projet A autorisé, projet B refusé", async () => {
+    const r = role("r1", "Dev", [["project.deploy", "cluster", "cA"]]);
+    const authz = buildHier(direct(r));
+    expect((await authz.can(deployP("pA"))).allowed).toBe(true);
+    expect(await authz.can(deployP("pB"))).toMatchObject({
+      allowed: false,
+      reason: "scope_not_covered",
+    });
+  });
+
+  it("permission scopée au projet A : projet B refusé", async () => {
+    const r = role("r1", "Dev", [["project.deploy", "project", "pA"]]);
+    const authz = buildHier(direct(r));
+    expect((await authz.can(deployP("pA"))).allowed).toBe(true);
+    expect(await authz.can(deployP("pB"))).toMatchObject({
+      allowed: false,
+      reason: "scope_not_covered",
+    });
+  });
+
+  it("périmètre d'attribution d'équipe = projet A : projet B refusé", async () => {
+    // Le rôle porte la permission sur tout le tenant, mais l'équipe le reçoit seulement sur pA.
+    const r = role("r1", "Dev", [tenantWide("project.deploy")]);
+    const authz = buildHier({
+      roles: [r],
+      teamMembers: [{ teamId: "tm1", tenantId: T1, membershipId: "m1" }],
+      teamRoles: [
+        {
+          teamId: "tm1",
+          tenantId: T1,
+          roleId: "r1",
+          scopeType: "project",
+          scopeId: "pA",
+        },
+      ],
+    });
+    expect((await authz.can(deployP("pA"))).allowed).toBe(true);
+    expect(await authz.can(deployP("pB"))).toMatchObject({
+      allowed: false,
+      reason: "scope_not_covered",
+    });
+  });
+
+  it("périmètre d'attribution d'équipe = cluster A : projet B refusé", async () => {
+    const r = role("r1", "Dev", [tenantWide("project.deploy")]);
+    const authz = buildHier({
+      roles: [r],
+      teamMembers: [{ teamId: "tm1", tenantId: T1, membershipId: "m1" }],
+      teamRoles: [
+        {
+          teamId: "tm1",
+          tenantId: T1,
+          roleId: "r1",
+          scopeType: "cluster",
+          scopeId: "cA",
+        },
+      ],
+    });
+    expect((await authz.can(deployP("pA"))).allowed).toBe(true);
+    expect((await authz.can(deployP("pB"))).allowed).toBe(false);
+  });
+
+  it("intersection : permission sur le projet A, équipe attribuée sur le projet B : refus des deux", async () => {
+    const r = role("r1", "Dev", [["project.deploy", "project", "pA"]]);
+    const authz = buildHier({
+      roles: [r],
+      teamMembers: [{ teamId: "tm1", tenantId: T1, membershipId: "m1" }],
+      teamRoles: [
+        {
+          teamId: "tm1",
+          tenantId: T1,
+          roleId: "r1",
+          scopeType: "project",
+          scopeId: "pB",
+        },
+      ],
+    });
+    expect((await authz.can(deployP("pA"))).allowed).toBe(false);
+    expect((await authz.can(deployP("pB"))).allowed).toBe(false);
+  });
+});
+
+describe("Subject : le tenant vient de la session, jamais du client", () => {
+  it("subjectFromSession ne lit que la session", () => {
+    expect(subjectFromSession({ sub: "u1", tenantId: T1 })).toEqual({
+      userId: "u1",
+      tenantId: T1,
+    });
+  });
+
+  it("session sans tenant ou sans identifiant : refusée, pas de tenant par défaut", () => {
+    expect(() => subjectFromSession({ sub: "u1" })).toThrow();
+    expect(() => subjectFromSession({ sub: "", tenantId: T1 })).toThrow();
+    expect(() => subjectFromSession(null)).toThrow();
+    expect(() => subjectFromSession(undefined)).toThrow();
+  });
+
+  it("un tenant glissé dans la session par le client ne remplace pas le tenant authentifié", () => {
+    // Simule des champs client (body/query) mélangés à la session : seuls sub et
+    // tenantId de la session sont lus, le reste est ignoré.
+    const polluted = {
+      sub: "u1",
+      tenantId: T1,
+      body: { tenantId: T2 },
+      query: { tenantId: T2 },
+    };
+    expect(subjectFromSession(polluted).tenantId).toBe(T1);
+  });
+});
+
+describe("contrat public de require()", () => {
+  it("autorisé : retourne exactement la décision de can()", async () => {
+    const r = role("r1", "All", [tenantWide("project.read")]);
+    const { authz } = build(direct(r));
+    const input = { subject, action: "project.read" };
+    expect(await authz.require(input)).toEqual(await authz.can(input));
+  });
+
+  it("refusé : lève ForbiddenError avec reason et sources de la décision de can()", async () => {
+    const r = role("r1", "Dev", [["project.deploy", "project", "p1"]]);
+    const { authz } = build(direct(r));
+    const input = {
+      subject,
+      action: "project.deploy",
+      resource: { type: "project" as const, id: "p2" },
+    };
+    const decision = await authz.can(input);
+    expect(decision.allowed).toBe(false);
+
+    const err = await authz.require(input).catch((e) => e);
+    expect(err).toBeInstanceOf(ForbiddenError);
+    expect(err.statusCode).toBe(403);
+    expect(err.decision).toEqual(decision);
+    expect(err.decision.reason).toBe("scope_not_covered");
+  });
+
+  it("refus par policy : les sources retenues sont conservées dans l'erreur", async () => {
+    const r = role("r1", "All", [tenantWide("project.read")]);
+    const { authz } = build(direct(r), { evaluate: async () => "deny" });
+    const err = await authz
+      .require({ subject, action: "project.read" })
+      .catch((e) => e);
+    expect(err).toBeInstanceOf(ForbiddenError);
+    expect(err.decision.reason).toBe("policy_denied");
+    expect(err.decision.sources[0]).toMatchObject({
+      roleId: "r1",
+      via: "direct",
+    });
+  });
+
+  it("require n'a pas de logique propre : même résultat que can() sur tous les cas de refus", async () => {
+    const { authz } = build();
+    for (const action of ["nope.nope", "project.read", "cluster.create"]) {
+      const d = await authz.can({ subject, action });
+      const e = await authz.require({ subject, action }).catch((x) => x);
+      expect(e).toBeInstanceOf(ForbiddenError);
+      expect(e.decision).toEqual(d);
+    }
   });
 });

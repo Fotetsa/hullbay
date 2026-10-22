@@ -12,6 +12,8 @@ export { createAuthorization } from "./authorization.service";
 export type { Authorization } from "./authorization.service";
 export { ForbiddenError } from "./errors";
 export type { CanInput, Decision, Subject, Resource } from "./engine/types";
+export { subjectFromSession } from "./subject";
+export type { AuthenticatedSession } from "./subject";
 
 let instance: Authorization | undefined;
 
