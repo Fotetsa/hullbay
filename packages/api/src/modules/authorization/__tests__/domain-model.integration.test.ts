@@ -101,16 +101,20 @@ beforeAll(async () => {
 }, 120000);
 
 afterAll(async () => {
-  await prisma.authProvider
-    .deleteMany({
-      where: { id: { in: [providerA.id, providerB.id, providerGlobal.id] } },
-    })
+  const ids = [providerA, providerB, providerGlobal]
+    .filter(Boolean)
+    .map((p) => p.id);
+  if (ids.length)
+    await prisma.authProvider
+      .deleteMany({ where: { id: { in: ids } } })
+      .catch(() => {});
+  if (tenantA)
+    await prisma.tenant.delete({ where: { id: tenantA.id } }).catch(() => {});
+  if (tenantB)
+    await prisma.tenant.delete({ where: { id: tenantB.id } }).catch(() => {});
+  await prisma.user
+    .deleteMany({ where: { email: { contains: String(suffix) } } })
     .catch(() => {});
-  await prisma.tenant.delete({ where: { id: tenantA.id } });
-  await prisma.tenant.delete({ where: { id: tenantB.id } });
-  await prisma.user.deleteMany({
-    where: { email: { contains: String(suffix) } },
-  });
   await prisma.$disconnect();
 });
 

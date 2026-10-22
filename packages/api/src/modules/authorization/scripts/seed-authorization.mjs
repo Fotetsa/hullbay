@@ -2,7 +2,6 @@ import { PrismaClient } from "@prisma/client";
 
 const prisma = new PrismaClient();
 
-
 const PERMISSIONS = [
   ["cluster.read", "cluster", "read"],
   ["cluster.create", "cluster", "create"],
@@ -120,10 +119,6 @@ const PRESETS = [
   { name: "Owner", keys: OWNER_KEYS },
 ];
 
-// Un passage de ce script, même répété plusieurs fois, ne doit jamais créer
-// de doublon, jamais supprimer une permission existante, jamais toucher aux
-// adhésions déjà en place. On retrouve chaque permission par sa clé, chaque
-// rôle par son couple tenant et nom, jamais par un nouvel identifiant généré.
 async function ensurePermissions() {
   const byKey = new Map();
   for (const [key, resource, action] of PERMISSIONS) {
@@ -137,50 +132,99 @@ async function ensurePermissions() {
   return byKey;
 }
 
-// Un preset déjà présent n'est jamais retouché : si un administrateur a retiré ou
-// ajouté des permissions, le peuplement ne les réinitialise pas. Les permissions
-// ne sont posées qu'à la création du rôle, dans la même transaction.
 async function ensurePresetsForTenant(tenantId, permissionByKey) {
+  if (!tenantId || typeof tenantId !== "string") {
+    console.error(`[SEED] ERREUR CRITIQUE: tenantId invalide reçu:`, tenantId);
+    throw new Error(
+      "tenantId est requis et doit être une chaîne de caractères valide",
+    );
+  }
+
   await prisma.$transaction(async (tx) => {
     for (const preset of PRESETS) {
       const existing = await tx.role.findUnique({
-        where: { tenantId_name: { tenantId, name: preset.name } },
+        where: {
+          tenantId_name: {
+            tenantId,
+            name: preset.name,
+          },
+        },
+        include: {
+          rolePermissions: true,
+        },
       });
-      if (existing) continue;
 
-      const role = await tx.role.create({
-        data: { tenantId, name: preset.name, isPreset: true, isSystem: false },
-      });
-      await tx.rolePermission.createMany({
-        data: preset.keys.map((key) => ({
-          roleId: role.id,
-          permissionId: permissionByKey.get(key).id,
-          scopeType: "tenant",
-          scopeId: tenantId,
-        })),
-        skipDuplicates: true,
+      if (existing) {
+        // Le rôle existe déjà. On ne fait RIEN pour préserver les personnalisations de l'administrateur.
+        continue;
+      }
+
+      // Le rôle n'existe pas. On le crée AVEC ses permissions par défaut en une seule opération atomique.
+      await tx.role.create({
+        data: {
+          tenantId,
+          name: preset.name,
+          isPreset: true,
+          isSystem: false,
+          rolePermissions: {
+            create: preset.keys.map((key) => {
+              const perm = permissionByKey.get(key);
+              if (!perm) {
+                throw new Error(
+                  `[SEED] Permission introuvable dans le catalogue : ${key}`,
+                );
+              }
+              return {
+                permissionId: perm.id,
+                scopeType: "tenant",
+                scopeId: tenantId,
+              };
+            }),
+          },
+        },
       });
     }
 
-    // Root : réservé et protégé, jamais attribué, aucune permission.
+    // Gestion du rôle Root
     const root = await tx.role.findUnique({
-      where: { tenantId_name: { tenantId, name: "Root" } },
+      where: {
+        tenantId_name: {
+          tenantId,
+          name: "Root",
+        },
+      },
     });
+
     if (!root) {
       await tx.role.create({
-        data: { tenantId, name: "Root", isPreset: false, isSystem: true },
+        data: {
+          tenantId,
+          name: "Root",
+          isPreset: false,
+          isSystem: true,
+        },
       });
     }
   });
 }
 
 async function main() {
+  console.log("[SEED] Début du peuplement du modèle d'autorisation...");
+
   const permissionByKey = await ensurePermissions();
+  console.log("[SEED] Permissions vérifiées/créées.");
+
   const tenants = await prisma.tenant.findMany({ select: { id: true } });
+  console.log(
+    `[SEED] ${tenants.length} tenant(s) trouvé(s) en base de données.`,
+  );
+
   for (const tenant of tenants) {
+    console.log(`[SEED] Traitement du tenant ID: ${tenant.id}`);
     await ensurePresetsForTenant(tenant.id, permissionByKey);
   }
-  console.log(`Peuplement terminé pour ${tenants.length} tenant(s).`);
+
+  console.log("[SEED] Peuplement terminé avec succès.");
 }
 
 main()
