@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.6.0](https://github.com/Fotetsa/hullbay/compare/v1.5.0...v1.6.0) (2026-10-23)
+
+
+### Features
+
+* **authorization:** moteur autorisation can require (phase 2) ([#179](https://github.com/Fotetsa/hullbay/issues/179)) ([e084708](https://github.com/Fotetsa/hullbay/commit/e08470864f1afdd284c822459ca082a9ed39d1dc))
+
 ## [1.5.0](https://github.com/Fotetsa/hullbay/compare/v1.4.0...v1.5.0) (2026-10-20)
 
 
