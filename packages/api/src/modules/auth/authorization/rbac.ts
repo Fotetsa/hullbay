@@ -7,6 +7,8 @@
 
 import type { FastifyRequest, FastifyReply } from "fastify"
 import { DEFAULT_TENANT_ID, resolveRoleForUser } from "../identity/auth-identity.service"
+import { eventBus } from "../../../lib/event-bus"
+import { AUTH_AUDIT_EVENTS } from "../audit-events"
 
 export type Role = "owner" | "operator" | "viewer"
 
@@ -41,9 +43,27 @@ export function requireRole(min: Role) {
     // du tenant cible, sinon un owner tenant-A passerait owner partout (tenancy
     // fantôme). Même tenant → on se base sur la vérité DB pour corriger les
     // tokens legacy.
-    const rank = RANK[role] ?? UNKNOWN_ROLE_RANK
+const rank = RANK[role] ?? UNKNOWN_ROLE_RANK
+    const tokenRank = RANK[user.role] ?? UNKNOWN_ROLE_RANK
     if (rank < RANK[min]) {
-      return reply.code(403).send({ error: "permission insuffisante" })
+      // Rôle effectif sous le minimum sur le tenant demandé (ex. rôle legacy
+      // obsolète du token) → rejet cross-tenant audité — #170.
+      await eventBus.emit(AUTH_AUDIT_EVENTS.tenantForbidden, {
+        userId: user.sub,
+        tenantId,
+        requiredRole: min,
+        effectiveRole: role,
+        reason: "insufficient_role",
+      })
+      // Downgrade cross-tenant : le token revendiquait un rôle assez élevé
+      // (owner/operator) mais la résolution fail-closed le rabote sur ce tenant
+      // → code exposé pour l'i18n front. Un manque de rôle banal (viewer sur
+      // SON tenant) garde le 403 générique sans code.
+      const staleEscalation = tokenRank >= RANK[min]
+      return reply.code(403).send({
+        error: "permission insuffisante",
+        ...(staleEscalation ? { code: "tenant_forbidden" } : {}),
+      })
     }
   }
 }
