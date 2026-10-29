@@ -165,6 +165,7 @@ model Tenant {
   teams                    Team[]
   plicies                  Policy[]
   externalGroupMappings    ExternalGroupMapping[]
+  mailIntegration          MailIntegration?
 }
 
 // Rôle = propriété de la MEMBERSHIP, pas du User. Phase 2 : tenant par défaut unique.
@@ -571,4 +572,26 @@ model ExternalGroupMapping {
   @@index([tenantId])
   @@index([providerId])
   @@index([teamId])
+}
+
+// ── Configuration du Mailer (Resend / SMTP) ──
+enum MailProviderType {
+  RESEND
+  SMTP
+}
+
+model MailIntegration {
+  id         String           @id @default(cuid())
+  tenantId   String           @unique
+  tenant     Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  provider   MailProviderType @default(RESEND)
+  enabled    Boolean          @default(false)
+  fromEmail  String?
+  fromName   String?          @default("Hullbay Ops")
+  replyTo    String?
+  configEnc  String           // JSON chiffré via encryptSecret contenant apiKey ou {host, port, user, pass, secure}
+  createdAt  DateTime         @default(now())
+  updatedAt  DateTime         @updatedAt
+
+  @@index([tenantId])
 }

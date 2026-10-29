@@ -488,6 +488,31 @@ export const api = {
       { method: "POST", body: JSON.stringify(input) },
     ),
 
+  // Mailer (Resend & SMTP) — owner uniquement
+  getMailSettings: () => req<MailSettings>("/api/settings/mail"),
+  saveMailSettings: (input: SaveMailSettingsInput) =>
+    req<{ ok: boolean }>("/api/settings/mail", {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
+  sendTestMail: (data?: { email?: string }) =>
+    req<{ ok: boolean; message: string }>("/api/settings/mail/test", {
+      method: "POST",
+      body: JSON.stringify(data || {}),
+    }),
+  listMailTemplates: () => req<MailTemplateInfo[]>("/api/settings/mail/templates"),
+  getMailTemplatePreviewHtml: async (id: string, variant?: string): Promise<string> => {
+    const qs = variant ? `?variant=${encodeURIComponent(variant)}` : ""
+    const token = auth.token
+    const res = await fetch(`/api/settings/mail/templates/${id}/preview${qs}`, {
+      headers: {
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+    })
+    if (!res.ok) throw new Error(`Erreur HTTP ${res.status}`)
+    return res.text()
+  },
+
   // Mises à jour de l'instance (owner uniquement)
   updatesCheck: (params: { channel?: UpdateChannel | "all" } = {}) => {
     const qs = params.channel ? `?channel=${params.channel}` : "";
@@ -863,3 +888,49 @@ export type SystemUpdateRecord = {
   startedAt?: string | null;
   finishedAt?: string | null;
 };
+
+export type MailSettings = {
+  provider: "RESEND" | "SMTP"
+  enabled: boolean
+  fromEmail: string
+  fromName?: string
+  replyTo?: string
+  resend?: {
+    apiKey?: string
+    isConfigured?: boolean
+  }
+  smtp?: {
+    host: string
+    port: number
+    secure: boolean
+    user?: string
+    pass?: string
+    isConfigured?: boolean
+  }
+}
+
+export type SaveMailSettingsInput = {
+  provider: "RESEND" | "SMTP"
+  enabled: boolean
+  fromEmail: string
+  fromName?: string
+  replyTo?: string
+  resend?: {
+    apiKey?: string
+  }
+  smtp?: {
+    host?: string
+    port?: number
+    secure?: boolean
+    user?: string
+    pass?: string
+  }
+}
+
+export type MailTemplateInfo = {
+  id: string
+  name: string
+  description: string
+  previewVariants: string[]
+}
+

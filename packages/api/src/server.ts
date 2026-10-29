@@ -45,6 +45,8 @@ import { stopTunnelCleanup, closeAllTunnels } from "./lib/ssh-tunnel";
 import { registerClustersRoutes } from "./modules/clusters/routes";
 import { registerClusterSubscribers } from "./subscribers/clusters";
 import { registerSystemRoutes } from "./modules/system/routes";
+import { registerMailerRoutes } from "./modules/mailer";
+import { registerMailerSubscribers } from "./subscribers/mailer";
 import { backfillDefaultMemberships } from "./modules/auth/identity/auth-identity.service";
 
 
@@ -185,6 +187,7 @@ app.setErrorHandler((error: FastifyError, request, reply) => {
     await registerSettingsRoutes(app);
     await registerUpdatesRoutes(app);
     await registerClustersRoutes(app);
+    await registerMailerRoutes(app);
   }
 
   if (!skipSideEffects) {
@@ -226,6 +229,7 @@ app.setErrorHandler((error: FastifyError, request, reply) => {
     registerDeploySubscribers();
     registerObservabilitySubscribers();
     registerClusterSubscribers();
+    registerMailerSubscribers();
     startDriftJob();
     startAutoScaler();
     startClusterHealthJob();
