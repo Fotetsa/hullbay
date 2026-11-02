@@ -101,17 +101,25 @@ export class BackupError extends Error {
   }
 }
 
-async function cleanupStaging(
+async function cleanupPrefix(
   provider: StorageProvider,
   prefix: string,
 ): Promise<void> {
+  const cleanPrefix = prefix.replace(/^\/+|\/+$/g, "")
+  // Garde destructive : un préfixe vide ferait porter le nettoyage sur la
+  // racine du remote. Aucun appelant légitime ne doit arriver ici.
+  if (cleanPrefix.length === 0) return
+  const manifestKey = `${cleanPrefix}/${MANIFEST_FILE}`
+  // Suppression explicite du manifest AVANT le listing : si `list()` échoue,
+  // l'invariant « pas de manifest → pas d'artifact valide » tient quand même.
+  await provider.delete(manifestKey).catch(() => undefined)
   try {
-    for (const object of await provider.list(prefix)) {
+    for (const object of await provider.list(cleanPrefix)) {
       await provider.delete(object.key).catch(() => undefined)
     }
   } catch {
-    // Best-effort : un staging résiduel est inerte (sans manifest, il n'est
-    // jamais listé comme artifact restaurable).
+    // Best-effort : sans manifest, un résidu n'est jamais listé comme
+    // artifact restaurable.
   }
 }
 
@@ -123,6 +131,10 @@ export class BackupLifecycle {
     const artifactId = `bak_${randomUUID()}`
     const stagingPrefix = `.staging/${run.id}`
     let produced: ProducedArtifact | undefined
+    /** Préfixe final promu : à annuler si l'artifact n'est pas persisté. */
+    let committedPrefix: string | null = null
+    /** Tant qu'il est false, un échec doit laisser zéro objet durable. */
+    let artifactCreated = false
     // Objet mutable : une variable locale serait figée par le narrowing de TS
     // alors que la phase change dans les callbacks du producteur.
     const state: { phase: BackupRunPhase } = { phase: "resolving" }
@@ -198,11 +210,16 @@ export class BackupLifecycle {
       // Promotion via le StorageProvider : c'est lui qui choisit et exécute le
       // mécanisme (atomic-rename vs copy-verify-delete) selon SES capacités, et
       // renvoie le mode RÉELLEMENT utilisé — consigné tel quel (reviewer #4).
-      const commitMode = await input.provider.commitPayload(
-        produced.payloadKey,
+      // Le préfixe final est unique par artifact (artifactId UUID) : on le
+      // mémorise AVANT la promotion pour pouvoir annuler une promotion
+      // partielle (copie réussie puis vérification en échec, par exemple).
+      committedPrefix = finalPrefix
+      const commitMode = await input.provider.commitPayload({
+        stagingKey: produced.payloadKey,
         finalKey,
-        produced.checksumSha256,
-      )
+        expectedChecksum: produced.checksumSha256,
+        expectedSizeBytes: produced.sizeBytes,
+      })
 
       const manifest = buildManifest({
         artifactId,
@@ -264,6 +281,7 @@ export class BackupLifecycle {
         strategyId: input.strategy.id,
         formatVersion: manifest.formatVersion,
       })
+      artifactCreated = true
 
       await onPhase("done")
       await this.store.complete(run.id, produced.sizeBytes)
@@ -286,14 +304,23 @@ export class BackupLifecycle {
       const message = scrubSecrets(
         error instanceof Error ? error.message : String(error),
       )
-      await this.store.fail(run.id, code, message)
+      // Nettoyage AVANT la persistance d'échec : un `store.fail()` en erreur ne
+      // doit pas empêcher la suppression des objets distants.
+      //
+      // Rollback post-commit : si le payload a été promu mais que l'artifact
+      // n'existe pas en base, le préfixe final est supprimé (manifest d'abord).
+      // Invariant : pas de manifest → pas d'artifact valide.
+      if (committedPrefix && !artifactCreated && input.provider) {
+        await cleanupPrefix(input.provider, committedPrefix)
+      }
       // Le staging est nettoyé même si le producteur a échoué avant de rendre
       // la main : le préfixe appartient au moteur, pas au producteur.
       if (input.producer.cleanup) {
         await input.producer.cleanup(stagingPrefix).catch(() => undefined)
       } else if (input.provider) {
-        await cleanupStaging(input.provider, stagingPrefix)
+        await cleanupPrefix(input.provider, stagingPrefix)
       }
+      await this.store.fail(run.id, code, message)
       return { ok: false, runId: run.id, errorCode: code }
     }
   }

@@ -191,6 +191,7 @@ export class BackupPolicyService {
         placement,
         resources,
         timeoutSec: policy.timeoutSec,
+        capabilities: destination.capabilities ?? null,
       },
       destination,
     )

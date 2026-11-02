@@ -1,7 +1,7 @@
 import type { BackupDestinationFields, BackupProtocol } from "@hullbay/shared"
 import { RcloneStorageProvider } from "./rclone-provider"
 import { buildRcloneRemoteString } from "./remote-string"
-import type { StorageProvider } from "./types"
+import type { StorageCapabilities, StorageProvider } from "./types"
 
 /**
  * Registry des backends de stockage. Ajouter un backend = enregistrer une
@@ -12,6 +12,8 @@ export interface ResolvedDestination {
   protocol: BackupProtocol
   config: BackupDestinationFields
   basePath: string
+  /** Matrice issue du dernier probe ; `null` = destination jamais sondée. */
+  capabilities?: StorageCapabilities | null
   /** Secrets matérialisés en fichier (tmpfs du task) pour SFTP/GCS. */
   secretFiles?: { privateKey?: string; serviceAccountJson?: string }
 }
@@ -43,7 +45,9 @@ function rcloneFactory(destination: ResolvedDestination): StorageProvider {
     basePath: destination.basePath,
     secretFiles: destination.secretFiles,
   })
-  return new RcloneStorageProvider(remote)
+  return new RcloneStorageProvider(remote, {
+    capabilities: destination.capabilities ?? null,
+  })
 }
 
 for (const protocol of ["s3", "sftp", "webdav", "smb", "gcs", "azureblob"] as const) {

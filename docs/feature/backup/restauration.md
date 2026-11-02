@@ -12,8 +12,8 @@ curl /api/backup/artifacts/<artifactId> -H "Authorization: Bearer $TOKEN"
 ```
 
 Le manifest donne : `strategy.id`, `payload.format`, `payload.sizeBytes`,
-`checksum.value`, `restoreCommand`, et la source (`engine`, `host`, `database`,
-`username`). Le payload se trouve à `storageKey` sur la destination.
+`checksum.value`, `restore.command`, et la source (`engine`, `engineVersion`,
+`database`). Le payload se trouve à `storageKey` sur la destination.
 
 Récupération via rclone (adapter la remote à la destination) :
 

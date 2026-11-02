@@ -133,6 +133,7 @@ export class BackupDestinationService {
       protocol: row.protocol as BackupProtocol,
       config,
       basePath: row.basePath,
+      capabilities: parseCapabilities(row.capabilitiesJson),
     }
   }
 

@@ -5,6 +5,8 @@ import path from "node:path"
 import { Readable } from "node:stream"
 import { pipeline } from "node:stream/promises"
 import type {
+  CommitMode,
+  CommitPayloadInput,
   HashAlgorithm,
   ObjectStat,
   PutOptions,
@@ -149,11 +151,12 @@ export class LocalStorageProvider implements StorageProvider {
     return digest.digest("hex")
   }
 
-  async commitPayload(
-    stagingKey: string,
-    finalKey: string,
-    expectedChecksum: string,
-  ): Promise<"atomic-rename" | "copy-verify-delete"> {
+  async commitPayload(input: CommitPayloadInput): Promise<CommitMode> {
+    const { stagingKey, finalKey, expectedChecksum, expectedSizeBytes } = input
+    const staging = await this.stat(stagingKey)
+    if (!staging || staging.size !== expectedSizeBytes) {
+      throw new Error("taille distante différente")
+    }
     const remoteHash = await this.hash(stagingKey)
     if (remoteHash && remoteHash !== expectedChecksum) {
       throw new Error("checksum distant différent")
@@ -162,10 +165,18 @@ export class LocalStorageProvider implements StorageProvider {
     // Fallback (jamais atteint en local, mais conforme au contrat).
     const data = await this.get(stagingKey)
     await this.put(finalKey, data)
-    const copied = await this.hash(finalKey)
-    if (copied && copied !== expectedChecksum) {
-      await this.delete(finalKey).catch(() => undefined)
-      throw new Error("copie non vérifiée")
+    const copiedHash = await this.hash(finalKey)
+    if (copiedHash) {
+      if (copiedHash !== expectedChecksum) {
+        await this.delete(finalKey).catch(() => undefined)
+        throw new Error("copie non vérifiée")
+      }
+    } else {
+      const copied = await this.stat(finalKey)
+      if (!copied || copied.size !== expectedSizeBytes) {
+        await this.delete(finalKey).catch(() => undefined)
+        throw new Error("copie non vérifiée (taille)")
+      }
     }
     await this.delete(stagingKey)
     return "copy-verify-delete"

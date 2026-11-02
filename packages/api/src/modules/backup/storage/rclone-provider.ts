@@ -1,6 +1,8 @@
 import { spawn } from "node:child_process"
 import { Readable } from "node:stream"
 import type {
+  CommitMode,
+  CommitPayloadInput,
   HashAlgorithm,
   ObjectStat,
   PutOptions,
@@ -8,7 +10,7 @@ import type {
   StorageCapabilities,
   StorageProvider,
 } from "./types"
-import { StorageProviderError } from "./types"
+import { StorageProviderError, UNPROBED_CAPABILITIES } from "./types"
 import { scrubSecrets } from "./remote-string"
 
 export { StorageProviderError }
@@ -31,12 +33,18 @@ interface RunResult {
 export interface RcloneProviderOptions {
   binary?: string
   timeoutMs?: number
+  /**
+   * Matrice observée par le probe de la destination. Sans probe, aucune
+   * capacité optionnelle n'est revendiquée.
+   */
+  capabilities?: StorageCapabilities | null
 }
 
 export class RcloneStorageProvider implements StorageProvider {
   readonly id = "rclone"
   private readonly binary: string
   private readonly timeoutMs: number
+  private readonly declaredCapabilities: StorageCapabilities | null
 
   constructor(
     /** Remote-string de base, sans slash final. Contient des credentials. */
@@ -45,19 +53,13 @@ export class RcloneStorageProvider implements StorageProvider {
   ) {
     this.binary = options.binary ?? "rclone"
     this.timeoutMs = options.timeoutMs ?? 30_000
+    this.declaredCapabilities = options.capabilities ?? null
   }
 
   capabilities(): StorageCapabilities {
-    // Capacités déclaratives minimales ; la vérité vient de `probeStorage`.
-    return {
-      read: true,
-      write: true,
-      delete: true,
-      move: true,
-      checksum: true,
-      atomicCommit: true,
-      serverSideEncryption: false,
-    }
+    // Vérité = dernier probe. Le fallback copy-verify-delete ne rend pas le
+    // backend "checksum" ou "atomicCommit" pour autant.
+    return this.declaredCapabilities ?? UNPROBED_CAPABILITIES
   }
 
   private url(key: string): string {
@@ -126,6 +128,11 @@ export class RcloneStorageProvider implements StorageProvider {
     return result
   }
 
+  /**
+   * Petit objet (manifest, checksum) ou flux déjà borné. Le payload de backup
+   * n'emprunte pas ce chemin : il est streamé par le producteur via
+   * `StagingSink`.
+   */
   async put(
     key: string,
     data: Readable | Buffer,
@@ -164,7 +171,8 @@ export class RcloneStorageProvider implements StorageProvider {
   }
 
   async list(prefix: string): Promise<ObjectStat[]> {
-    const target = prefix.length > 0 ? this.url(prefix) : this.remote
+    const cleanPrefix = prefix.replace(/^\/+|\/+$/g, "")
+    const target = cleanPrefix.length > 0 ? this.url(cleanPrefix) : this.remote
     const result = await this.run(["lsjson", "-R", target])
     if (result.code !== 0) {
       throw new StorageProviderError(
@@ -181,11 +189,18 @@ export class RcloneStorageProvider implements StorageProvider {
     }[]
     return parsed
       .filter((entry) => !entry.IsDir)
-      .map((entry) => ({
-        key: entry.Path ?? entry.Name ?? "",
-        size: entry.Size ?? 0,
-        modifiedAt: entry.ModTime,
-      }))
+      .map((entry) => {
+        const relative = entry.Path ?? entry.Name ?? ""
+        // `rclone lsjson -R` renvoie des chemins RELATIFS au préfixe listé.
+        // Le contrat exige des clés complètes, directement acceptées par
+        // delete()/get()/stat() — sinon le nettoyage supprime au mauvais endroit.
+        const key = cleanPrefix ? `${cleanPrefix}/${relative}` : relative
+        return {
+          key: key.replace(/\/+$/, ""),
+          size: entry.Size ?? 0,
+          modifiedAt: entry.ModTime,
+        }
+      })
   }
 
   async delete(key: string): Promise<void> {
@@ -213,26 +228,37 @@ export class RcloneStorageProvider implements StorageProvider {
     return /^[0-9a-f]{64}$/i.test(value) ? value.toLowerCase() : null
   }
 
-  async commitPayload(
-    stagingKey: string,
-    finalKey: string,
-    expectedChecksum: string,
-  ): Promise<"atomic-rename" | "copy-verify-delete"> {
-    // Vérification distante avant promotion : un payload corrompu n'est
-    // jamais promu en artifact valide.
+  async commitPayload(input: CommitPayloadInput): Promise<CommitMode> {
+    const { stagingKey, finalKey, expectedChecksum, expectedSizeBytes } = input
+
+    // La taille est toujours vérifiée : référence quand le backend n'a pas de
+    // checksum natif (downgrade déjà décidé par le lifecycle).
+    const staging = await this.stat(stagingKey)
+    if (!staging || staging.size !== expectedSizeBytes) {
+      throw new StorageProviderError("taille distante différente", "verify_failed")
+    }
     const remoteHash = await this.hash(stagingKey)
     if (remoteHash && remoteHash !== expectedChecksum) {
       throw new StorageProviderError("checksum distant différent", "checksum_mismatch")
     }
     if (await this.move(stagingKey, finalKey)) return "atomic-rename"
 
-    // Backend sans rename natif : copy → verify → delete.
+    // Backend sans rename natif : copy → verify (checksum si dispo, sinon
+    // taille) → delete.
     const data = await this.get(stagingKey)
     await this.put(finalKey, data)
-    const copied = await this.hash(finalKey)
-    if (copied && copied !== expectedChecksum) {
-      await this.delete(finalKey).catch(() => undefined)
-      throw new StorageProviderError("copie distante non vérifiée", "commit_failed")
+    const copiedHash = await this.hash(finalKey)
+    if (copiedHash) {
+      if (copiedHash !== expectedChecksum) {
+        await this.delete(finalKey).catch(() => undefined)
+        throw new StorageProviderError("copie distante non vérifiée", "commit_failed")
+      }
+    } else {
+      const copied = await this.stat(finalKey)
+      if (!copied || copied.size !== expectedSizeBytes) {
+        await this.delete(finalKey).catch(() => undefined)
+        throw new StorageProviderError("copie distante non vérifiée (taille)", "commit_failed")
+      }
     }
     await this.delete(stagingKey)
     return "copy-verify-delete"

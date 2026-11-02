@@ -28,6 +28,7 @@ class MemoryRunStore implements RunStore {
     phases: BackupRunPhase[]
   }[] = []
   artifacts: { id: string; runId: string; storageKey: string; manifest: BackupManifest }[] = []
+  failArtifact = false
 
   async createRun(policyId: string, _trigger: RunTrigger) {
     const run = {
@@ -60,6 +61,7 @@ class MemoryRunStore implements RunStore {
     storageKey: string
     manifestJson: BackupManifest
   }) {
+    if (this.failArtifact) throw new Error("base indisponible")
     const artifact = {
       id: `art_${this.artifacts.length + 1}`,
       runId: input.runId,
@@ -231,7 +233,7 @@ describe("BackupLifecycle", () => {
       delete: (key) => provider.delete(key),
       move: async () => false,
       hash: (key, algorithm) => provider.hash(key, algorithm),
-      commitPayload: (s, f, e) => provider.commitPayload(s, f, e),
+      commitPayload: (input) => provider.commitPayload(input),
     }
 
     const result = await lifecycle().execute(
@@ -256,7 +258,7 @@ describe("BackupLifecycle", () => {
       delete: (key) => provider.delete(key),
       move: (from, to) => provider.move(from, to),
       hash: (key, algorithm) => provider.hash(key, algorithm),
-      commitPayload: (s, f, e) => provider.commitPayload(s, f, e),
+      commitPayload: (input) => provider.commitPayload(input),
     }
 
     const result = await lifecycle().execute(
@@ -265,6 +267,80 @@ describe("BackupLifecycle", () => {
     expect(result.ok).toBe(false)
     expect(store.artifacts).toHaveLength(0)
     expect(store.runs[0]!.status).toBe("FAILED")
+    // Rollback post-commit : le payload promu et le checksum déjà écrits sont
+    // supprimés, aucun objet durable ne survit sans manifest.
+    expect(await provider.list("hullbay/shop/orders-db")).toEqual([])
+  })
+
+  it("annule le préfixe final si l'artifact ne peut pas être persisté en base", async () => {
+    store.failArtifact = true
+    const result = await lifecycle().execute(
+      input(makeProducer(provider, Buffer.from("payload"))),
+    )
+
+    expect(result.ok).toBe(false)
+    expect(store.artifacts).toHaveLength(0)
+    expect(store.runs[0]!.status).toBe("FAILED")
+    // Le manifest avait été écrit ; le rollback le supprime en premier, puis
+    // le payload et le checksum.
+    expect(await provider.list("hullbay/shop/orders-db")).toEqual([])
+    expect(await provider.list(".staging")).toEqual([])
+  })
+
+  it("annule une promotion partielle quand commitPayload échoue", async () => {
+    const partial: StorageProvider = {
+      id: "partial",
+      capabilities: () => provider.capabilities(),
+      put: (key, data, opts) => provider.put(key, data, opts),
+      get: (key) => provider.get(key),
+      stat: (key) => provider.stat(key),
+      list: (prefix) => provider.list(prefix),
+      delete: (key) => provider.delete(key),
+      move: (from, to) => provider.move(from, to),
+      hash: (key, algorithm) => provider.hash(key, algorithm),
+      commitPayload: async (commit) => {
+        // Le provider a déjà copié le payload final avant d'échouer.
+        await provider.put(commit.finalKey, Buffer.from("partiel"))
+        throw new Error("copie interrompue")
+      },
+    }
+
+    const result = await lifecycle().execute(
+      input(makeProducer(provider, Buffer.from("payload")), { provider: partial }),
+    )
+
+    expect(result.ok).toBe(false)
+    expect(store.artifacts).toHaveLength(0)
+    expect(await provider.list("hullbay/shop/orders-db")).toEqual([])
+  })
+
+  it("supprime le manifest même si list() échoue pendant le rollback", async () => {
+    const listFails: StorageProvider = {
+      id: "list-fails",
+      capabilities: () => provider.capabilities(),
+      put: (key, data, opts) => provider.put(key, data, opts),
+      get: (key) => provider.get(key),
+      stat: (key) => provider.stat(key),
+      list: async (prefix) => {
+        if (prefix.startsWith("hullbay/")) throw new Error("list indisponible")
+        return provider.list(prefix)
+      },
+      delete: (key) => provider.delete(key),
+      move: (from, to) => provider.move(from, to),
+      hash: (key, algorithm) => provider.hash(key, algorithm),
+      commitPayload: (commit) => provider.commitPayload(commit),
+    }
+    store.failArtifact = true
+
+    const result = await lifecycle().execute(
+      input(makeProducer(provider, Buffer.from("payload")), { provider: listFails }),
+    )
+
+    expect(result.ok).toBe(false)
+    // list() a échoué : le payload peut rester, mais le manifest a été
+    // supprimé explicitement, donc rien ne peut passer pour un artifact valide.
+    const remaining = await provider.list("hullbay/shop/orders-db")
+    expect(remaining.some((object) => object.key.endsWith("manifest.json"))).toBe(false)
   })
 
   it("consigne copy-verify-delete quand le backend ne supporte pas le rename (#4)", async () => {

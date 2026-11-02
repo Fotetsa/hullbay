@@ -105,7 +105,7 @@ describe("probeStorage", () => {
       delete: (key) => local.delete(key),
       move: (from, to) => local.move(from, to),
       hash: (key) => local.hash(key),
-      commitPayload: (s, f, e) => local.commitPayload(s, f, e),
+      commitPayload: (input) => local.commitPayload(input),
     }
 
     const result = await probeStorage(readOnly)
@@ -153,7 +153,7 @@ describe("probeStorage", () => {
       delete: (key) => local.delete(key),
       move: (from, to) => local.move(from, to),
       hash: async () => null,
-      commitPayload: (s, f, e) => local.commitPayload(s, f, e),
+      commitPayload: (input) => local.commitPayload(input),
     }
 
     const result = await probeStorage(noHash)

@@ -3,6 +3,7 @@ import type { DockerEngineService } from "../../docker-engine/service"
 import { SwarmBackupRunner } from "../runner"
 import { SwarmStorageProvider } from "../storage/swarm-provider"
 import type { ResolvedDestination } from "../storage/registry"
+import { UNPROBED_CAPABILITIES, type StorageCapabilities } from "../storage/types"
 import { postgresStrategy } from "../strategies/postgres"
 
 const checksum = "c".repeat(64)
@@ -196,7 +197,10 @@ describe("SwarmBackupRunner.produce", () => {
 })
 
 describe("SwarmStorageProvider", () => {
-  function makeProvider(engine: DockerEngineService) {
+  function makeProvider(
+    engine: DockerEngineService,
+    capabilities?: StorageCapabilities | null,
+  ) {
     return new SwarmStorageProvider(
       {
         engine,
@@ -204,10 +208,43 @@ describe("SwarmStorageProvider", () => {
         networkName: "boz_shop_orders-db-net",
         timeoutSec: 30,
         pollMs: 1,
+        capabilities,
       },
       destination,
     )
   }
+
+  it("déclare la matrice du probe, ou aucune capacité si non sondée", () => {
+    const caps: StorageCapabilities = {
+      read: true,
+      write: true,
+      delete: true,
+      move: false,
+      checksum: false,
+      atomicCommit: false,
+      serverSideEncryption: false,
+    }
+    expect(makeProvider(fakeEngine() as unknown as DockerEngineService, caps).capabilities()).toEqual(
+      caps,
+    )
+    expect(
+      makeProvider(fakeEngine() as unknown as DockerEngineService).capabilities(),
+    ).toEqual(UNPROBED_CAPABILITIES)
+  })
+
+  it("list retourne des clés complètes, directement supprimables", async () => {
+    const engine = fakeEngine('[{"Path":"payload.sql.gz","Size":5,"IsDir":false}]')
+    const entries = await makeProvider(
+      engine as unknown as DockerEngineService,
+    ).list("hullbay/shop/orders-db/bak_1")
+    expect(entries).toEqual([
+      {
+        key: "hullbay/shop/orders-db/bak_1/payload.sql.gz",
+        size: 5,
+        modifiedAt: undefined,
+      },
+    ])
+  })
 
   it("put crée le secret blob avec le contenu puis le nettoie", async () => {
     const engine = fakeEngine()
@@ -227,24 +264,43 @@ describe("SwarmStorageProvider", () => {
     expect(engine.removeSecret).toHaveBeenCalledWith(expect.stringMatching(/^sp_blob_/))
   })
 
-  it("vérifie le checksum distant puis promeut en atomic-rename", async () => {
+  it("vérifie taille et checksum distants puis promeut en atomic-rename", async () => {
     const engine = fakeEngine("HULLBAY_COMMIT_MODE atomic-rename")
-    const mode = await makeProvider(engine as unknown as DockerEngineService).commitPayload(
-      ".staging/run_1/payload.sql.gz",
-      "hullbay/shop/orders-db/bak_1/payload.sql.gz",
-      checksum,
-    )
+    const mode = await makeProvider(engine as unknown as DockerEngineService).commitPayload({
+      stagingKey: ".staging/run_1/payload.sql.gz",
+      finalKey: "hullbay/shop/orders-db/bak_1/payload.sql.gz",
+      expectedChecksum: checksum,
+      expectedSizeBytes: 42,
+    })
     expect(mode).toBe("atomic-rename")
     const [, config] = (engine.createService as ReturnType<typeof vi.fn>).mock.calls[0]!
     const script = (config.cmd as string[])[2]!
     expect(script).toContain("rclone moveto")
     expect(script).toContain("hashsum sha256")
+    expect(script).toContain("rclone lsjson --stat")
+    expect(script).toContain("EXPECTED_SIZE")
     expect(script).toContain("HULLBAY_COMMIT_MODE")
     const remoteSecret = (config.secrets as { secretName: string; target: string }[]).find(
       (s) => s.target === "/run/secrets/backup_remote",
     )
     expect(remoteSecret?.secretName).toMatch(/^sp_remote_/)
     expect(engine.removeService).toHaveBeenCalled()
+  })
+
+  it("classe une taille distante différente en verify_failed", async () => {
+    const engine = fakeEngine()
+    engine.listServiceTasks.mockResolvedValue([
+      { Status: { State: "failed" }, ContainerStatus: { ExitCode: 8 } },
+    ])
+    engine.serviceLogs.mockResolvedValue("taille distante differente")
+    await expect(
+      makeProvider(engine as unknown as DockerEngineService).commitPayload({
+        stagingKey: ".staging/run_1/payload.sql.gz",
+        finalKey: "hullbay/shop/orders-db/bak_1/payload.sql.gz",
+        expectedChecksum: checksum,
+        expectedSizeBytes: 42,
+      }),
+    ).rejects.toMatchObject({ code: "verify_failed" })
   })
 
   it("classe un exit 4 (checksum distant) en checksum_mismatch", async () => {
@@ -254,11 +310,12 @@ describe("SwarmStorageProvider", () => {
     ])
     engine.serviceLogs.mockResolvedValue("checksum distant different")
     await expect(
-      makeProvider(engine as unknown as DockerEngineService).commitPayload(
-        ".staging/run_1/payload.sql.gz",
-        "hullbay/shop/orders-db/bak_1/payload.sql.gz",
-        checksum,
-      ),
+      makeProvider(engine as unknown as DockerEngineService).commitPayload({
+        stagingKey: ".staging/run_1/payload.sql.gz",
+        finalKey: "hullbay/shop/orders-db/bak_1/payload.sql.gz",
+        expectedChecksum: checksum,
+        expectedSizeBytes: 42,
+      }),
     ).rejects.toMatchObject({ code: "checksum_mismatch" })
   })
 
@@ -267,11 +324,12 @@ describe("SwarmStorageProvider", () => {
     engine.listServiceTasks.mockResolvedValue([{ Status: { State: "failed" } }])
     engine.serviceLogs.mockResolvedValue("erreur inconnue")
     await expect(
-      makeProvider(engine as unknown as DockerEngineService).commitPayload(
-        ".staging/run_1/payload.sql.gz",
-        "hullbay/shop/orders-db/bak_1/payload.sql.gz",
-        checksum,
-      ),
+      makeProvider(engine as unknown as DockerEngineService).commitPayload({
+        stagingKey: ".staging/run_1/payload.sql.gz",
+        finalKey: "hullbay/shop/orders-db/bak_1/payload.sql.gz",
+        expectedChecksum: checksum,
+        expectedSizeBytes: 42,
+      }),
     ).rejects.toMatchObject({ code: "commit_failed" })
   })
 })

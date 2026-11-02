@@ -3,6 +3,7 @@ import os from "node:os"
 import path from "node:path"
 import { afterAll, beforeAll, describe, expect, it } from "vitest"
 import { RcloneStorageProvider, StorageProviderError } from "../rclone-provider"
+import { UNPROBED_CAPABILITIES, type StorageCapabilities } from "../types"
 
 /**
  * Faux binaire rclone : vérifie l'interface réelle (argv, stdin, parsing)
@@ -17,9 +18,9 @@ case "$cmd" in
     if [ "$2" = "--stat" ]; then
       echo '{"Size":5,"ModTime":"2026-10-25T10:00:00Z","IsDir":false}'
     else
-      echo '[{"Path":"dir/a.sql.gz","Size":5,"IsDir":false},{"Path":"dir","Size":0,"IsDir":true}]'
+      echo '[{"Path":"a.sql.gz","Size":5,"IsDir":false},{"Path":"sub","Size":0,"IsDir":true}]'
     fi ;;
-  hashsum) echo "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa  x" ;;
+  hashsum) if [ -n "$FAKE_NO_HASH" ]; then exit 1; fi; echo "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa  x" ;;
   deletefile)
     if [ -f "$FAKE_DIR/fail" ]; then
       echo ":s3,access_key_id=AKIAEXAMPLE,secret_access_key=xyz:bucket" >&2
@@ -47,12 +48,15 @@ afterAll(async () => {
   await rm(dir, { recursive: true, force: true })
 })
 
-function provider() {
+function provider(options: { capabilities?: StorageCapabilities | null } = {}) {
   return new RcloneStorageProvider(":s3,access_key_id=K,secret_access_key=S:bucket", {
     binary,
     timeoutMs: 5000,
+    ...options,
   })
 }
+
+const CHECKSUM = "a".repeat(64)
 
 describe("RcloneStorageProvider", () => {
   it("écrit via rcat puis relit", async () => {
@@ -87,6 +91,66 @@ describe("RcloneStorageProvider", () => {
       expect((err as Error).message).not.toContain("secret_access_key=xyz")
     } finally {
       await rm(path.join(dir, "fail"), { force: true })
+    }
+  })
+
+  it("ne revendique aucune capacité sans probe", () => {
+    expect(provider().capabilities()).toEqual(UNPROBED_CAPABILITIES)
+  })
+
+  it("expose la matrice du probe sans la compléter par un fallback", () => {
+    const caps: StorageCapabilities = {
+      read: true,
+      write: true,
+      delete: true,
+      move: false,
+      checksum: false,
+      atomicCommit: false,
+      serverSideEncryption: false,
+    }
+    expect(provider({ capabilities: caps }).capabilities()).toEqual(caps)
+  })
+
+  it("vérifie la taille puis bascule en copy-verify-delete", async () => {
+    const instance = provider()
+    await instance.put("staging/object", Buffer.from("hello"))
+    const mode = await instance.commitPayload({
+      stagingKey: "staging/object",
+      finalKey: "final/object",
+      expectedChecksum: CHECKSUM,
+      expectedSizeBytes: 5,
+    })
+    expect(mode).toBe("copy-verify-delete")
+  })
+
+  it("refuse le commit si la taille distante diffère", async () => {
+    const instance = provider()
+    await instance.put("staging/object", Buffer.from("hello"))
+    await expect(
+      instance.commitPayload({
+        stagingKey: "staging/object",
+        finalKey: "final/object",
+        expectedChecksum: CHECKSUM,
+        expectedSizeBytes: 6,
+      }),
+    ).rejects.toMatchObject({ code: "verify_failed" })
+  })
+
+  it("vérifie par taille quand le backend n'expose pas de checksum", async () => {
+    process.env.FAKE_NO_HASH = "1"
+    try {
+      const instance = provider()
+      await instance.put("staging/object", Buffer.from("hello"))
+      const mode = await instance.commitPayload({
+        stagingKey: "staging/object",
+        finalKey: "final/object",
+        expectedChecksum: CHECKSUM,
+        expectedSizeBytes: 5,
+      })
+      // Ni rename ni checksum : la copie reste vérifiable par la taille.
+      expect(mode).toBe("copy-verify-delete")
+    } finally {
+      delete process.env.FAKE_NO_HASH
     }
   })
 })

@@ -7,6 +7,12 @@ export default defineConfig({
 
     isolate: true,
 
+    // Les tests d'intégration partagent une base Postgres réelle (seed, tenants,
+    // rôles). Les exécuter en parallèle provoque des courses entre fichiers
+    // (tenant supprimé pendant un seed → FK violations). On sérialise les
+    // fichiers ; les tests d'un même fichier restent séquentiels par défaut.
+    fileParallelism: false,
+
     reporters: "verbose",
 
     coverage: {

@@ -22,15 +22,6 @@ import { providerRegistry } from "../registry/provider-registry"
 
 vi.setConfig({ testTimeout: 15000, hookTimeout: 15000 })
 
-vi.mock("../../../lib/prisma", () => ({
-  prisma: {
-    authProvider: { findMany: vi.fn(), findUnique: vi.fn(), update: vi.fn(), create: vi.fn(), delete: vi.fn(), count: vi.fn() },
-    authIdentity: { count: vi.fn() },
-    pendingIdentity: { count: vi.fn() },
-    securityPolicy: { findUnique: vi.fn() },
-  },
-}))
-
 vi.mock("../../../lib/prisma", () => {
   const authProvider = {
     findMany: vi.fn(),
@@ -64,6 +55,12 @@ vi.mock("../../../lib/prisma", () => {
   return {
     prisma: {
       ...client,
+      // SecurityPolicyService appelle findUnique(...).then(...) et upsert(...).catch(...)
+      // au chargement du module : les mocks doivent renvoyer des promesses.
+      securityPolicy: {
+        findUnique: vi.fn().mockResolvedValue(null),
+        upsert: vi.fn().mockResolvedValue({}),
+      },
       $transaction: vi.fn(async (fn: (t: unknown) => Promise<unknown>) => fn(client)),
     },
   }

@@ -8,6 +8,9 @@ import { buildRcloneRemoteString, scrubSecrets } from "./remote-string"
 import type { ResolvedDestination } from "./registry"
 import {
   StorageProviderError,
+  UNPROBED_CAPABILITIES,
+  type CommitMode,
+  type CommitPayloadInput,
   type HashAlgorithm,
   type ObjectStat,
   type PutOptions,
@@ -41,6 +44,12 @@ export interface SwarmStorageProviderDeps {
   resources?: Resources
   timeoutSec: number
   pollMs?: number
+  /**
+   * Matrice observée par le dernier probe de la destination. Sans probe, les
+   * capacités optionnelles valent `false` : le provider ne prétend jamais
+   * garantir un checksum ou un rename qu'il n'a pas démontré.
+   */
+  capabilities?: StorageCapabilities | null
 }
 
 export class SwarmStorageProvider implements StorageProvider, StagingSink {
@@ -69,18 +78,9 @@ export class SwarmStorageProvider implements StorageProvider, StagingSink {
   }
 
   capabilities(): StorageCapabilities {
-    // Le commit s'auto-adapte (moveto, sinon copy+verify+delete), donc les
-    // capacités déclarées sont conservatrices ; la vérité du mode est renvoyée
-    // par `commitPayload`.
-    return {
-      read: true,
-      write: true,
-      delete: true,
-      move: true,
-      checksum: true,
-      atomicCommit: true,
-      serverSideEncryption: false,
-    }
+    // Vérité = matrice du dernier probe. Aucune capacité n'est déduite d'un
+    // fallback : le commit s'auto-adapte, mais `capabilities()` ne l'annonce pas.
+    return this.deps.capabilities ?? UNPROBED_CAPABILITIES
   }
 
   /**
@@ -159,6 +159,11 @@ export class SwarmStorageProvider implements StorageProvider, StagingSink {
     }
   }
 
+  /**
+   * Écrit un petit objet (manifest, checksum). Un `Readable` est intégralement
+   * bufferisé : ce chemin n'est PAS streaming-safe. Le payload de backup passe
+   * par `stagingUploadScript()` (StagingSink), jamais par `put()`.
+   */
   async put(
     key: string,
     data: Readable | Buffer,
@@ -219,7 +224,7 @@ export class SwarmStorageProvider implements StorageProvider, StagingSink {
   }
 
   async list(prefix: string): Promise<ObjectStat[]> {
-    const safePrefix = prefix.replace(/^\/+/, "")
+    const safePrefix = prefix.replace(/^\/+|\/+$/g, "")
     const result = await this.runRclone(
       [
         "set -euo pipefail",
@@ -238,11 +243,18 @@ export class SwarmStorageProvider implements StorageProvider, StagingSink {
       }[]
       return parsed
         .filter((entry) => !entry.IsDir)
-        .map((entry) => ({
-          key: entry.Path ?? entry.Name ?? "",
-          size: entry.Size ?? 0,
-          modifiedAt: entry.ModTime,
-        }))
+        .map((entry) => {
+          const relative = entry.Path ?? entry.Name ?? ""
+          // `rclone lsjson -R` renvoie des chemins RELATIFS au préfixe listé.
+          // Le contrat exige des clés complètes, directement acceptées par
+          // delete()/get()/stat() — sinon le nettoyage supprime au mauvais endroit.
+          const key = safePrefix ? `${safePrefix}/${relative}` : relative
+          return {
+            key: key.replace(/\/+$/, ""),
+            size: entry.Size ?? 0,
+            modifiedAt: entry.ModTime,
+          }
+        })
     } catch {
       throw new StorageProviderError(scrubSecrets("list impossible"), "list_failed")
     }
@@ -292,39 +304,59 @@ export class SwarmStorageProvider implements StorageProvider, StagingSink {
     return /^[0-9a-f]{64}$/i.test(value) ? value.toLowerCase() : null
   }
 
-  async commitPayload(
-    stagingKey: string,
-    finalKey: string,
-    expectedChecksum: string,
-  ): Promise<"atomic-rename" | "copy-verify-delete"> {
+  async commitPayload(input: CommitPayloadInput): Promise<CommitMode> {
+    const { stagingKey, finalKey, expectedChecksum, expectedSizeBytes } = input
     const script = [
       "set -euo pipefail",
       'REMOTE="$(cat /run/secrets/backup_remote)"',
       `SRC="$REMOTE/${stagingKey}"`,
       `DST="$REMOTE/${finalKey}"`,
       `EXPECTED="${expectedChecksum}"`,
-      // Vérification distante avant promotion : un payload corrompu n'est
-      // jamais promu en artifact valide.
+      `EXPECTED_SIZE="${expectedSizeBytes}"`,
+      // La taille est TOUJOURS vérifiée : elle reste la référence quand le
+      // backend n'expose pas de checksum natif.
+      `SIZE="$(rclone lsjson --stat "$SRC" 2>/dev/null | tr -d ' ' | grep -o '"Size":[0-9]*' | cut -d: -f2)" || SIZE=""`,
+      'if [ -z "$SIZE" ]; then',
+      '  echo "taille distante illisible" >&2',
+      "  exit 7",
+      "fi",
+      'if [ "$SIZE" != "$EXPECTED_SIZE" ]; then',
+      '  echo "taille distante differente" >&2',
+      "  exit 8",
+      "fi",
+      // Checksum seulement si le backend le fournit ; sinon la taille (déjà
+      // validée) fait foi, conformément au downgrade du lifecycle.
       'HAVE="$(rclone hashsum sha256 "$SRC" 2>/dev/null | awk \'{print $1}\')" || HAVE=""',
       'if [ -n "$HAVE" ] && [ "$HAVE" != "$EXPECTED" ]; then',
       '  echo "checksum distant different" >&2',
       "  exit 4",
       "fi",
       'MODE="atomic-rename"',
-      'if rclone moveto "$SRC" "$DST" 2>/tmp/move_err; then',
+      'MOVE_ERR=""',
+      'if MOVE_ERR="$(rclone moveto "$SRC" "$DST" 2>&1)"; then',
       "  :",
       "else",
-      '  if grep -qiE "not support|unsupported|operation not permitted" /tmp/move_err; then',
+      "  if printf '%s' \"$MOVE_ERR\" | grep -qiE \"not support|unsupported|operation not permitted\"; then",
       '    MODE="copy-verify-delete"',
       '    rclone copyto "$SRC" "$DST"',
-      '    NEW="$(rclone hashsum sha256 "$DST" 2>/dev/null | awk \'{print $1}\')"',
-      '    if [ "$NEW" != "$EXPECTED" ]; then',
-      '      echo "copie distante non verifiee" >&2',
-      "      exit 5",
+      // Même contrat en fallback : checksum si disponible, sinon taille.
+      '    NEW="$(rclone hashsum sha256 "$DST" 2>/dev/null | awk \'{print $1}\')" || NEW=""',
+      '    if [ -n "$NEW" ]; then',
+      '      if [ "$NEW" != "$EXPECTED" ]; then',
+      '        echo "copie distante non verifiee" >&2',
+      "        exit 5",
+      "      fi",
+      "    else",
+      `      NEW_SIZE="$(rclone lsjson --stat "$DST" 2>/dev/null | tr -d ' ' | grep -o '"Size":[0-9]*' | cut -d: -f2)" || NEW_SIZE=""`,
+      '      if [ -z "$NEW_SIZE" ] || [ "$NEW_SIZE" != "$EXPECTED_SIZE" ]; then',
+      '        echo "copie distante non verifiee (taille)" >&2',
+      "        exit 5",
+      "      fi",
       "    fi",
       '    rclone deletefile "$SRC"',
       "  else",
       '    echo "moveto echoue" >&2',
+      '    printf \'%s\\n\' "$MOVE_ERR" >&2',
       "    exit 6",
       "  fi",
       "fi",
@@ -341,6 +373,9 @@ export class SwarmStorageProvider implements StorageProvider, StagingSink {
       const combined = `${msg} ${logsOfError}`
       if (/checksum distant different/i.test(combined)) {
         throw new StorageProviderError("checksum distant différent", "checksum_mismatch")
+      }
+      if (/taille distante/i.test(combined)) {
+        throw new StorageProviderError("taille distante différente", "verify_failed")
       }
       if (/copie distante non verifiee/i.test(combined)) {
         throw new StorageProviderError("copie distante non vérifiée", "commit_failed")
