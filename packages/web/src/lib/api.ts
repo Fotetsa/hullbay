@@ -1,4 +1,10 @@
 import type { Project, ProjectGraph, NodeType, Node, DatabaseConfig } from "@hullbay/shared";
+import type {
+  BackupDestinationFields,
+  BackupPolicyInput,
+  BackupProtocol,
+  BackupTargetKind,
+} from "@hullbay/shared";
 import i18n from "../i18n/config";
 
 /**
@@ -520,6 +526,65 @@ export const api = {
       method: "POST",
     }),
 
+  // Sauvegardes (Backup Engine)
+  listBackupDestinations: () =>
+    req<BackupDestination[]>("/api/backup/destinations"),
+  createBackupDestination: (data: {
+    name: string;
+    basePath: string;
+    projectId?: string;
+    config: BackupDestinationFields;
+  }) =>
+    req<BackupDestination>("/api/backup/destinations", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+  deleteBackupDestination: (id: string) =>
+    req<void>(`/api/backup/destinations/${id}`, { method: "DELETE" }),
+  testBackupDestination: (id: string) =>
+    req<BackupProbeResult>(`/api/backup/destinations/${id}/test`, {
+      method: "POST",
+    }),
+  listBackupTargets: (projectId?: string) =>
+    req<BackupTarget[]>(
+      `/api/backup/targets${projectId ? `?projectId=${encodeURIComponent(projectId)}` : ""}`,
+    ),
+  createBackupTarget: (nodeId: string) =>
+    req<BackupTarget>("/api/backup/targets", {
+      method: "POST",
+      body: JSON.stringify({ nodeId }),
+    }),
+  deleteBackupTarget: (id: string) =>
+    req<void>(`/api/backup/targets/${id}`, { method: "DELETE" }),
+  listBackupPolicies: (targetId?: string) =>
+    req<BackupPolicy[]>(
+      `/api/backup/policies${targetId ? `?targetId=${encodeURIComponent(targetId)}` : ""}`,
+    ),
+  createBackupPolicy: (input: BackupPolicyInput) =>
+    req<BackupPolicy>("/api/backup/policies", {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
+  updateBackupPolicy: (id: string, patch: Partial<BackupPolicyInput>) =>
+    req<BackupPolicy>(`/api/backup/policies/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(patch),
+    }),
+  deleteBackupPolicy: (id: string) =>
+    req<void>(`/api/backup/policies/${id}`, { method: "DELETE" }),
+  runBackupPolicy: (id: string) =>
+    req<BackupRunResult>(`/api/backup/policies/${id}/run`, { method: "POST" }),
+  listBackupRuns: (policyId: string, limit = 20) =>
+    req<BackupRun[]>(
+      `/api/backup/runs?policyId=${encodeURIComponent(policyId)}&limit=${limit}`,
+    ),
+  listBackupArtifacts: (targetId: string, limit = 20) =>
+    req<BackupArtifact[]>(
+      `/api/backup/artifacts?targetId=${encodeURIComponent(targetId)}&limit=${limit}`,
+    ),
+  getBackupArtifact: (id: string) =>
+    req<BackupArtifactDetail>(`/api/backup/artifacts/${id}`),
+
   // Système
   getEnvironment: () =>
     req<{ environment: unknown }>("/api/system/environment").then((r) => ({
@@ -530,6 +595,105 @@ export const api = {
 // ── Types ──────────────────────────────────────────────────────────────────
 
 export type Environment = "development" | "test" | "production";
+
+// ── Backup Engine (vues API) ────────────────────────────────────────────────
+
+export type BackupCapabilities = {
+  read: boolean;
+  write: boolean;
+  delete: boolean;
+  move: boolean;
+  checksum: boolean;
+  atomicCommit: boolean;
+  serverSideEncryption?: boolean;
+};
+
+export type BackupDestination = {
+  id: string;
+  name: string;
+  protocol: BackupProtocol;
+  basePath: string;
+  projectId: string | null;
+  lastTestedAt: string | null;
+  capabilities: BackupCapabilities | null;
+  createdAt: string;
+};
+
+export type BackupProbeResult = {
+  ok: boolean;
+  capabilities: BackupCapabilities;
+  destination: BackupDestination;
+};
+
+export type BackupTarget = {
+  id: string;
+  projectId: string;
+  nodeId: string;
+  kind: BackupTargetKind;
+  name: string;
+  archived: boolean;
+};
+
+export type BackupPolicy = {
+  id: string;
+  targetId: string;
+  destinationId: string;
+  strategyId: string;
+  schedule: "manual" | "daily" | "weekly";
+  scheduleHourUtc: number | null;
+  retentionDays: number;
+  verification: "size" | "checksum";
+  encryptionMode: "none";
+  placementJson: unknown;
+  timeoutSec: number;
+  maxConcurrency: number;
+  enabled: boolean;
+  targetName?: string;
+  targetKind?: BackupTargetKind;
+};
+
+export type BackupRun = {
+  id: string;
+  policyId: string;
+  status: "RUNNING" | "COMPLETED" | "FAILED";
+  phase: string;
+  trigger: string;
+  startedAt: string;
+  finishedAt: string | null;
+  sizeBytes: string | null;
+  errorCode: string | null;
+  errorMessage: string | null;
+};
+
+export type BackupRunResult = {
+  ok: boolean;
+  runId: string;
+  artifactId?: string;
+  sizeBytes?: number;
+  errorCode?: string;
+};
+
+export type BackupArtifact = {
+  id: string;
+  targetId: string;
+  destinationId: string;
+  storageKey: string;
+  payloadFormat: string;
+  checksumSha256: string;
+  sizeBytes: string;
+  engine: string;
+  engineVersion: string;
+  strategyId: string;
+  formatVersion: number;
+  committedAt: string;
+};
+
+export type BackupArtifactDetail = {
+  id: string;
+  storageKey: string;
+  manifest: unknown;
+  sizeBytes: string;
+};
 
 /** Tenants accessibles au compte (membreships) ; alimente le switcher. */
 export type MemberTenant = {

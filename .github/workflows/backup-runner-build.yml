@@ -1,0 +1,42 @@
+# Build & Push de l'image backup-runner (rclone + clients DB).
+#
+# Image versionnée, indépendante des releases hullbay : elle embarque un binaire
+# rclone et des clients de bases dont les versions évoluent séparément.
+name: Build & Push backup-runner
+on:
+  workflow_dispatch:
+  push:
+    branches: [master]
+    paths:
+      - "packages/backup-runner/**"
+      - ".github/workflows/backup-runner-build.yml"
+permissions:
+  contents: read
+  packages: write
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: docker/setup-buildx-action@v3
+      - name: Login GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Image name (minuscules)
+        id: meta
+        run: echo "repo=ghcr.io/$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')/backup-runner" >> "$GITHUB_OUTPUT"
+      - name: Build & push
+        uses: docker/build-push-action@v6
+        with:
+          context: packages/backup-runner
+          push: true
+          tags: |
+            ${{ steps.meta.outputs.repo }}:latest
+            ${{ steps.meta.outputs.repo }}:sha-${{ github.sha }}
+      - name: Vérifier les outils embarqués
+        run: |
+          docker run --rm "${{ steps.meta.outputs.repo }}:sha-${{ github.sha }}" \
+            'rclone version && pg_dump --version && mysqldump --version && mongodump --version && redis-cli --version && tar --version | head -1'

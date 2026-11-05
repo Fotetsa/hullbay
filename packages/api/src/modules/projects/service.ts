@@ -7,6 +7,7 @@ import {
   type ProjectGraph,
 } from "@hullbay/shared"
 import { clusterService } from "../clusters/service"
+import { backupTargetService } from "../backup/targets.service"
 import { DEFAULT_TENANT_ID } from "../auth/identity/auth-identity.service"
 
 /** Dérive un slug Docker-valide depuis un nom libre (sans accents, minuscules, tirets). */
@@ -122,9 +123,10 @@ export class ProjectsService {
     const scopedWhere = { id, ...(tenantId ? { project: { tenantId } } : {}) }
     // Si la config change, la revalider selon le type courant du nœud.
     let configToSave: object | undefined
+    let node: Awaited<ReturnType<typeof prisma.node.findUnique>> | null = null
     if (data.config !== undefined) {
-      const node = await prisma.node.findUnique({ where: scopedWhere })
-      if (!node) return false
+      node = await prisma.node.findUnique({ where: scopedWhere })
+      if (!node) return { ok: false }
       configToSave = parseNodeConfig(node.type as NodeType, data.config) as object
     }
     const res = await prisma.node.updateMany({
@@ -136,7 +138,36 @@ export class ProjectsService {
         ...(configToSave !== undefined ? { config: configToSave } : {}),
       },
     })
-    return res.count > 0
+    if (res.count === 0) return { ok: false }
+
+    // Re-sync de la cible de sauvegarde si le moteur du nœud a changé
+    // (database → engine, volume → "volume"). Voir BackupTargetService.
+    let backupResynced: {
+      oldKind: string | null
+      newKind: string
+      targetId: string
+      reused: boolean
+      archived: boolean
+    } | null = null
+    if (node && configToSave) {
+      const expectedKind =
+        node.type === "database"
+          ? (configToSave as { engine?: string }).engine
+          : node.type === "volume"
+            ? "volume"
+            : null
+      if (expectedKind) {
+        backupResynced = await backupTargetService.reconcileForNode({
+          nodeId: node.id,
+          tenantId: (tenantId as string) ?? DEFAULT_TENANT_ID,
+          projectId: node.projectId,
+          expectedKind,
+          name: node.name,
+        })
+      }
+    }
+
+    return { ok: true, backupResynced }
   }
 
   async deleteNode(id: string, tenantId?: string) {

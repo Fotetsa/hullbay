@@ -18,12 +18,13 @@
 
 import { createCipheriv, createDecipheriv, randomBytes, createHash } from "node:crypto"
 
-export type SecretKind = "mfa" | "provider" | "session"
+export type SecretKind = "mfa" | "provider" | "session" | "backup"
 
 const SECRET_CONFIG: Record<SecretKind, { envKey: string; label: string }> = {
   mfa:      { envKey: "MFA_ENCRYPTION_KEY",      label: "MFA" },
   provider: { envKey: "PROVIDER_SECRET_KEY",      label: "PROVIDER" },
   session:  { envKey: "SESSION_SIGNING_KEY",       label: "SESSION" },
+  backup:   { envKey: "BACKUP_ENCRYPTION_KEY",     label: "BACKUP" },
 }
 
 /** Empreinte (16 hex soit 8 octets) d'une clé — rend les rotations détectables.
@@ -80,14 +81,15 @@ function decrypt(kind: SecretKind, payload: string): string {
 
 function decryptInternal(kind: SecretKind, payload: string, keyHex?: string): string {
   const parts = payload.split(":")
-  // Nouveau format : `k<fingerprint>:iv:tag:data` → la clé atteste l'empreinte.
+  // Nouveau format : `k<fingerprint>:iv:tag:data` (4 segments) → la clé atteste
+  // l'empreinte. Les payloads legacy `iv:tag:data` (3 segments) restent lisibles.
   let ivHex: string | undefined
   let tagHex: string | undefined
   let dataHex: string | undefined
-  if (/^k[0-9a-f]{16}$/.test(parts[0] ?? "") && parts.length === 6) {
-    ivHex = parts[2]
-    tagHex = parts[3]
-    dataHex = parts[4]
+  if (/^k[0-9a-f]{16}$/.test(parts[0] ?? "") && parts.length === 4) {
+    ivHex = parts[1]
+    tagHex = parts[2]
+    dataHex = parts[3]
   } else if (parts.length === 3) {
     ;[ivHex, tagHex, dataHex] = parts
   } else {
@@ -108,6 +110,17 @@ function decryptInternal(kind: SecretKind, payload: string, keyHex?: string): st
  *  (`decryptObject`, scope provider) échoue. */
 export function encryptProviderSecret(plain: string): string {
   return encrypt("provider", plain)
+}
+
+/** Chiffre une valeur dans le scope "backup" (credentials de destination).
+ *  Scope distinct de "mfa" : une rotation de clé backup ne casse pas l'auth. */
+export function encryptBackupSecret(plain: string): string {
+  return encrypt("backup", plain)
+}
+
+/** Déchiffre un payload du scope "backup" (clé courante puis précédente). */
+export function decryptBackupSecret(payload: string): string {
+  return decrypt("backup", payload)
 }
 
 /** Chiffre les champs sensibles d'un objet (utilisé pour AuthProvider.config). */

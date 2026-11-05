@@ -149,9 +149,9 @@ export async function registerProjectRoutes(app: FastifyInstance) {
     const tenantId = (req as TenantScopedRequest).tenantId
     try {
       const body = req.body as any
-      const ok = await projectsService.updateNode(nodeId, body, tenantId)
-      if (!ok) return reply.code(404).send({ error: "node not found" })
-      return { ok: true }
+      const result = await projectsService.updateNode(nodeId, body, tenantId)
+      if (!result.ok) return reply.code(404).send({ error: "node not found" })
+      return { ok: true, backupResynced: result.backupResynced ?? null }
     } catch (err) {
       return reply.code(400).send({ error: err instanceof Error ? err.message : String(err) })
     }

@@ -40,9 +40,12 @@ import { registerDeploySubscribers } from "./subscribers/on-deploy-finished";
 import { startDriftJob } from "./jobs/reconcile-drift";
 import { startAutoScaler } from "./jobs/auto-scaler";
 import { startClusterHealthJob } from "./jobs/cluster-health";
+import { startBackupScheduler } from "./jobs/backup-scheduler";
 import fastify, { type FastifyInstance } from "fastify";
 import { stopTunnelCleanup, closeAllTunnels } from "./lib/ssh-tunnel";
 import { registerClustersRoutes } from "./modules/clusters/routes";
+import { registerBackupDestinationsRoutes } from "./modules/backup/destinations.routes";
+import { registerBackupRoutes } from "./modules/backup/routes";
 import { registerClusterSubscribers } from "./subscribers/clusters";
 import { registerSystemRoutes } from "./modules/system/routes";
 import { backfillDefaultMemberships } from "./modules/auth/identity/auth-identity.service";
@@ -185,6 +188,8 @@ app.setErrorHandler((error: FastifyError, request, reply) => {
     await registerSettingsRoutes(app);
     await registerUpdatesRoutes(app);
     await registerClustersRoutes(app);
+    await registerBackupDestinationsRoutes(app);
+    await registerBackupRoutes(app);
   }
 
   if (!skipSideEffects) {
@@ -229,6 +234,7 @@ app.setErrorHandler((error: FastifyError, request, reply) => {
     startDriftJob();
     startAutoScaler();
     startClusterHealthJob();
+    startBackupScheduler();
   }
   return app;
 }
