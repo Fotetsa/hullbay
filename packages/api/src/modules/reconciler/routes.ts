@@ -9,7 +9,10 @@ import { TunnelError } from "../../lib/ssh-tunnel"
 import { invalidateDockerClient } from "../docker-engine/client"
 import { eventBus } from "../../lib/event-bus"
 import { prisma } from "../../lib/prisma"
-import { requireRole, currentUser } from "../auth/rbac"
+import { currentUser } from "../auth/rbac"
+import { requirePermission, fromParam } from "../authorization/http"
+import type { ResourceExtractor } from "../authorization/http/resolvers"
+import type { Role as LegacyRole } from "../auth/authorization/rbac"
 import { pruneOrphans } from "../../jobs/prune-orphans"
 import { runWithConcurrency, CLUSTER_CONCURRENCY } from "../../lib/concurrency"
 import { expandDatabaseGraph, databaseNodePreview } from "../database"
@@ -18,8 +21,9 @@ import type { ExpandedProjectGraph } from "../database"
 import { clusterService } from "../clusters/service"
 import type { TenantScopedRequest } from "../auth/tenancy/tenant-resolver"
 
-const operator = { preHandler: requireRole("operator") }
-const owner = { preHandler: requireRole("owner") }
+const guard = (action: string, legacyMin: LegacyRole, resource?: ResourceExtractor) => ({
+  preHandler: requirePermission(action, { resource, legacyMin }),
+})
 
 /**
  * Isolation par tenant : un projet d'un autre tenant est traité
@@ -51,6 +55,7 @@ export async function registerReconcilerRoutes(app: FastifyInstance) {
   app.get(
     "/api/projects/:id/plan",
     {
+      ...guard("project.read", "viewer", fromParam("id", "project")),
       schema: {
         tags: ["reconciler"],
         summary:
@@ -86,6 +91,7 @@ export async function registerReconcilerRoutes(app: FastifyInstance) {
   app.get(
     "/api/projects/:id/nodes/:nodeId/preview",
     {
+      ...guard("project.read", "viewer", fromParam("id", "project")),
       schema: {
         tags: ["reconciler"],
         summary: "Aperçu des ressources générées d'un nœud database (config sauvée ou brouillon)",
@@ -132,7 +138,7 @@ export async function registerReconcilerRoutes(app: FastifyInstance) {
   app.post(
     "/api/projects/:id/deploy",
     {
-      ...operator,
+      ...guard("project.deploy", "operator", fromParam("id", "project")),
       schema: {
         tags: ["reconciler"],
         summary: "Déployer un projet (desired -> real) — audité",
@@ -144,7 +150,10 @@ export async function registerReconcilerRoutes(app: FastifyInstance) {
       if (deployingProjects.has(id)) {
         return reply.code(409).send({ error: "déploiement déjà en cours" });
       }
-      const graph = await projectsService.getProjectGraph(id, (req as TenantScopedRequest).tenantId);
+      const graph = await projectsService.getProjectGraph(
+        id,
+        (req as TenantScopedRequest).tenantId,
+      );
       if (!ensureTenantScoped(graph, req))
         return reply.code(404).send({ error: "project not found" });
 
@@ -173,7 +182,11 @@ export async function registerReconcilerRoutes(app: FastifyInstance) {
       const userId = currentUser(req)?.sub;
       const reqTenant = (req as TenantScopedRequest).tenantId;
       deployingProjects.add(id);
-      await eventBus.emit("deploy.started", { projectId: id, userId, tenantId: reqTenant });
+      await eventBus.emit("deploy.started", {
+        projectId: id,
+        userId,
+        tenantId: reqTenant,
+      });
       try {
         // Workflow avec steps + compensation (rollback si échec partiel).
         // Retry unique en cas d'erreur tunnel (ECONNREFUSED / EPIPE / socket hang up) :
@@ -197,7 +210,11 @@ export async function registerReconcilerRoutes(app: FastifyInstance) {
           invalidateDockerClient(graph.clusterId);
           log = await deployProjectWorkflow({ graph, createdBy: userId });
         }
-        await projectsService.updateProject(id, { status: "deployed" }, (req as TenantScopedRequest).tenantId);
+        await projectsService.updateProject(
+          id,
+          { status: "deployed" },
+          (req as TenantScopedRequest).tenantId,
+        );
         await eventBus.emit("deploy.finished", {
           projectId: id,
           userId,
@@ -208,7 +225,11 @@ export async function registerReconcilerRoutes(app: FastifyInstance) {
         return { ok: true, log };
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
-        await projectsService.updateProject(id, { status: "error" }, (req as TenantScopedRequest).tenantId);
+        await projectsService.updateProject(
+          id,
+          { status: "error" },
+          (req as TenantScopedRequest).tenantId,
+        );
         await eventBus.emit("deploy.finished", {
           projectId: id,
           userId,
@@ -235,7 +256,7 @@ export async function registerReconcilerRoutes(app: FastifyInstance) {
   app.post(
     "/api/projects/:id/destroy",
     {
-      ...operator,
+      ...guard("project.destroy", "operator", fromParam("id", "project")),
       schema: {
         tags: ["reconciler"],
         summary: "Destruction de tous les ressources gérées",
@@ -297,7 +318,7 @@ export async function registerReconcilerRoutes(app: FastifyInstance) {
   app.post(
     "/api/rebuild-from-docker",
     {
-      ...operator,
+      ...guard("project.rebuild", "operator"),
       schema: {
         tags: ["reconciler"],
         summary: "Reconstruction depuis docker",
@@ -305,56 +326,73 @@ export async function registerReconcilerRoutes(app: FastifyInstance) {
       },
     },
     async (req) => {
-      const tenantId = (req as TenantScopedRequest).tenantId
-      const clusters = await prisma.cluster.findMany({ where: { tenantId }, select: { id: true, status: true } })
+      const tenantId = (req as TenantScopedRequest).tenantId;
+      const clusters = await prisma.cluster.findMany({
+        where: { tenantId },
+        select: { id: true, status: true },
+      });
       // Garde : ne reconstruire que sur des clusters prêts ; un cluster
       // pending/failed ne doit pas servir de base de reconstruction.
-      const candidates = clusters.filter((c) => c.status === "ready")
-      const skippedUnready = clusters.length - candidates.length
+      const candidates = clusters.filter((c) => c.status === "ready");
+      const skippedUnready = clusters.length - candidates.length;
       const { items, totalMs } = await runWithConcurrency(
         candidates.map((c) => c.id),
         CLUSTER_CONCURRENCY,
         async (clusterId) => {
-          const engine = await DockerEngineService.forCluster(clusterId)
+          const engine = await DockerEngineService.forCluster(clusterId);
           if (!(await engine.isSwarmActive())) {
-            return { projects: 0, nodes: 0, edges: 0, degraded: 0, skipped: true }
+            return {
+              projects: 0,
+              nodes: 0,
+              edges: 0,
+              degraded: 0,
+              skipped: true,
+            };
           }
-          return { ...(await rebuildFromDocker(clusterId)), skipped: false }
+          return { ...(await rebuildFromDocker(clusterId)), skipped: false };
         },
-      )
-      let total = { projects: 0, nodes: 0, edges: 0, degraded: 0 }
-      let skippedSwarmInactive = 0
-      let failed = 0
+      );
+      let total = { projects: 0, nodes: 0, edges: 0, degraded: 0 };
+      let skippedSwarmInactive = 0;
+      let failed = 0;
       for (const it of items) {
         if (it.status === "fulfilled" && it.value) {
-          total.projects += it.value.projects; total.nodes += it.value.nodes
-          total.edges += it.value.edges; total.degraded += it.value.degraded
-          if (it.value.skipped) skippedSwarmInactive++
+          total.projects += it.value.projects;
+          total.nodes += it.value.nodes;
+          total.edges += it.value.edges;
+          total.degraded += it.value.degraded;
+          if (it.value.skipped) skippedSwarmInactive++;
         } else if (it.status === "rejected") {
           // Cluster ready mais injoignable : ni reconstruit, ni compté en skip
           // silencieux — on le remonte pour que l'opérateur voie l'échec.
-          failed++
+          failed++;
         }
       }
-      const skipped = skippedUnready + skippedSwarmInactive
-      console.log(`[reconciler] rebuild ${candidates.length} clusters en ${totalMs.toFixed(0)}ms (concurrency=${CLUSTER_CONCURRENCY}, skip=${skipped}, failed=${failed})`)
+      const skipped = skippedUnready + skippedSwarmInactive;
+      console.log(
+        `[reconciler] rebuild ${candidates.length} clusters en ${totalMs.toFixed(0)}ms (concurrency=${CLUSTER_CONCURRENCY}, skip=${skipped}, failed=${failed})`,
+      );
       return { ok: true, ...total, skipped, failed };
     },
   );
 
   // Prune des ressources gérées orphelines. GET = dry-run (aperçu, operator),
   // POST = applique la suppression (destructif, owner uniquement).
-  app.get("/api/prune", {
-    ...operator,
-    schema: {
-      tags: ["reconciler"],
-      security: [{ bearerAuth: []}],
+  app.get(
+    "/api/prune",
+    {
+      ...guard("prune.dry", "operator"),
+      schema: {
+        tags: ["reconciler"],
+        security: [{ bearerAuth: [] }],
+      },
     },
-  }, async () => {
-    return pruneOrphans(false)
-  })
+    async () => {
+      return pruneOrphans(false);
+    },
+  );
   app.post("/api/prune", {
-    ...owner,
+    ...guard("prune.apply", "owner"),
     schema: {
       tags: ["reconciler"],
       security: [{ bearerAuth: []}],

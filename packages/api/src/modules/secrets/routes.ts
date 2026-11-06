@@ -1,7 +1,9 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify"
 import { z } from "zod"
 import { DockerEngineService } from "../docker-engine/service"
-import { requireRole, currentUser } from "../auth/rbac"
+import { requirePermission, fromParam } from "../authorization/http"
+import type { ResourceExtractor } from "../authorization/http/resolvers"
+import { currentUser } from "../auth/rbac"
 import { clusterService } from "../clusters/service"
 import { eventBus } from "../../lib/event-bus"
 import type { TenantScopedRequest } from "../auth/tenancy/tenant-resolver"
@@ -22,7 +24,9 @@ import type { TenantScopedRequest } from "../auth/tenancy/tenant-resolver"
  * un 400 avec le detail de l'erreur. Pas besoin de safeParse() manuel.
  */
 
-const operator = { preHandler: requireRole("operator") }
+const guard = (action: string, resource?: ResourceExtractor) => ({
+  preHandler: requirePermission(action, { resource, legacyMin: "operator"}),
+})
 
 const SECRET_NAME_RE = /^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$/
 const normalizeSecretName = (value: unknown) => {
@@ -80,7 +84,7 @@ export async function registerSecretsRoutes(app: FastifyInstance) {
   app.get(
     "/api/clusters/:clusterId/secrets",
     {
-      ...operator,
+      ...guard("secret.read", fromParam("clusterId", "cluster")),
       schema: {
         params: clusterParams,
         tags: ["secrets"],
@@ -101,7 +105,7 @@ export async function registerSecretsRoutes(app: FastifyInstance) {
   app.post(
     "/api/clusters/:clusterId/secrets",
     {
-      ...operator,
+      ...guard("secret.set", fromParam("clusterId", "cluster")),
       schema: {
         params: clusterParams,
         body: CreateSecretSchema,
@@ -134,49 +138,54 @@ export async function registerSecretsRoutes(app: FastifyInstance) {
   app.post(
     "/api/clusters/:clusterId/secrets/batch",
     {
-      ...operator,
+      ...guard("secret.set", fromParam("clusterId", "cluster")),
       schema: {
         params: clusterParams,
         body: BatchCreateSecretSchema,
         tags: ["secrets"],
-        summary: "Créer ou mettre à jour un lot de secrets en une seule requête",
+        summary:
+          "Créer ou mettre à jour un lot de secrets en une seule requête",
         security: [{ bearerAuth: [] }],
       },
     },
     async (req, reply) => {
-      const { clusterId } = req.params as { clusterId: string }
-      if (!(await ensureClusterInTenant(clusterId, req, reply))) return reply
+      const { clusterId } = req.params as { clusterId: string };
+      if (!(await ensureClusterInTenant(clusterId, req, reply))) return reply;
 
-      const { items } = req.body as { items: Array<{ name: string; value: string }> }
-      const engine = await DockerEngineService.forCluster(clusterId)
+      const { items } = req.body as {
+        items: Array<{ name: string; value: string }>;
+      };
+      const engine = await DockerEngineService.forCluster(clusterId);
 
       try {
         for (const item of items) {
-          await engine.upsertSecret(item.name, item.value)
+          await engine.upsertSecret(item.name, item.value);
           await eventBus.emit("secret.set", {
             userId: currentUser(req)?.sub,
             clusterId,
             name: item.name,
-          })
+          });
         }
       } catch (err) {
-        const message = err instanceof Error ? err.message : String(err)
-        const code = (err as { statusCode?: number })?.statusCode ?? 409
-        return reply.code(code >= 400 && code < 600 ? code : 409).send({ error: message })
+        const message = err instanceof Error ? err.message : String(err);
+        const code = (err as { statusCode?: number })?.statusCode ?? 409;
+        return reply
+          .code(code >= 400 && code < 600 ? code : 409)
+          .send({ error: message });
       }
 
       return {
         ok: true,
         created: items.length,
         items: items.map((item) => ({ name: item.name, ok: true })),
-      }
+      };
     },
-  )
+  );
 
   app.delete(
     "/api/clusters/:clusterId/secrets/:name",
     {
-      ...operator,
+      ...guard("secret.delete", fromParam("clusterId", "cluster")),
       schema: {
         tags: ["secrets"],
         summary: "Supprimer un secret (owner, operator)",
@@ -184,9 +193,12 @@ export async function registerSecretsRoutes(app: FastifyInstance) {
       },
     },
     async (req, reply) => {
-      const { clusterId, name } = req.params as { clusterId: string; name: string };
-      if (!(await ensureClusterInTenant(clusterId, req, reply))) return reply
-      const engine = await DockerEngineService.forCluster(clusterId)
+      const { clusterId, name } = req.params as {
+        clusterId: string;
+        name: string;
+      };
+      if (!(await ensureClusterInTenant(clusterId, req, reply))) return reply;
+      const engine = await DockerEngineService.forCluster(clusterId);
       try {
         await engine.removeSecret(name);
       } catch (err) {

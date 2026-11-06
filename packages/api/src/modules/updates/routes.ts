@@ -1,7 +1,8 @@
 import type { FastifyInstance } from "fastify"
 import { z } from "zod"
 import { updaterService } from "./updater"
-import { currentUser, requireRole } from "../auth/rbac"
+import { currentUser, type Role as LegacyRole } from "../auth/rbac";
+import { requirePermission } from "../authorization/http";
 import { resolveEnvironment } from "../system/service"
 
 /**
@@ -12,7 +13,9 @@ import { resolveEnvironment } from "../system/service"
  */
 
 // Actions de mise à jour = OWNER (comme serveurs/registre).
-const owner = { preHandler: requireRole("owner") }
+const guard = (action: string, legacyMin: LegacyRole = "owner") => ({
+  preHandler: requirePermission(action, { legacyMin }),
+});
 
 const applyBody = z.object({
   channel: z.enum(["stable", "beta"]).optional(),
@@ -27,25 +30,27 @@ export async function registerUpdatesRoutes(app: FastifyInstance) {
   app.get(
     "/api/updates/check",
     {
-      ...owner,
+      ...guard("update.check"),
       schema: {
-        querystring: z.object({ channel: z.enum(["stable", "beta", "all"]).optional() }),
+        querystring: z.object({
+          channel: z.enum(["stable", "beta", "all"]).optional(),
+        }),
         tags: ["updates"],
         summary: "Vérifier les mises à jour disponibles (owner uniquement)",
         security: [{ bearerAuth: [] }],
       },
     },
     async (req) => {
-      const { channel } = req.query as { channel?: "stable" | "beta" | "all" }
-      return updaterService.check(channel)
+      const { channel } = req.query as { channel?: "stable" | "beta" | "all" };
+      return updaterService.check(channel);
     },
-  )
+  );
 
   // Version + canal courants de l'instance.
   app.get(
     "/api/updates/current",
     {
-      ...owner,
+      ...guard("update.check"),
       schema: {
         tags: ["updates"],
         summary: "Version courante de l'instance (owner uniquement)",
@@ -53,13 +58,13 @@ export async function registerUpdatesRoutes(app: FastifyInstance) {
       },
     },
     async () => updaterService.current(),
-  )
+  );
 
   // Changer le canal de mise à jour (stable/beta) — persisté sur le singleton.
   app.put(
     "/api/updates/channel",
     {
-      ...owner,
+      ...guard("update.channel"),
       schema: {
         body: z.object({ channel: z.enum(["stable", "beta"]) }),
         tags: ["updates"],
@@ -74,22 +79,24 @@ export async function registerUpdatesRoutes(app: FastifyInstance) {
             "Les mises à jour automatiques ne sont disponibles qu'en environnement de production.",
         });
       }
-      const { channel } = req.body as { channel: "stable" | "beta" }
-      await updaterService.setChannel(channel)
-      return reply.code(200).send({ ok: true, channel })
+      const { channel } = req.body as { channel: "stable" | "beta" };
+      await updaterService.setChannel(channel);
+      return reply.code(200).send({ ok: true, channel });
     },
-  )
+  );
 
   // Historique des mises à jour (traçabilité + rollback).
   app.get(
     "/api/updates/history",
     {
-      ...owner,
+      ...guard("update.check"),
       schema: {
         querystring: z.object({
           limit: z.coerce.number().int().min(1).max(100).optional(),
           offset: z.coerce.number().int().min(0).optional(),
-          status: z.enum(["pending", "running", "success", "failed", "rolled_back"]).optional(),
+          status: z
+            .enum(["pending", "running", "success", "failed", "rolled_back"])
+            .optional(),
         }),
         tags: ["updates"],
         summary: "Historique des mises à jour (owner uniquement)",
@@ -97,16 +104,20 @@ export async function registerUpdatesRoutes(app: FastifyInstance) {
       },
     },
     async (req) => {
-      const { limit, offset, status } = req.query as { limit?: number; offset?: number; status?: string }
-      return updaterService.history({ limit, offset, status })
+      const { limit, offset, status } = req.query as {
+        limit?: number;
+        offset?: number;
+        status?: string;
+      };
+      return updaterService.history({ limit, offset, status });
     },
-  )
+  );
 
   // Détail d'une mise à jour (steps + logs).
   app.get(
     "/api/updates/status/:id",
     {
-      ...owner,
+      ...guard("update.check"),
       schema: {
         params: z.object({ id: z.string().min(1) }),
         tags: ["updates"],
@@ -115,18 +126,19 @@ export async function registerUpdatesRoutes(app: FastifyInstance) {
       },
     },
     async (req, reply) => {
-      const { id } = req.params as { id: string }
-      const update = await updaterService.status(id)
-      if (!update) return reply.code(404).send({ error: "mise à jour introuvable" })
-      return update
+      const { id } = req.params as { id: string };
+      const update = await updaterService.status(id);
+      if (!update)
+        return reply.code(404).send({ error: "mise à jour introuvable" });
+      return update;
     },
-  )
+  );
 
   // Lancer une mise à jour (202, exécution en arrière-plan suivie via WS).
   app.post(
     "/api/updates/apply",
     {
-      ...owner,
+      ...guard("update.apply"),
       schema: {
         body: applyBody,
         tags: ["updates"],
@@ -135,36 +147,40 @@ export async function registerUpdatesRoutes(app: FastifyInstance) {
       },
     },
     async (req, reply) => {
-      // Les mises à jour n'ont de sens qu'en production, c'est pour cela que nous devons d'abord verifier avant d'appeller 
+      // Les mises à jour n'ont de sens qu'en production, c'est pour cela que nous devons d'abord verifier avant d'appeller
       if (resolveEnvironment() !== "production") {
         return reply.code(409).send({
-          error: "Les mises à jour automatiques ne sont disponibles qu'en environnement de production.",
-        })
+          error:
+            "Les mises à jour automatiques ne sont disponibles qu'en environnement de production.",
+        });
       }
-      const { channel, version } = req.body as { channel?: "stable" | "beta"; version?: string }
-      const user = currentUser(req)
+      const { channel, version } = req.body as {
+        channel?: "stable" | "beta";
+        version?: string;
+      };
+      const user = currentUser(req);
       try {
         const id = await updaterService.apply(
           { channel, version },
           user?.sub ?? null,
-        )
-        return reply.code(202).send({ id, status: "running" })
+        );
+        return reply.code(202).send({ id, status: "running" });
       } catch (err) {
-        const message = err instanceof Error ? err.message : String(err)
+        const message = err instanceof Error ? err.message : String(err);
         // Conflit : une update est déjà en cours.
         if (message.includes("déjà en cours")) {
-          return reply.code(409).send({ error: message })
+          return reply.code(409).send({ error: message });
         }
-        return reply.code(400).send({ error: message })
+        return reply.code(400).send({ error: message });
       }
     },
-  )
+  );
 
   // Rollback explicite d'une mise à jour (restore dump + ancien tag).
   app.post(
     "/api/updates/:id/rollback",
     {
-      ...owner,
+      ...guard("update.rollback"),
       schema: {
         params: z.object({ id: z.string().min(1) }),
         tags: ["updates"],
@@ -175,21 +191,23 @@ export async function registerUpdatesRoutes(app: FastifyInstance) {
     async (req, reply) => {
       if (resolveEnvironment() !== "production") {
         return reply.code(409).send({
-          error: "Les mises à jour automatiques ne sont disponibles qu'en environnement de production.",
-        })
+          error:
+            "Les mises à jour automatiques ne sont disponibles qu'en environnement de production.",
+        });
       }
-      const { id } = req.params as { id: string }
-      const user = currentUser(req)
+      const { id } = req.params as { id: string };
+      const user = currentUser(req);
       try {
         // Le rollback crée un nouvel enregistrement (historique préservé) — on
         // renvoie son id pour que le front suive ce pipeline en direct.
-        const rbId = await updaterService.rollback(id, user?.sub ?? null)
-        return reply.code(202).send({ id: rbId, status: "running" })
+        const rbId = await updaterService.rollback(id, user?.sub ?? null);
+        return reply.code(202).send({ id: rbId, status: "running" });
       } catch (err) {
-        const message = err instanceof Error ? err.message : String(err)
-        if (message.includes("introuvable")) return reply.code(404).send({ error: message })
-        return reply.code(400).send({ error: message })
+        const message = err instanceof Error ? err.message : String(err);
+        if (message.includes("introuvable"))
+          return reply.code(404).send({ error: message });
+        return reply.code(400).send({ error: message });
       }
     },
-  )
+  );
 }

@@ -1,9 +1,10 @@
-import type { FastifyInstance, FastifyRequest } from "fastify"
+import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod"
 import { serversService } from "./service"
 import { provisionServerWorkflow } from "../../workflows/provision-server"
 import { DockerEngineService, LastManagerError } from "../docker-engine/service"
-import { requireRole, currentUser } from "../auth/rbac"
+import { currentUser } from "../auth/rbac"
+import { requirePermission, fromParam, fromBodyIfPresent } from "../authorization/http"
 import { eventBus } from "../../lib/event-bus"
 import { runWithConcurrency, CLUSTER_CONCURRENCY } from "../../lib/concurrency"
 import { TunnelError } from "../../lib/ssh-tunnel"
@@ -23,7 +24,33 @@ import { DEFAULT_TENANT_ID } from "../auth/identity/auth-identity.service";
 
 
 // Provisionner / retirer des serveurs = OWNER uniquement (action infra sensible).
-const owner = { preHandler: requireRole("owner") }
+const owner = (
+  action: string,
+  resource?: Parameters<typeof requirePermission>[1]["resource"],
+) => requirePermission(action, { resource, legacyMin: "owner" });
+
+// Création d'un serveur : server.create sur le cluster visé s'il est fourni,
+// et cluster.create en plus quand la route crée un nouveau cluster.
+const createServerGuard = owner("server.create", fromBodyIfPresent("clusterId", "cluster"))
+const createClusterGuard = owner("cluster.create")
+const createServerPreHandlers = [
+  createServerGuard,
+  async (req: FastifyRequest, reply: FastifyReply) => {
+    const body = req.body as { newClusterName?: unknown } | undefined
+    if (body?.newClusterName) return createClusterGuard(req, reply)
+  },
+]
+
+// Changement de rôle : l'action dépend de la valeur demandée.
+const promoteGuard = owner("server.promote", fromParam("id", "server"))
+const demoteGuard = owner("server.demote", fromParam("id", "server"))
+const roleGuard = Object.assign(
+  async (req: FastifyRequest, reply: FastifyReply) => {
+    const role = (req.body as { role?: unknown } | undefined)?.role
+    return role === "manager" ? promoteGuard(req, reply) : demoteGuard(req, reply)
+  },
+  { authzAction: "server.promote|server.demote" },
+)
 
 export async function registerServersRoutes(app: FastifyInstance) {
   // Liste des serveurs (croisée avec l'état Swarm réel, best effort).
@@ -31,7 +58,7 @@ export async function registerServersRoutes(app: FastifyInstance) {
   app.get(
     "/api/servers",
     {
-      ...owner,
+      preHandler: owner("server.read"),
       schema: {
         tags: ["servers"],
         summary: "Lister les serveurs connus (owner uniquement)",
@@ -39,7 +66,9 @@ export async function registerServersRoutes(app: FastifyInstance) {
       },
     },
     async (req) => {
-      const servers = await serversService.list((req as TenantScopedRequest).tenantId);
+      const servers = await serversService.list(
+        (req as TenantScopedRequest).tenantId,
+      );
       const clusterIds = [...new Set(servers.map((s) => s.clusterId))];
       let totalNodes = 0;
       let checkedAny = false;
@@ -60,14 +89,19 @@ export async function registerServersRoutes(app: FastifyInstance) {
           totalNodes += it.value.nodes.length;
           managersAgg.total += it.value.managers.total;
           managersAgg.reachable += it.value.managers.reachable;
-          managersAgg.quorumOk = managersAgg.quorumOk && it.value.managers.quorumOk;
+          managersAgg.quorumOk =
+            managersAgg.quorumOk && it.value.managers.quorumOk;
           checkedAny = true;
         } else {
           // Cluster inaccessible : on ignore, on ne bloque pas la liste.
-          app.log.warn(`[servers] cluster ${clusterIds[it.index]} injoignable: ${String(it.reason)}`);
+          app.log.warn(
+            `[servers] cluster ${clusterIds[it.index]} injoignable: ${String(it.reason)}`,
+          );
         }
       }
-      app.log.info(`[servers] health ${clusterIds.length} clusters en ${totalMs.toFixed(0)}ms (concurrency=${CLUSTER_CONCURRENCY})`);
+      app.log.info(
+        `[servers] health ${clusterIds.length} clusters en ${totalMs.toFixed(0)}ms (concurrency=${CLUSTER_CONCURRENCY})`,
+      );
       return {
         servers,
         swarmNodes: totalNodes,
@@ -108,7 +142,7 @@ export async function registerServersRoutes(app: FastifyInstance) {
   app.post(
     "/api/servers",
     {
-      ...owner,
+      preHandler: createServerPreHandlers,
       schema: {
         body: provisionBody,
         tags: ["servers"],
@@ -143,7 +177,9 @@ export async function registerServersRoutes(app: FastifyInstance) {
          * contrôle, pourrait laisser quelqu'un rejoindre "worker" un cluster qui n'a plus personne
          * pour delivrer le token de jonction Swarm.
          */
-        const hasActiveManager = await serversService.hasManager(body.clusterId);
+        const hasActiveManager = await serversService.hasManager(
+          body.clusterId,
+        );
         clusterId = body.clusterId;
         role = hasActiveManager ? (body.role ?? "worker") : "manager";
       } else {
@@ -158,11 +194,9 @@ export async function registerServersRoutes(app: FastifyInstance) {
           const statusCode = (err as Error & { statusCode?: number })
             .statusCode;
           if (statusCode) {
-            return reply
-              .code(statusCode)
-              .send({
-                error: err instanceof Error ? err.message : String(err),
-              });
+            return reply.code(statusCode).send({
+              error: err instanceof Error ? err.message : String(err),
+            });
           }
           req.log.error(err, "création de cluster: erreur inattendue");
           return reply
@@ -211,7 +245,7 @@ export async function registerServersRoutes(app: FastifyInstance) {
   app.delete(
     "/api/servers/:id",
     {
-      ...owner,
+      preHandler: owner("server.delete", fromParam("id", "server")),
       schema: {
         tags: ["servers"],
         summary: "Retirer un serveur du cluster (owner uniquement)",
@@ -232,13 +266,19 @@ export async function registerServersRoutes(app: FastifyInstance) {
        */
 
       if (server.role === "manager") {
-        const activeManagers = await serversService.countReadyManagers(server.clusterId);
+        const activeManagers = await serversService.countReadyManagers(
+          server.clusterId,
+        );
         if (activeManagers <= 1) {
           return reply.code(409).send({
-            error: "impossible de retirer le dernier manager du cluster, le quorum serait perdu",
+            error:
+              "impossible de retirer le dernier manager du cluster, le quorum serait perdu",
           });
         }
-        const migrated = await migrateClusterAnchorIfNeeded(server.clusterId, server.id);
+        const migrated = await migrateClusterAnchorIfNeeded(
+          server.clusterId,
+          server.id,
+        );
         if (!migrated) {
           return reply.code(409).send({
             error:
@@ -282,7 +322,7 @@ export async function registerServersRoutes(app: FastifyInstance) {
 app.post(
   "/api/servers/:id/role",
   {
-    ...owner,
+    preHandler: roleGuard,
     schema: {
       body: setRoleBody,
       tags: ["servers"],
@@ -292,8 +332,7 @@ app.post(
   },
   async (req, reply) => {
     const { id } = req.params as { id: string };
-    const tenantId =
-      (req as TenantScopedRequest).tenantId ?? DEFAULT_TENANT_ID;
+    const tenantId = (req as TenantScopedRequest).tenantId ?? DEFAULT_TENANT_ID;
     const server = await serversService.get(id, tenantId);
     if (!server) return reply.code(404).send({ error: "serveur introuvable" });
     if (!server.swarmNodeId) {
@@ -304,10 +343,13 @@ app.post(
 
     // On protège le quorum en refusant de rétrograder le dernier manager actif d'un cluster.
     if (body.role === "worker" && server.role === "manager") {
-      const activeManagers = await serversService.countReadyManagers(server.clusterId);
+      const activeManagers = await serversService.countReadyManagers(
+        server.clusterId,
+      );
       if (activeManagers <= 1) {
         return reply.code(409).send({
-          error: "impossible de rétrograder le dernier manager du cluster, le quorum serait perdu",
+          error:
+            "impossible de rétrograder le dernier manager du cluster, le quorum serait perdu",
         });
       }
     }
@@ -317,7 +359,9 @@ app.post(
       await engine.setNodeRole(server.swarmNodeId, body.role);
     } catch (err) {
       const status = err instanceof TunnelError ? err.statusCode : 500;
-      return reply.code(status).send({ error: err instanceof Error ? err.message : String(err) });
+      return reply
+        .code(status)
+        .send({ error: err instanceof Error ? err.message : String(err) });
     }
 
     await serversService.update(id, { role: body.role });

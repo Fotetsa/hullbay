@@ -5,13 +5,16 @@
 
 import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify"
 import { z } from "zod"
-import { requireRole, currentUser } from "../authorization/rbac"
+import { currentUser, type Role as LegacyRole } from "../authorization/rbac";
+import { requirePermission } from "../../authorization/http";
 import { eventBus } from "../../../lib/event-bus"
 import { authService } from "../service"
 import type { TenantScopedRequest } from "../tenancy/tenant-resolver"
 import { DEFAULT_TENANT_ID } from "../identity/auth-identity.service"
 
-const owner = { preHandler: requireRole("owner") }
+const guard = (action: string, legacyMin: LegacyRole = "owner") => ({
+  preHandler: requirePermission(action, { legacyMin }),
+});
 
 function reqTenant(req: FastifyRequest): string {
   // Tenant effectif posé par la garde (header validé par membership) ;
@@ -23,7 +26,7 @@ export async function registerUsersRoutes(app: FastifyInstance) {
   app.get(
     "/api/users",
     {
-      ...owner,
+      ...guard("user.read"),
       schema: {
         tags: ["auth"],
         summary: "Liste des utilisateurs (owner uniquement)",
@@ -31,7 +34,7 @@ export async function registerUsersRoutes(app: FastifyInstance) {
       },
     },
     async (req) => authService.listUsers(reqTenant(req)),
-  )
+  );
 
   const createUserBody = z.object({
     email: z.string().email(),
@@ -42,7 +45,7 @@ export async function registerUsersRoutes(app: FastifyInstance) {
   app.post(
     "/api/users",
     {
-      ...owner,
+      ...guard("user.create"),
       schema: {
         body: createUserBody,
         tags: ["auth"],
@@ -52,8 +55,13 @@ export async function registerUsersRoutes(app: FastifyInstance) {
     },
     async (req, reply) => {
       try {
-        const body = createUserBody.parse(req.body)
-        const u = await authService.createUser(body.email, body.password, body.role, reqTenant(req))
+        const body = createUserBody.parse(req.body);
+        const u = await authService.createUser(
+          body.email,
+          body.password,
+          body.role,
+          reqTenant(req),
+        );
         await eventBus.emit("user.created", {
           userId: currentUser(req)?.sub,
           targetUserId: u.id,
@@ -61,15 +69,15 @@ export async function registerUsersRoutes(app: FastifyInstance) {
           role: u.role,
           // C9 : les auditeurs tenant-aware doivent pouvoir corréler l'événement.
           tenantId: reqTenant(req),
-        })
-        return u
+        });
+        return u;
       } catch (err) {
         return reply
           .code(400)
-          .send({ error: err instanceof Error ? err.message : String(err) })
+          .send({ error: err instanceof Error ? err.message : String(err) });
       }
     },
-  )
+  );
 
   const setRoleBody = z.object({
     role: z.enum(["owner", "operator", "viewer"]),
@@ -78,38 +86,39 @@ export async function registerUsersRoutes(app: FastifyInstance) {
   app.post(
     "/api/users/:id/role",
     {
-      ...owner,
+      ...guard("user.update"),
       schema: {
         body: setRoleBody,
         tags: ["auth"],
-        summary: "Changement de rôle d'un utilisateur (owner uniquement) — audité",
+        summary:
+          "Changement de rôle d'un utilisateur (owner uniquement) — audité",
         security: [{ bearerAuth: [] }],
       },
     },
     async (req, reply) => {
-      const { id } = req.params as { id: string }
+      const { id } = req.params as { id: string };
       try {
-        const body = setRoleBody.parse(req.body)
-        const u = await authService.setRole(id, body.role, reqTenant(req))
+        const body = setRoleBody.parse(req.body);
+        const u = await authService.setRole(id, body.role, reqTenant(req));
         await eventBus.emit("user.role.changed", {
           userId: currentUser(req)?.sub,
           targetUserId: id,
           role: u.role,
           tenantId: reqTenant(req),
-        })
-        return u
+        });
+        return u;
       } catch (err) {
         return reply
           .code(400)
-          .send({ error: err instanceof Error ? err.message : String(err) })
+          .send({ error: err instanceof Error ? err.message : String(err) });
       }
     },
-  )
+  );
 
   app.delete(
     "/api/users/:id",
     {
-      ...owner,
+      ...guard("user.delete"),
       schema: {
         tags: ["auth"],
         summary: "Suppression d'un utilisateur (owner uniquement) — audité",
@@ -117,22 +126,22 @@ export async function registerUsersRoutes(app: FastifyInstance) {
       },
     },
     async (req, reply) => {
-      const { id } = req.params as { id: string }
-      const acting = currentUser(req)?.sub
-      if (!acting) return reply.code(401).send({ error: "non authentifié" })
+      const { id } = req.params as { id: string };
+      const acting = currentUser(req)?.sub;
+      if (!acting) return reply.code(401).send({ error: "non authentifié" });
       try {
-        const r = await authService.deleteUser(id, acting, reqTenant(req))
+        const r = await authService.deleteUser(id, acting, reqTenant(req));
         await eventBus.emit("user.deleted", {
           userId: acting,
           targetUserId: id,
           tenantId: reqTenant(req),
-        })
-        return r
+        });
+        return r;
       } catch (err) {
         return reply
           .code(400)
-          .send({ error: err instanceof Error ? err.message : String(err) })
+          .send({ error: err instanceof Error ? err.message : String(err) });
       }
     },
-  )
+  );
 }
