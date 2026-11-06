@@ -20,6 +20,8 @@ model Project {
   status      String   @default("draft") // draft | deployed | partial | error
   nodes       Node[]
   edges       Edge[]
+  backupTargets      BackupTarget[]
+  backupDestinations BackupDestination[]
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -55,6 +57,8 @@ model Node {
 
   edgesFrom Edge[] @relation("EdgeSource")
   edgesTo   Edge[] @relation("EdgeTarget")
+
+  backupTargets BackupTarget[]
 
   @@unique([projectId, name])
   @@index([projectId])
@@ -165,6 +169,8 @@ model Tenant {
   teams                    Team[]
   plicies                  Policy[]
   externalGroupMappings    ExternalGroupMapping[]
+  backupTargets            BackupTarget[]
+  backupDestinations       BackupDestination[]
 }
 
 // Rôle = propriété de la MEMBERSHIP, pas du User. Phase 2 : tenant par défaut unique.
@@ -571,4 +577,185 @@ model ExternalGroupMapping {
   @@index([tenantId])
   @@index([providerId])
   @@index([teamId])
+}
+// ── Backup Engine ────────────────────────────────────────────────────────────
+// Le domaine backup est provider-neutral : aucune colonne ne nomme un backend
+// de stockage ni un moteur de base de données en dur. La stratégie et le
+// protocole sont des chaînes validées par le registry applicatif, pas des
+// enums Prisma — ajouter une source ou un backend ne doit pas exiger de
+// migration SQL.
+
+enum BackupTargetKind {
+  postgres
+  mysql
+  mongodb
+  redis
+  volume
+}
+
+enum BackupRunStatus {
+  RUNNING
+  COMPLETED
+  FAILED
+}
+
+enum BackupRunPhase {
+  resolving
+  extracting
+  transferring
+  verifying
+  committing
+  retention
+  done
+}
+
+enum BackupProtocol {
+  s3
+  sftp
+  webdav
+  smb
+  gcs
+  azureblob
+}
+
+// Projection d'un Node existant : ce qui est sauvegardé. La vérité de
+// connexion reste la config du nœud — ce modèle ne duplique aucun identifiant.
+model BackupTarget {
+  id        String   @id @default(cuid())
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  nodeId String
+  node   Node   @relation(fields: [nodeId], references: [id], onDelete: Cascade)
+
+  kind BackupTargetKind
+  name String
+
+  /// False = cible active. True = cible figée (archive) après changement de
+  /// moteur du nœud : conservée en lecture seule (policies + artifacts
+  /// historiques restaurables) plutôt que supprimée en cascade.
+  archived Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  policies  BackupPolicy[]
+  artifacts BackupArtifact[]
+
+  @@unique([nodeId, kind])
+  @@index([projectId])
+  @@index([tenantId])
+  @@index([nodeId, archived])
+}
+
+// Destination distante. Les credentials vivent chiffrés AES-256-GCM (scope
+// "backup") et ne sont jamais renvoyés par l'API.
+model BackupDestination {
+  id              String         @id @default(cuid())
+  projectId       String?
+  project         Project?       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  tenantId        String
+  tenant          Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  name            String
+  protocol        BackupProtocol
+  configEncrypted String
+  basePath        String
+
+  // Résultat du dernier probe de capacités (read/write/delete/checksum/move).
+  capabilitiesJson Json?
+  lastTestedAt     DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  policies  BackupPolicy[]
+  artifacts BackupArtifact[]
+
+  @@index([tenantId])
+  @@index([projectId])
+}
+
+// Intention : plusieurs policies possibles pour un même target.
+// Le lease (lockedBy/lockExpiresAt) garantit qu'une seule instance Hullbay
+// exécute un backup donné — pas d'advisory lock de session (incompatible pooling).
+model BackupPolicy {
+  id            String @id @default(cuid())
+  targetId      String
+  target        BackupTarget @relation(fields: [targetId], references: [id], onDelete: Cascade)
+  destinationId String
+  destination   BackupDestination @relation(fields: [destinationId], references: [id], onDelete: Restrict)
+
+  strategyId      String
+  schedule        String  @default("manual") // manual | daily | weekly
+  scheduleHourUtc Int?
+  retentionDays   Int     @default(30)
+  verification    String  @default("checksum") // size | checksum
+  encryptionMode  String  @default("none")
+  placementJson   Json?
+  timeoutSec      Int     @default(1800)
+  maxConcurrency  Int     @default(1)
+  enabled         Boolean @default(true)
+
+  lockedBy      String?
+  lockExpiresAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  runs BackupRun[]
+
+  @@index([targetId])
+  @@index([enabled])
+}
+
+// Tentative d'exécution. Ne porte JAMAIS le résultat durable : un run FAILED
+// ne produit aucun artifact, et un artifact n'existe qu'après commit.
+model BackupRun {
+  id       String @id @default(cuid())
+  policyId String
+  policy   BackupPolicy @relation(fields: [policyId], references: [id], onDelete: Cascade)
+
+  status  BackupRunStatus
+  phase   BackupRunPhase  @default(resolving)
+  trigger String          @default("manual") // manual | scheduled
+
+  startedAt  DateTime  @default(now())
+  finishedAt DateTime?
+  sizeBytes  BigInt?
+
+  errorCode    String?
+  errorMessage String?
+  taskId       String?
+
+  artifact BackupArtifact?
+
+  @@index([policyId, startedAt])
+  @@index([status])
+}
+
+// Résultat durable et restaurable : manifest auto-descriptif + payload distant.
+model BackupArtifact {
+  id            String @id @default(cuid())
+  runId         String @unique
+  run           BackupRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  targetId      String
+  target        BackupTarget @relation(fields: [targetId], references: [id], onDelete: Cascade)
+  destinationId String
+  destination   BackupDestination @relation(fields: [destinationId], references: [id], onDelete: Restrict)
+
+  storageKey     String
+  manifestJson   Json
+  payloadFormat  String
+  checksumSha256 String
+  sizeBytes      BigInt
+  engine         String
+  engineVersion  String
+  strategyId     String
+  formatVersion  Int    @default(1)
+  committedAt    DateTime @default(now())
+
+  @@index([targetId, committedAt])
 }

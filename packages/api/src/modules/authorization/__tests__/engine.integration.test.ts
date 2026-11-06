@@ -109,14 +109,14 @@ describe("catalogue et base", () => {
 });
 
 describe("les presets historiques reproduisent la matrice (via le repli legacy)", () => {
-  it("Viewer : exactement 2 permissions", async () => {
+  it("Viewer : exactement 4 permissions", async () => {
     expect(await allowedKeys(users.viewer)).toEqual([...VIEWER].sort());
   });
-  it("Operator : exactement 19 permissions", async () => {
+  it("Operator : exactement 25 permissions", async () => {
     expect(await allowedKeys(users.operator)).toEqual([...OPERATOR].sort());
   });
-  it("Owner : les 50 permissions", async () => {
-    expect((await allowedKeys(users.owner)).length).toBe(50);
+  it("Owner : les 60 permissions", async () => {
+    expect((await allowedKeys(users.owner)).length).toBe(60);
   });
 });
 

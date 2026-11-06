@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react"
+import { useQueryClient } from "@tanstack/react-query"
 import { Button, Heading, Input, Label, Text, toast, usePrompt } from "@medusajs/ui"
+import { useTranslation } from "react-i18next"
 import { Trash, XMark, CommandLine } from "@medusajs/icons"
 import { z } from "zod"
 import type { DatabaseConfig, Node } from "@hullbay/shared"
@@ -13,6 +15,7 @@ import { VolumeForm } from "./forms/VolumeForm"
 import { GatewayForm } from "./forms/SimpleForms"
 import { DatabaseForm } from "./forms/DatabaseForm"
 import { DatabasePreviewPanel } from "./DatabasePreviewPanel"
+import { BackupSection } from "./backup/BackupSection"
 import { useContainerLogs } from "../lib/useContainerLogs"
 
 /**
@@ -41,6 +44,8 @@ export function Inspector({
   isLinkedDbNetwork?: boolean
 }) {
   const prompt = usePrompt()
+  const queryClient = useQueryClient()
+  const { t } = useTranslation()
   const [name, setName] = useState(node.name)
   const [config, setConfig] = useState<Record<string, unknown>>(node.config)
   const [saving, setSaving] = useState(false)
@@ -70,8 +75,19 @@ export function Inspector({
     }
     setSaving(true)
     try {
-      await api.updateNode(node.id, { name, config })
+      const result = (await api.updateNode(node.id, { name, config })) as {
+        ok: boolean
+        backupResynced?: { oldKind: string; newKind: string } | null
+      }
       toast.success("Nœud enregistré")
+      // La cible de sauvegarde est re-synchronisée si le moteur a changé :
+      // on rafraîchit la section et on avertit que les politiques ont été perdues.
+      await queryClient.invalidateQueries({ queryKey: ["backup-targets"] })
+      await queryClient.invalidateQueries({ queryKey: ["backup-policies"] })
+      await queryClient.invalidateQueries({ queryKey: ["backup-artifacts"] })
+      if (result.backupResynced) {
+        toast.warning(t("backup.resyncWarning"))
+      }
       onSaved()
     } catch (e) {
       toast.error("Erreur", { description: (e as Error).message })
@@ -180,6 +196,9 @@ export function Inspector({
             </div>
           </>
         )}
+
+        {/* Sauvegarde : policies, artifacts et historique du nœud. */}
+        <BackupSection projectId={projectId} node={node} />
 
         {/* Logs (conteneurs déployés uniquement). */}
         {node.type === "container" && node.dockerId && (

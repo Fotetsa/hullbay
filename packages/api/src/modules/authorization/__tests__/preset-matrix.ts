@@ -1,7 +1,11 @@
 import { RESOURCE_CATALOG } from "../catalog/resource-catalog";
 
-// Données de test uniquement (le moteur ne les lit jamais).
-export const VIEWER_KEYS = ["project.read", "logs.read"];
+export const VIEWER_KEYS = [
+  "project.read",
+  "logs.read",
+  "backup.policy.read",
+  "backup.artifact.read",
+];
 export const OPERATOR_KEYS = [
   ...VIEWER_KEYS,
   "project.create",
@@ -21,6 +25,9 @@ export const OPERATOR_KEYS = [
   "secret.delete",
   "prune.dry",
   "audit.read",
+  "backup.policy.create",
+  "backup.policy.update",
+  "backup.policy.delete",
+  "backup.run",
 ];
-// Owner = tout le catalogue (50).
 export const OWNER_KEYS = [...RESOURCE_CATALOG.keys()];

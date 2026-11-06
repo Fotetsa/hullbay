@@ -1,0 +1,95 @@
+# Tests du Backup Engine : suite unitaire/intégration + moteurs réels.
+#
+# Les tests « live » démarrent PostgreSQL, MySQL, MongoDB, Redis et un serveur
+# S3 (rclone serve s3) en conteneurs, puis exécutent les scripts de stratégie
+# avec l'IMAGE DE PRODUCTION du runner. Ils sont opt-in (`BACKUP_LIVE=1`) pour
+# ne pas ralentir la suite locale.
+name: Backup (live)
+
+on:
+  pull_request:
+    paths:
+      - "packages/api/src/modules/backup/**"
+      - "packages/api/src/jobs/backup-scheduler.ts"
+      - "packages/shared/src/backup.ts"
+      - "packages/backup-runner/**"
+      - "packages/web/src/canvas/backup/**"
+      - "packages/web/e2e/backup.spec.ts"
+      - ".github/workflows/backup-live.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backup-live-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  api:
+    name: API + moteurs réels
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build Shared
+        run: npm run build --workspace @hullbay/shared
+
+      - name: Génération du client Prisma
+        run: npx prisma generate --schema packages/api/prisma/schema.prisma
+
+      - name: Build image runner (celle de production)
+        run: docker build -t hullbay-backup-runner:ci packages/backup-runner
+
+      - name: Vérifier les outils de l'image
+        run: |
+          docker run --rm hullbay-backup-runner:ci bash -c \
+            'rclone version && pg_dump --version && mysqldump --version && mongodump --version && redis-cli --version'
+
+      - name: Tests Backup (unitaires + live)
+        working-directory: packages/api
+        env:
+          BACKUP_LIVE: "1"
+          BACKUP_RUNNER_IMAGE: hullbay-backup-runner:ci
+          NODE_ENV: test
+          DATABASE_URL: postgresql://test:test@localhost:5432/test_db
+          JWT_SECRET: test-secret-for-ci-only
+        run: npx vitest run src/modules/backup
+
+      - name: Tests contrats partagés
+        run: npm test --workspace @hullbay/shared
+
+  web:
+    name: UI (Playwright)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build Shared
+        run: npm run build --workspace @hullbay/shared
+
+      - name: Installer Chromium
+        run: npx playwright install --with-deps chromium
+        working-directory: packages/web
+
+      - name: E2E sauvegarde
+        working-directory: packages/web
+        run: npx playwright test e2e/backup.spec.ts --project=chromium

@@ -17,6 +17,10 @@
     "./entities": {
       "types": "./dist/entities.d.ts",
       "import": "./dist/entities.js"
+    },
+    "./backup": {
+      "types": "./dist/backup.d.ts",
+      "import": "./dist/backup.js"
     }
   },
   "scripts": {

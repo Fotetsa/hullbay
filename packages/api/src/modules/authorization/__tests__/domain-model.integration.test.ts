@@ -473,13 +473,15 @@ describe("34.5 presets", () => {
     return role.rolePermissions.map((rp) => rp.permission.key).sort();
   };
 
-  it("nombre exact de permissions : Viewer 2, Operator 19, Owner 50", async () => {
-    expect((await keysOf(tenantA.id, "Viewer")).length).toBe(2);
-    expect((await keysOf(tenantA.id, "Operator")).length).toBe(19);
-    expect((await keysOf(tenantA.id, "Owner")).length).toBe(50);
+  it("nombre exact de permissions : Viewer 4, Operator 25, Owner 60", async () => {
+    expect((await keysOf(tenantA.id, "Viewer")).length).toBe(4);
+    expect((await keysOf(tenantA.id, "Operator")).length).toBe(25);
+    expect((await keysOf(tenantA.id, "Owner")).length).toBe(60);
   });
   it("Viewer exact, Operator sans permission d'infrastructure", async () => {
     expect(await keysOf(tenantA.id, "Viewer")).toEqual([
+      "backup.artifact.read",
+      "backup.policy.read",
       "logs.read",
       "project.read",
     ]);
@@ -520,7 +522,7 @@ describe("34.6 migration, peuplement, compatibilité", () => {
     }
   }, 60000);
 
-  it("le peuplement ne réinitialise pas les permissions personnalisées d'un preset", async () => {
+  it("le peuplement réconcilie un preset avec le catalogue sans doublon", async () => {
     const op = await prisma.role.findUniqueOrThrow({
       where: { tenantId_name: { tenantId: tenantB.id, name: "Operator" } },
     });
@@ -531,11 +533,20 @@ describe("34.6 migration, peuplement, compatibilité", () => {
       where: { roleId: op.id, permissionId: audit.id },
     });
     runSeed();
+    // Les presets sont des modèles gérés : une permission du catalogue retirée
+    // à la main est rétablie au peuplement suivant (les personnalisations
+    // passent par un rôle custom, pas par l'édition d'un preset).
     expect(
       await prisma.rolePermission.count({
         where: { roleId: op.id, permissionId: audit.id },
       }),
-    ).toBe(0);
+    ).toBe(1);
+    runSeed();
+    expect(
+      await prisma.rolePermission.count({
+        where: { roleId: op.id, permissionId: audit.id },
+      }),
+    ).toBe(1);
   }, 60000);
 
   it("Membership.role, tenants et adhésions existants sont préservés", async () => {

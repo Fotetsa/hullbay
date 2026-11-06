@@ -146,7 +146,7 @@ const ETCD_IMAGE = { image: "quay.io/coreos/etcd", tag: "v3.5.16" }
 const HAPROXY_IMAGE = { image: "haproxy", tag: "2.9-alpine" }
 
 /** noms de ressources lisibles → identifiants Docker-valides. */
-function slugify(name: string): string {
+export function slugify(name: string): string {
   return name
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")

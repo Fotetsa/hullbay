@@ -86,6 +86,8 @@ services:
       API_PORT: 4000
       JWT_SECRET: ${JWT_SECRET:?set in .env}
       MFA_ENCRYPTION_KEY: ${MFA_ENCRYPTION_KEY:?set in .env}
+      # Optionnelle : repli sur JWT_SECRET si absente (credentials backup).
+      BACKUP_ENCRYPTION_KEY: ${BACKUP_ENCRYPTION_KEY:-}
       WEB_ORIGIN: ${PUBLIC_URL:-http://localhost:5173}
       # Pilotage Docker via le proxy filtré (plus de socket monté ici).
       DOCKER_HOST: tcp://socket-proxy:2375

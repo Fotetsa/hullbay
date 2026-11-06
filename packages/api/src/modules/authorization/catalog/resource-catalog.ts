@@ -81,6 +81,29 @@ const RAW: Record<string, CatalogEntry> = {
   "registry.read": tenantLevel,
   "registry.set": tenantLevel,
   "registry.delete": tenantLevel,
+
+  // Backup Engine. Les destinations sont des credentials de tenant (comme le
+  // registry) ; une policy et un artifact appartiennent au projet qui porte le
+  // nœud sauvegardé. 
+  "backup.destination.read": tenantLevel,
+  "backup.destination.set": tenantLevel,
+  "backup.destination.delete": tenantLevel,
+  "backup.policy.read": entry(
+    ["node", "project"],
+    ["tenant", "cluster", "project", "node"],
+    "Node.project.tenantId",
+  ),
+  "backup.policy.create": entry(["node"], ["project", "node"], "Node.project.tenantId"),
+  "backup.policy.update": entry(["node"], ["node"], "Node.project.tenantId"),
+  "backup.policy.delete": entry(["node"], ["node"], "Node.project.tenantId"),
+  "backup.run": entry(["node"], ["project", "node"], "Node.project.tenantId"),
+  "backup.artifact.read": entry(
+    ["node", "project"],
+    ["tenant", "cluster", "project", "node"],
+    "Node.project.tenantId",
+  ),
+  "backup.artifact.restore": entry(["node"], ["node"], "Node.project.tenantId"),
+
   "settings.domain.read": tenantLevel,
   "settings.domain.set": tenantLevel,
   "audit.read": tenantLevel,
