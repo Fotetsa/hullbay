@@ -1,4 +1,12 @@
-import { beforeEach, describe, expect, it, vi } from "vitest"
+import {
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+  beforeAll,
+  afterAll,
+} from "vitest";
 import Fastify from "fastify"
 import { registerSamlRoutes } from "../routes/saml.routes"
 import { registerSsoRoutes } from "../routes/sso.routes"
@@ -26,6 +34,27 @@ const emitMock = vi.fn((_event: string, _data?: Record<string, unknown>) => Prom
 vi.mock("../../../lib/event-bus", () => ({
   eventBus: { on: () => {}, emit: (...args: [string, Record<string, unknown>?]) => emitMock(...args) },
 }))
+
+vi.mock("../../../lib/prisma", () => ({
+  prisma: {
+    user: { findUnique: vi.fn(), findFirst: vi.fn() },
+    authIdentity: { findFirst: vi.fn(), update: vi.fn(), findMany: vi.fn() },
+    membership: { findUnique: vi.fn(), findFirst: vi.fn() },
+    userSession: {
+      create: vi.fn(),
+      update: vi.fn(),
+      findUnique: vi.fn(),
+      updateMany: vi.fn(),
+    },
+    securityPolicy: {
+      findUnique: vi.fn().mockResolvedValue(null), // <-- C'est cette ligne qui corrige l'erreur
+      upsert: vi.fn().mockResolvedValue({}),
+    },
+    authProvider: { findUnique: vi.fn(), findMany: vi.fn() },
+    $connect: vi.fn().mockResolvedValue(undefined),
+    $disconnect: vi.fn().mockResolvedValue(undefined),
+  },
+}));
 
 async function buildApp() {
   const app = Fastify({ logger: false })

@@ -7,6 +7,9 @@ import {
   PrismaResourceRepository,
 } from "../repositories/prisma";
 import { RESOURCE_CATALOG } from "../catalog/resource-catalog";
+import { testSubject } from "./test-subject";
+import { subjectFromSession } from "../subject";
+import { VIEWER_KEYS as VIEWER, OPERATOR_KEYS as OPERATOR } from "./preset-matrix"
 
 const prisma = new PrismaClient();
 const authz = createAuthorization({
@@ -14,28 +17,6 @@ const authz = createAuthorization({
   resources: new PrismaResourceRepository(prisma),
 });
 const suffix = Date.now();
-
-const VIEWER = ["project.read", "logs.read"];
-const OPERATOR = [
-  ...VIEWER,
-  "project.create",
-  "project.update",
-  "project.delete",
-  "project.deploy",
-  "project.destroy",
-  "project.rebuild",
-  "graph.node.create",
-  "graph.node.update",
-  "graph.node.delete",
-  "graph.edge.create",
-  "graph.edge.update",
-  "graph.edge.delete",
-  "secret.read",
-  "secret.set",
-  "secret.delete",
-  "prune.dry",
-  "audit.read",
-];
 
 let tA: { id: string };
 let tB: { id: string };
@@ -108,7 +89,7 @@ async function allowedKeys(userId: string) {
   const out: string[] = [];
   for (const key of RESOURCE_CATALOG.keys()) {
     const d = await authz.can({
-      subject: { userId, tenantId: tA.id },
+      subject: testSubject(userId, tA.id),
       action: key,
     });
     if (d.allowed) out.push(key);
@@ -142,14 +123,14 @@ describe("les presets historiques reproduisent la matrice (via le repli legacy)"
 describe("isolation entre tenants", () => {
   it("un utilisateur du tenant A n'a aucun accès dans le tenant B", async () => {
     const d = await authz.can({
-      subject: { userId: users.owner, tenantId: tB.id },
+      subject: testSubject(users.owner, tB.id),
       action: "cluster.read",
     });
     expect(d.reason).toBe("no_membership");
   });
   it("une ressource du tenant B est refusée pour un sujet du tenant A", async () => {
     const d = await authz.can({
-      subject: { userId: users.owner, tenantId: tA.id },
+      subject: testSubject(users.owner, tA.id),
       action: "cluster.read",
       resource: { type: "cluster", id: clusterB.id },
     });
@@ -177,7 +158,7 @@ describe("droits limités à une ressource", () => {
       where: { userId_tenantId: { userId: users.dev, tenantId: tA.id } },
       data: { roleId: role.id },
     });
-    const subject = { userId: users.dev, tenantId: tA.id };
+    const subject = testSubject(users.dev, tA.id);
     const ok = await authz.can({
       subject,
       action: "project.deploy",
@@ -215,7 +196,7 @@ describe("droits limités à une ressource", () => {
         scopeId: projA1.id,
       },
     });
-    const subject = { userId: users.teamdev, tenantId: tA.id };
+    const subject = testSubject(users.teamdev, tA.id);
     const ok = await authz.can({
       subject,
       action: "project.deploy",
@@ -256,6 +237,32 @@ describe("droits limités à une ressource", () => {
     expect(rec).toMatchObject({
       tenantId: tA.id,
       parents: { project: projA1.id, cluster: clusterA.id },
+    });
+  });
+});
+
+describe("le tenant du Subject vient de la session authentifiée", () => {
+  it("un tenantId fourni par le client ne donne aucun accès au tenant B", async () => {
+    const session = { sub: users.owner, tenantId: tA.id };
+    const clientInput = { tenantId: tB.id };
+
+    const subject = subjectFromSession(session);
+    expect(subject.tenantId).toBe(tA.id);
+
+    const forged = await authz.can({
+      subject: testSubject(users.owner, clientInput.tenantId),
+      action: "cluster.read",
+    });
+    expect(forged).toMatchObject({ allowed: false, reason: "no_membership" });
+
+    const crossResource = await authz.can({
+      subject,
+      action: "cluster.read",
+      resource: { type: "cluster", id: clusterB.id },
+    });
+    expect(crossResource).toMatchObject({
+      allowed: false,
+      reason: "tenant_mismatch",
     });
   });
 });

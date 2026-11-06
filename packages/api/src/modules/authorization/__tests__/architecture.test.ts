@@ -40,4 +40,13 @@ describe("architecture", () => {
         expect(isValidScopeType(s)).toBe(true);
     }
   });
+
+  it("http/ n'importe pas Prisma (seul http/index.ts branche l'instance réelle)", () => {
+    for (const file of tsFiles(path.join(ROOT, "http"))) {
+      if (file.endsWith("index.ts")) continue;
+      expect(readFileSync(file, "utf8"), file).not.toMatch(
+        /@prisma\/client|lib\/prisma/,
+      );
+    }
+  });
 });

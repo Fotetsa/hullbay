@@ -19,5 +19,5 @@ export function subjectFromSession(
   if (!session?.sub || !session.tenantId) {
     throw new Error("session invalide : identifiant ou tenant manquant");
   }
-  return { userId: session.sub, tenantId: session.tenantId };
+  return { userId: session.sub, tenantId: session.tenantId } as Subject;
 }

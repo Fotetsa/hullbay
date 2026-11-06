@@ -46,6 +46,8 @@ import { registerClustersRoutes } from "./modules/clusters/routes";
 import { registerClusterSubscribers } from "./subscribers/clusters";
 import { registerSystemRoutes } from "./modules/system/routes";
 import { backfillDefaultMemberships } from "./modules/auth/identity/auth-identity.service";
+import { logAuthorizationStartup } from "./modules/authorization/startup-check";
+import { currentMode } from "./modules/authorization/http";
 
 
 
@@ -198,6 +200,11 @@ app.setErrorHandler((error: FastifyError, request, reply) => {
     await backfillDefaultMemberships().catch((err) => {
       console.warn(`[auth] backfill memberships ignoré : ${err}`);
     });
+
+    //Mode d'authorisation actif + alerte si un tenant n'a pas ses presets
+    await logAuthorizationStartup(prisma, currentMode()).catch((err) => {
+      console.warn(`[authorization] vérification au démarrage ignorée : ${err}`);
+    })
 
     // Registry des providers d'auth : AuthProvider = source de vérité.
     // Les seeds sont synchronisées en base, puis le registre est hydraté depuis
