@@ -14,14 +14,18 @@ vi.setConfig({ testTimeout: 15000, hookTimeout: 15000 })
 
 vi.mock("../../../lib/prisma", () => ({
   prisma: {
-    authProvider: { findUnique: vi.fn() },
-    securityPolicy: { findUnique: vi.fn() },
-    user: { findUnique: vi.fn() },
-    membership: { findUnique: vi.fn() },
+    authProvider: { findUnique: vi.fn().mockResolvedValue(null) },
+    // SecurityPolicyService appelle findUnique(...).then(...) et upsert(...).catch(...)
+    // au chargement du module : les mocks doivent renvoyer des promesses.
+    securityPolicy: {
+      findUnique: vi.fn().mockResolvedValue(null),
+      upsert: vi.fn().mockResolvedValue({}),
+    },
+    user: { findUnique: vi.fn().mockResolvedValue(null) },
+    membership: { findUnique: vi.fn().mockResolvedValue(null) },
   },
 }))
 
-vi.mock("../../../lib/prisma", () => ({ prisma: {} }))
 const emitMock = vi.fn((_event: string, _data?: Record<string, unknown>) => Promise.resolve(undefined))
 vi.mock("../../../lib/event-bus", () => ({
   eventBus: { on: () => {}, emit: (...args: [string, Record<string, unknown>?]) => emitMock(...args) },

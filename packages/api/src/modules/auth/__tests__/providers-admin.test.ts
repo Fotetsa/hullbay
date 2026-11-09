@@ -60,6 +60,12 @@ vi.mock("../../../lib/prisma", () => {
   return {
     prisma: {
       ...client,
+      // SecurityPolicyService appelle findUnique(...).then(...) et upsert(...).catch(...)
+      // au chargement du module : les mocks doivent renvoyer des promesses.
+      securityPolicy: {
+        findUnique: vi.fn().mockResolvedValue(null),
+        upsert: vi.fn().mockResolvedValue({}),
+      },
       $transaction: vi.fn(async (fn: (t: unknown) => Promise<unknown>) => fn(client)),
     },
   }

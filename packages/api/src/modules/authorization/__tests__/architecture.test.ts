@@ -33,11 +33,28 @@ describe("architecture", () => {
   });
 
   it("le catalogue a des clés resource.action et des scopes valides", () => {
-    expect(RESOURCE_CATALOG.size).toBe(50);
+    expect(RESOURCE_CATALOG.size).toBe(60);
     for (const [key, entry] of RESOURCE_CATALOG) {
       expect(key).toMatch(/^[a-z]+(\.[a-z]+)+$/);
       for (const s of [...entry.scopes, ...entry.resourceTypes])
         expect(isValidScopeType(s)).toBe(true);
+    }
+  });
+
+  it("le domaine backup est déclaré dans le catalogue", () => {
+    for (const key of [
+      "backup.destination.read",
+      "backup.destination.set",
+      "backup.destination.delete",
+      "backup.policy.read",
+      "backup.policy.create",
+      "backup.policy.update",
+      "backup.policy.delete",
+      "backup.run",
+      "backup.artifact.read",
+      "backup.artifact.restore",
+    ]) {
+      expect(RESOURCE_CATALOG.has(key), key).toBe(true);
     }
   });
 });

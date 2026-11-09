@@ -53,9 +53,24 @@ const PERMISSIONS = [
   ["pending.reject", "pending", "reject"],
   ["prune.dry", "prune", "dry"],
   ["prune.apply", "prune", "apply"],
+  ["backup.destination.read", "backup", "read"],
+  ["backup.destination.set", "backup", "set"],
+  ["backup.destination.delete", "backup", "delete"],
+  ["backup.policy.read", "backup", "read"],
+  ["backup.policy.create", "backup", "create"],
+  ["backup.policy.update", "backup", "update"],
+  ["backup.policy.delete", "backup", "delete"],
+  ["backup.run", "backup", "run"],
+  ["backup.artifact.read", "backup", "read"],
+  ["backup.artifact.restore", "backup", "restore"],
 ];
 
-const VIEWER_KEYS = ["project.read", "logs.read"];
+const VIEWER_KEYS = [
+  "project.read",
+  "logs.read",
+  "backup.policy.read",
+  "backup.artifact.read",
+];
 
 const OPERATOR_KEYS = [
   ...VIEWER_KEYS,
@@ -76,6 +91,10 @@ const OPERATOR_KEYS = [
   "secret.delete",
   "prune.dry",
   "audit.read",
+  "backup.policy.create",
+  "backup.policy.update",
+  "backup.policy.delete",
+  "backup.run",
 ];
 
 const OWNER_KEYS = [
@@ -111,6 +130,10 @@ const OWNER_KEYS = [
   "pending.approve",
   "pending.reject",
   "prune.apply",
+  "backup.destination.read",
+  "backup.destination.set",
+  "backup.destination.delete",
+  "backup.artifact.restore",
 ];
 
 const PRESETS = [
@@ -137,6 +160,35 @@ async function ensurePresetsForTenant(tenantId, permissionByKey) {
   if (!tenantId || typeof tenantId !== "string") return;
 
   for (const preset of PRESETS) {
+    // Rôle déjà présent : on ajoute uniquement les permissions manquantes.
+    // Un preset existant doit hériter des nouvelles permissions du catalogue
+    // (ex. domaine backup) sans perdre ses personnalisations de scope.
+    const existing = await prisma.role.findUnique({
+      where: { tenantId_name: { tenantId, name: preset.name } },
+      select: { id: true },
+    });
+    if (existing) {
+      const granted = await prisma.rolePermission.findMany({
+        where: { roleId: existing.id },
+        select: { permissionId: true },
+      });
+      const grantedIds = new Set(granted.map((g) => g.permissionId));
+      const missing = preset.keys
+        .map((key) => permissionByKey.get(key))
+        .filter((perm) => perm && !grantedIds.has(perm.id));
+      if (missing.length > 0) {
+        await prisma.rolePermission.createMany({
+          data: missing.map((perm) => ({
+            roleId: existing.id,
+            permissionId: perm.id,
+            scopeType: "tenant",
+            scopeId: tenantId,
+          })),
+          skipDuplicates: true,
+        });
+      }
+      continue;
+    }
     try {
       await prisma.role.create({
         data: {
