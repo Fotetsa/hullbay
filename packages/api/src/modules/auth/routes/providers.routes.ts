@@ -37,7 +37,8 @@
 
 import type { FastifyInstance, FastifyRequest } from "fastify"
 import { z } from "zod"
-import { requireRole } from "../authorization/rbac"
+import { currentUser, type Role as LegacyRole } from "../authorization/rbac";
+import { requirePermission } from "../../authorization/http";
 import { prisma } from "../../../lib/prisma"
 import { eventBus } from "../../../lib/event-bus"
 import { X509Certificate } from "node:crypto"
@@ -50,7 +51,9 @@ import { DEFAULT_TENANT_ID } from "../identity/auth-identity.service"
 import type { TenantScopedRequest } from "../tenancy/tenant-resolver"
 import { settingsService } from "../../settings/service"
 
-const owner = { preHandler: requireRole("owner") }
+const guard = (action: string, legacyMin: LegacyRole = "owner") => ({
+  preHandler: requirePermission(action, { legacyMin }),
+});
 
 /** Tenant effectif de la requête (claim session → défaut). */
 function reqTenant(req: FastifyRequest): string {
@@ -317,25 +320,33 @@ export async function registerProvidersRoutes(app: FastifyInstance) {
   app.get(
     "/api/auth/admin/providers",
     {
-      ...owner,
+      ...guard("provider.read"),
       schema: {
         tags: ["auth"],
-        summary: "Liste des providers d'authentification (owner) — secrets masqués",
+        summary:
+          "Liste des providers d'authentification (owner) — secrets masqués",
         security: [{ bearerAuth: [] }],
       },
     },
     async (req) => {
       // Liste filtrée par tenant effectif — providers du tenant courant
       // + providers globaux (tenantId null). Jamais ceux d'un autre tenant.
-      const tenantId = reqTenant(req)
+      const tenantId = reqTenant(req);
       const rows = await prisma.authProvider.findMany({
         where: { OR: [{ tenantId }, { tenantId: null }] },
         orderBy: { kind: "asc" },
-        select: { id: true, kind: true, name: true, enabled: true, config: true, tenantId: true },
-      })
-      return rows.map(dto)
+        select: {
+          id: true,
+          kind: true,
+          name: true,
+          enabled: true,
+          config: true,
+          tenantId: true,
+        },
+      });
+      return rows.map(dto);
     },
-  )
+  );
 
   const createBody = z.object({
     id: z.string().regex(/^[a-z0-9-]{3,64}$/, "id : a-z0-9 et tirets (3-64)").optional(),
@@ -355,33 +366,48 @@ export async function registerProvidersRoutes(app: FastifyInstance) {
   app.post(
     "/api/auth/admin/providers",
     {
-      ...owner,
+      ...guard("provider.create"),
       schema: {
         body: createBody,
         tags: ["auth"],
-        summary: "Création d'un provider (owner) : config whitelist par kind, secrets chiffrés",
+        summary:
+          "Création d'un provider (owner) : config whitelist par kind, secrets chiffrés",
         security: [{ bearerAuth: [] }],
       },
     },
     async (req, reply) => {
-      const body = createBody.parse(req.body)
+      const body = createBody.parse(req.body);
       // Isolation tenant : la portée vient du contexte authentifié, JAMAIS du
       // body. Un tenantId envoyé (= B ou null) est refusé explicitement.
       if (body.tenantId !== undefined) {
         return reply.code(400).send({
           error: "tenant_id_not_allowed",
-          message: "le tenant du provider est dérivé du contexte authentifié (non modifiable via le body)",
+          message:
+            "le tenant du provider est dérivé du contexte authentifié (non modifiable via le body)",
           code: "tenant_id_not_allowed",
-        })
+        });
       }
-      const schema = kindToSchema(body.kind)
+      const schema = kindToSchema(body.kind);
       if (!schema) {
-        return reply.code(400).send({ error: "unsupported_kind", message: `kind ${body.kind} n’est pas gérable via l’API`, code: "unsupported_kind" })
+        return reply
+          .code(400)
+          .send({
+            error: "unsupported_kind",
+            message: `kind ${body.kind} n’est pas gérable via l’API`,
+            code: "unsupported_kind",
+          });
       }
-      const parsed = schema.safeParse(body.config)
+      const parsed = schema.safeParse(body.config);
       if (!parsed.success) {
-        const details = parsed.error.flatten().fieldErrors
-        return reply.code(400).send({ error: "invalid_config", message: "configuration invalide", code: "invalid_config", details })
+        const details = parsed.error.flatten().fieldErrors;
+        return reply
+          .code(400)
+          .send({
+            error: "invalid_config",
+            message: "configuration invalide",
+            code: "invalid_config",
+            details,
+          });
       }
       // OAuth2 confidentiel : le provider envoie toujours client_secret au token
       // endpoint (oauth2-provider.ts). Accepté optionnel, un provider créé sans
@@ -389,28 +415,37 @@ export async function registerProvidersRoutes(app: FastifyInstance) {
       if (body.kind === "oauth2" && !parsed.data.clientSecret) {
         return reply.code(400).send({
           error: "invalid_config",
-          message: "OAuth2 : clientSecret requis à la création (flux confidentiel)",
+          message:
+            "OAuth2 : clientSecret requis à la création (flux confidentiel)",
           code: "invalid_config",
-          details: { clientSecret: ["requis — le token endpoint exige client_secret (flux confidentiel)"] },
-        })
+          details: {
+            clientSecret: [
+              "requis — le token endpoint exige client_secret (flux confidentiel)",
+            ],
+          },
+        });
       }
-      const config = encryptObject(parsed.data, SENSITIVE_FIELDS_BY_KIND[body.kind])
+      const config = encryptObject(
+        parsed.data,
+        SENSITIVE_FIELDS_BY_KIND[body.kind],
+      );
       // Isolation tenant : le registre SSO partagé ne résout que les providers
       // globaux (tenantId null) et ceux du tenant défaut (loadFromDb). Un
       // provider créé pour un autre tenant serait un fantôme : 201 en base,
       // 404 à chaque login SSO. La création est donc réservée au tenant défaut
       // et produit toujours un provider GLOBAL.
-      const scope = reqTenant(req)
+      const scope = reqTenant(req);
       if (scope !== DEFAULT_TENANT_ID) {
         return reply.code(400).send({
           error: "tenant_providers_not_supported",
-          message: "la création de providers n'est possible que depuis le tenant défaut (provider global)",
+          message:
+            "la création de providers n'est possible que depuis le tenant défaut (provider global)",
           code: "tenant_providers_not_supported",
-        })
+        });
       }
       try {
         // Garde-fou : contrôle AVANT persistance sur la portée cible (global).
-        await assertDomainConfigured(body.kind, body.enabled, null)
+        await assertDomainConfigured(body.kind, body.enabled, null);
         let row = await prisma.authProvider.create({
           data: {
             kind: body.kind,
@@ -420,28 +455,51 @@ export async function registerProvidersRoutes(app: FastifyInstance) {
             tenantId: null,
             ...(body.id ? { id: body.id } : {}),
           },
-        })
+        });
         // Champs gérés par Hullbay (redirect/callback/discovery/spIssuer) :
         // posés en base quand absents, résolus depuis le domaine public.
-        const auto = await autoManagedFields(body.kind, row.id, null, parsed.data)
+        const auto = await autoManagedFields(
+          body.kind,
+          row.id,
+          null,
+          parsed.data,
+        );
         if (Object.keys(auto).length > 0) {
-          const withAuto = { ...parsed.data, ...auto }
-          const autoConfig = encryptObject(withAuto, SENSITIVE_FIELDS_BY_KIND[body.kind])
-          row = await prisma.authProvider.update({ where: { id: row.id }, data: { config: autoConfig as never } })
+          const withAuto = { ...parsed.data, ...auto };
+          const autoConfig = encryptObject(
+            withAuto,
+            SENSITIVE_FIELDS_BY_KIND[body.kind],
+          );
+          row = await prisma.authProvider.update({
+            where: { id: row.id },
+            data: { config: autoConfig as never },
+          });
         }
-        await providerRegistry.loadFromDb()
-        await eventBus.emit("auth.provider.created", { providerId: row.id, kind: row.kind })
-        return reply.code(201).send(dto(row))
+        await providerRegistry.loadFromDb();
+        await eventBus.emit("auth.provider.created", {
+          providerId: row.id,
+          kind: row.kind,
+        });
+        return reply.code(201).send(dto(row));
       } catch (err) {
-        const payload = authErrorPayload(err)
-        if (payload) return reply.code(err instanceof AuthError ? err.status : 400).send(payload)
+        const payload = authErrorPayload(err);
+        if (payload)
+          return reply
+            .code(err instanceof AuthError ? err.status : 400)
+            .send(payload);
         if (err instanceof Error && /unique/i.test(err.message) && body.id) {
-          return reply.code(409).send({ error: "provider_conflict", message: "un provider porte déjà cet id", code: "provider_conflict" })
+          return reply
+            .code(409)
+            .send({
+              error: "provider_conflict",
+              message: "un provider porte déjà cet id",
+              code: "provider_conflict",
+            });
         }
-        throw err
+        throw err;
       }
     },
-  )
+  );
 
   const updateBody = z.object({
     name: z.string().min(1).max(120).optional(),
@@ -455,83 +513,117 @@ export async function registerProvidersRoutes(app: FastifyInstance) {
   app.put(
     "/api/auth/admin/providers/:id",
     {
-      ...owner,
+      ...guard("provider.update"),
       schema: {
         body: updateBody,
         tags: ["auth"],
-        summary: "Mise à jour d'un provider (owner) — secrets conservés si marqueur envoyé",
+        summary:
+          "Mise à jour d'un provider (owner) — secrets conservés si marqueur envoyé",
         security: [{ bearerAuth: [] }],
       },
     },
     async (req, reply) => {
-      const { id } = req.params as { id: string }
-      const body = updateBody.parse(req.body)
+      const { id } = req.params as { id: string };
+      const body = updateBody.parse(req.body);
       // Isolation tenant : le tenant n'est PAS modifiable (re-scope = opération
       // admin dédiée, inexistante). Présence de tenantId → rejet explicite.
       if (body.tenantId !== undefined) {
         return reply.code(400).send({
           error: "tenant_id_not_allowed",
-          message: "le tenant du provider n'est pas modifiable (dérivé du contexte authentifié)",
+          message:
+            "le tenant du provider n'est pas modifiable (dérivé du contexte authentifié)",
           code: "tenant_id_not_allowed",
-        })
+        });
       }
-      const row = await prisma.authProvider.findUnique({ where: { id } })
-      if (!row) return reply.code(404).send({ error: "provider_not_found", message: "provider introuvable", code: "provider_not_found" })
+      const row = await prisma.authProvider.findUnique({ where: { id } });
+      if (!row)
+        return reply
+          .code(404)
+          .send({
+            error: "provider_not_found",
+            message: "provider introuvable",
+            code: "provider_not_found",
+          });
 
       // Isolation tenant : un tenant ne voit ni ne modifie les providers
       // d'un autre tenant. Les providers globaux (tenantId null) ne sont
       // mutables que depuis le tenant défaut.
-      const tenantId = reqTenant(req)
+      const tenantId = reqTenant(req);
       const notOwned =
         (row.tenantId !== null && row.tenantId !== tenantId) ||
-        (row.tenantId === null && tenantId !== DEFAULT_TENANT_ID)
+        (row.tenantId === null && tenantId !== DEFAULT_TENANT_ID);
       if (notOwned) {
-        return reply.code(404).send({ error: "provider_not_found", message: "provider introuvable", code: "provider_not_found" })
+        return reply
+          .code(404)
+          .send({
+            error: "provider_not_found",
+            message: "provider introuvable",
+            code: "provider_not_found",
+          });
       }
 
-// Garde-fou : état FINAL (PUT partiel) + portée réelle du provider.
+      // Garde-fou : état FINAL (PUT partiel) + portée réelle du provider.
       // Ne pas tester uniquement body.enabled — un PUT partiel ne doit jamais
       // conserver/atteindre un état invalide. Portée = tenantId du provider
       // (immuable ici) — jamais un re-scope.
-      const finalEnabled = body.enabled !== undefined ? body.enabled : row.enabled
-      const scope = row.tenantId
+      const finalEnabled =
+        body.enabled !== undefined ? body.enabled : row.enabled;
+      const scope = row.tenantId;
       try {
-        await assertDomainConfigured(row.kind, finalEnabled, scope)
+        await assertDomainConfigured(row.kind, finalEnabled, scope);
       } catch (err) {
-        return reply.code(err instanceof AuthError ? err.status : 400).send(authErrorPayload(err))
+        return reply
+          .code(err instanceof AuthError ? err.status : 400)
+          .send(authErrorPayload(err));
       }
 
-      const schema = kindToSchema(row.kind)
-      const currentConfig = (row.config as Record<string, unknown>) ?? {}
-      let encryptedConfig = currentConfig
+      const schema = kindToSchema(row.kind);
+      const currentConfig = (row.config as Record<string, unknown>) ?? {};
+      let encryptedConfig = currentConfig;
       // Delta fourni (config live du PUT) — null si la requête n'en porte pas.
-      let parsedData: Record<string, unknown> | null = null
+      let parsedData: Record<string, unknown> | null = null;
       if (body.config !== undefined) {
         if (!schema) {
-          return reply.code(400).send({ error: "unsupported_kind", message: `kind ${row.kind} n’est pas gérable via l’API`, code: "unsupported_kind" })
+          return reply
+            .code(400)
+            .send({
+              error: "unsupported_kind",
+              message: `kind ${row.kind} n’est pas gérable via l’API`,
+              code: "unsupported_kind",
+            });
         }
-        const parsed = schema.safeParse(body.config)
+        const parsed = schema.safeParse(body.config);
         if (!parsed.success) {
-          const details = parsed.error.flatten().fieldErrors
-          return reply.code(400).send({ error: "invalid_config", message: "configuration invalide", code: "invalid_config", details })
+          const details = parsed.error.flatten().fieldErrors;
+          return reply
+            .code(400)
+            .send({
+              error: "invalid_config",
+              message: "configuration invalide",
+              code: "invalid_config",
+              details,
+            });
         }
-        parsedData = parsed.data
+        parsedData = parsed.data;
         // Fusionne avec la config existante. Le marqueur sentinelle signifie
         // "conserver la valeur actuelle" : les champs sensibles déjà chiffrés
         // en base restent intacts (pas de double-chiffrement — decryptObject
         // doit retrouver le secret en clair). Seul le delta fourni est
         // chiffré ; les champs sensibles non fournis gardent leur blob stocké.
-        const sensitive = SENSITIVE_FIELDS_BY_KIND[row.kind as ProviderKind] ?? []
-        const merged: Record<string, unknown> = { ...currentConfig }
+        const sensitive =
+          SENSITIVE_FIELDS_BY_KIND[row.kind as ProviderKind] ?? [];
+        const merged: Record<string, unknown> = { ...currentConfig };
         for (const [key, value] of Object.entries(parsed.data)) {
-          if (value === SECRET_MASK) continue
-          merged[key] = sensitive.includes(key) ? encryptProviderSecret(value as string) : value
+          if (value === SECRET_MASK) continue;
+          merged[key] = sensitive.includes(key)
+            ? encryptProviderSecret(value as string)
+            : value;
         }
         // Champs gérés par Hullbay résolus depuis le domaine public (override
         // utilisateur toujours respecté : `??=`).
-        const auto = await autoManagedFields(row.kind, id, scope, merged)
-        Object.assign(merged, auto)
-        encryptedConfig = merged
+        const auto = await autoManagedFields(row.kind, id, scope, merged);
+        Object.assign(merged, auto);
+        encryptedConfig = merged;
       }
 
       // Garde-fou §gestion : un provider ne peut PAS être activé si sa config
@@ -539,38 +631,55 @@ export async function registerProvidersRoutes(app: FastifyInstance) {
       // "••••••••" sur un secret = conserver le stocké (jamais un placeholder).
       // Sans ce garde-fou, un toggle activait un provider mort en production.
       if (finalEnabled && row.kind !== "local" && schema) {
-        const sensitive = SENSITIVE_FIELDS_BY_KIND[row.kind as ProviderKind] ?? []
+        const sensitive =
+          SENSITIVE_FIELDS_BY_KIND[row.kind as ProviderKind] ?? [];
         const cleanProvided =
-          body.config === undefined ? {} : Object.fromEntries(Object.entries(parsedData ?? {}).filter(([, v]) => v !== SECRET_MASK))
+          body.config === undefined
+            ? {}
+            : Object.fromEntries(
+                Object.entries(parsedData ?? {}).filter(
+                  ([, v]) => v !== SECRET_MASK,
+                ),
+              );
         // Blob secret illisible (clé tournée entre-temps…) → refuse d'activer :
         // on préfère fermer que d'activer un provider dont on ne peut vérifier
         // la config effective.
-        let effective: Record<string, unknown>
+        let effective: Record<string, unknown>;
         try {
-          effective = { ...decryptObject(currentConfig, sensitive), ...cleanProvided }
+          effective = {
+            ...decryptObject(currentConfig, sensitive),
+            ...cleanProvided,
+          };
         } catch {
           return reply.code(400).send({
             error: "invalid_config",
-            message: "activation refusée : secret stocké illisible (clé de chiffrement probablement changée)",
+            message:
+              "activation refusée : secret stocké illisible (clé de chiffrement probablement changée)",
             code: "invalid_config",
-          })
+          });
         }
-        const gate = schema.safeParse(effective)
+        const gate = schema.safeParse(effective);
         if (!gate.success) {
           return reply.code(400).send({
             error: "invalid_config",
-            message: "activation refusée : configuration incomplète ou invalide",
+            message:
+              "activation refusée : configuration incomplète ou invalide",
             code: "invalid_config",
             details: gate.error.flatten().fieldErrors,
-          })
+          });
         }
         if (row.kind === "oauth2" && !effective.clientSecret) {
           return reply.code(400).send({
             error: "invalid_config",
-            message: "OAuth2 : clientSecret requis pour activer (flux confidentiel)",
+            message:
+              "OAuth2 : clientSecret requis pour activer (flux confidentiel)",
             code: "invalid_config",
-            details: { clientSecret: ["requis — le token endpoint exige client_secret (flux confidentiel)"] },
-          })
+            details: {
+              clientSecret: [
+                "requis — le token endpoint exige client_secret (flux confidentiel)",
+              ],
+            },
+          });
         }
       }
 
@@ -585,9 +694,11 @@ export async function registerProvidersRoutes(app: FastifyInstance) {
       const updateData = {
         ...(body.name !== undefined ? { name: body.name } : {}),
         ...(body.enabled !== undefined ? { enabled: body.enabled } : {}),
-        ...(body.config !== undefined ? { config: encryptedConfig as never } : {}),
-      }
-      let updated
+        ...(body.config !== undefined
+          ? { config: encryptedConfig as never }
+          : {}),
+      };
+      let updated;
       try {
         updated = await prisma.$transaction(async (tx) => {
           if (body.enabled === false) {
@@ -595,52 +706,92 @@ export async function registerProvidersRoutes(app: FastifyInstance) {
             // PUT concurrent a pu l'activer entre le findUnique et ici (le
             // row.enabled hors-tx serait périmé). Le lock de portée n'est pris
             // que sur ce chemin (désactivation) — un rename/config n'attend pas.
-            const fresh = await tx.authProvider.findUnique({ where: { id }, select: { enabled: true } })
+            const fresh = await tx.authProvider.findUnique({
+              where: { id },
+              select: { enabled: true },
+            });
             if (fresh?.enabled) {
-              await lockProviderScope(tx, scope)
-              const otherEnabled = await activeProvidersCountExcept(id, scope, tx)
+              await lockProviderScope(tx, scope);
+              const otherEnabled = await activeProvidersCountExcept(
+                id,
+                scope,
+                tx,
+              );
               if (otherEnabled === 0) {
-                throw new AuthError("cannot_disable_last_provider", "au moins un provider doit rester actif", 400)
+                throw new AuthError(
+                  "cannot_disable_last_provider",
+                  "au moins un provider doit rester actif",
+                  400,
+                );
               }
             }
           }
-          return tx.authProvider.update({ where: { id }, data: updateData })
-        })
+          return tx.authProvider.update({ where: { id }, data: updateData });
+        });
       } catch (err) {
-        const payload = authErrorPayload(err)
-        if (payload) return reply.code(err instanceof AuthError ? err.status : 400).send(payload)
-        throw err
+        const payload = authErrorPayload(err);
+        if (payload)
+          return reply
+            .code(err instanceof AuthError ? err.status : 400)
+            .send(payload);
+        throw err;
       }
-      await providerRegistry.loadFromDb()
-      await eventBus.emit("auth.provider.updated", { providerId: updated.id, kind: updated.kind })
-      return dto(updated)
+      await providerRegistry.loadFromDb();
+      await eventBus.emit("auth.provider.updated", {
+        providerId: updated.id,
+        kind: updated.kind,
+      });
+      return dto(updated);
     },
-  )
+  );
 
   // Suppression — refus si des identités existent déjà (on n'orpheline jamais).
   app.delete(
     "/api/auth/admin/providers/:id",
     {
-      ...owner,
+      ...guard("provider.delete"),
       schema: {
         tags: ["auth"],
-        summary: "Suppression d'un provider (owner) — refus si des identités existent",
+        summary:
+          "Suppression d'un provider (owner) — refus si des identités existent",
         security: [{ bearerAuth: [] }],
       },
     },
     async (req, reply) => {
-      const { id } = req.params as { id: string }
-      const row = await prisma.authProvider.findUnique({ where: { id }, select: { id: true, kind: true, enabled: true, tenantId: true } })
-      if (!row) return reply.code(404).send({ error: "provider_not_found", message: "provider introuvable", code: "provider_not_found" })
-      const tenantId = reqTenant(req)
+      const { id } = req.params as { id: string };
+      const row = await prisma.authProvider.findUnique({
+        where: { id },
+        select: { id: true, kind: true, enabled: true, tenantId: true },
+      });
+      if (!row)
+        return reply
+          .code(404)
+          .send({
+            error: "provider_not_found",
+            message: "provider introuvable",
+            code: "provider_not_found",
+          });
+      const tenantId = reqTenant(req);
       const notOwned =
         (row.tenantId !== null && row.tenantId !== tenantId) ||
-        (row.tenantId === null && tenantId !== DEFAULT_TENANT_ID)
+        (row.tenantId === null && tenantId !== DEFAULT_TENANT_ID);
       if (notOwned) {
-        return reply.code(404).send({ error: "provider_not_found", message: "provider introuvable", code: "provider_not_found" })
+        return reply
+          .code(404)
+          .send({
+            error: "provider_not_found",
+            message: "provider introuvable",
+            code: "provider_not_found",
+          });
       }
       if (row.id === "local") {
-        return reply.code(400).send({ error: "cannot_delete_local_provider", message: "le provider local ne peut pas être supprimé", code: "cannot_delete_local_provider" })
+        return reply
+          .code(400)
+          .send({
+            error: "cannot_delete_local_provider",
+            message: "le provider local ne peut pas être supprimé",
+            code: "cannot_delete_local_provider",
+          });
       }
       // Suppression atomique : lock de portée (advisory) + garde anti-lockout
       // scoped + comptes d'identités et pendings + delete dans la MÊME
@@ -648,66 +799,122 @@ export async function registerProvidersRoutes(app: FastifyInstance) {
       // provider ne peuvent plus passer : l'une attend le commit de l'autre).
       try {
         await prisma.$transaction(async (tx) => {
-          await lockProviderScope(tx, row.tenantId)
+          await lockProviderScope(tx, row.tenantId);
           // enabled relu dans la transaction (row hors-tx périmable) : le
           // lock sérialise les concurrents, le fresh read décide la garde.
-          const fresh = await tx.authProvider.findUnique({ where: { id }, select: { enabled: true } })
+          const fresh = await tx.authProvider.findUnique({
+            where: { id },
+            select: { enabled: true },
+          });
           if (fresh?.enabled) {
-            const otherEnabled = await activeProvidersCountExcept(id, row.tenantId, tx)
+            const otherEnabled = await activeProvidersCountExcept(
+              id,
+              row.tenantId,
+              tx,
+            );
             if (otherEnabled === 0) {
-              throw new AuthError("cannot_delete_last_provider", "au moins un provider doit rester actif", 400)
+              throw new AuthError(
+                "cannot_delete_last_provider",
+                "au moins un provider doit rester actif",
+                400,
+              );
             }
           }
-          const identities = await tx.authIdentity.count({ where: { providerId: id } })
+          const identities = await tx.authIdentity.count({
+            where: { providerId: id },
+          });
           if (identities > 0) {
-            throw new AuthError("provider_in_use", `provider utilisé par ${identities} identité(s)`, 409)
+            throw new AuthError(
+              "provider_in_use",
+              `provider utilisé par ${identities} identité(s)`,
+              409,
+            );
           }
-          const pendings = await tx.pendingIdentity.count({ where: { providerId: id } })
+          const pendings = await tx.pendingIdentity.count({
+            where: { providerId: id },
+          });
           if (pendings > 0) {
-            throw new AuthError("provider_pendings_exist", "des approbations en attente référencent ce provider", 409)
+            throw new AuthError(
+              "provider_pendings_exist",
+              "des approbations en attente référencent ce provider",
+              409,
+            );
           }
-          await tx.authProvider.delete({ where: { id } })
-        })
+          await tx.authProvider.delete({ where: { id } });
+        });
       } catch (err) {
-        const payload = authErrorPayload(err)
-        if (payload) return reply.code(err instanceof AuthError ? err.status : 400).send(payload)
-        throw err
+        const payload = authErrorPayload(err);
+        if (payload)
+          return reply
+            .code(err instanceof AuthError ? err.status : 400)
+            .send(payload);
+        throw err;
       }
-      await providerRegistry.loadFromDb()
-      await eventBus.emit("auth.provider.deleted", { providerId: id })
-      return reply.code(204).send()
+      await providerRegistry.loadFromDb();
+      await eventBus.emit("auth.provider.deleted", { providerId: id });
+      return reply.code(204).send();
     },
-  )
+  );
 
   // Test de connexion (validation config + joignabilité si possible).
   app.post(
     "/api/auth/admin/providers/:id/test",
     {
-      ...owner,
+      ...guard("provider.test"),
       schema: {
         tags: ["auth"],
-        summary: "Test de configuration d'un provider (owner) — sans secret renvoyé",
+        summary:
+          "Test de configuration d'un provider (owner) — sans secret renvoyé",
         security: [{ bearerAuth: [] }],
       },
     },
     async (req, reply) => {
-      const { id } = req.params as { id: string }
-      const row = await prisma.authProvider.findUnique({ where: { id }, select: { id: true, kind: true, config: true, enabled: true, name: true, tenantId: true } })
-      if (!row) return reply.code(404).send({ error: "provider_not_found", message: "provider introuvable", code: "provider_not_found" })
-      const tenantId = reqTenant(req)
+      const { id } = req.params as { id: string };
+      const row = await prisma.authProvider.findUnique({
+        where: { id },
+        select: {
+          id: true,
+          kind: true,
+          config: true,
+          enabled: true,
+          name: true,
+          tenantId: true,
+        },
+      });
+      if (!row)
+        return reply
+          .code(404)
+          .send({
+            error: "provider_not_found",
+            message: "provider introuvable",
+            code: "provider_not_found",
+          });
+      const tenantId = reqTenant(req);
       const notOwned =
         (row.tenantId !== null && row.tenantId !== tenantId) ||
-        (row.tenantId === null && tenantId !== DEFAULT_TENANT_ID)
+        (row.tenantId === null && tenantId !== DEFAULT_TENANT_ID);
       if (notOwned) {
-        return reply.code(404).send({ error: "provider_not_found", message: "provider introuvable", code: "provider_not_found" })
+        return reply
+          .code(404)
+          .send({
+            error: "provider_not_found",
+            message: "provider introuvable",
+            code: "provider_not_found",
+          });
       }
 
-      const schema = kindToSchema(row.kind)
+      const schema = kindToSchema(row.kind);
       if (!schema) {
-        return reply.code(400).send({ error: "untestable_kind", message: `kind ${row.kind} n’est pas testable via l’API`, code: "untestable_kind" })
+        return reply
+          .code(400)
+          .send({
+            error: "untestable_kind",
+            message: `kind ${row.kind} n’est pas testable via l’API`,
+            code: "untestable_kind",
+          });
       }
-      const current = (row.config as Record<string, unknown>) ?? {}
-      const config = schema.safeParse(maskConfig(current, row.kind))
+      const current = (row.config as Record<string, unknown>) ?? {};
+      const config = schema.safeParse(maskConfig(current, row.kind));
       if (!config.success) {
         return reply.code(200).send({
           ok: false,
@@ -715,131 +922,189 @@ export async function registerProvidersRoutes(app: FastifyInstance) {
           message: "configuration incomplète ou invalide",
           code: "invalid_config",
           details: config.error.flatten().fieldErrors,
-        })
+        });
       }
       try {
         // Tente la joignabilité OIDC (discovery) si renseignée ou dérivable
         // depuis issuer — annulé après 5 s.
-        let connectivity: string | null = null
+        let connectivity: string | null = null;
         const discoveryUrl =
           typeof current.discoveryUrl === "string"
             ? current.discoveryUrl
-            : defaultOidcDiscoveryUrl(typeof current.issuer === "string" ? current.issuer : undefined)
+            : defaultOidcDiscoveryUrl(
+                typeof current.issuer === "string" ? current.issuer : undefined,
+              );
         if (row.kind === "oidc" && discoveryUrl) {
-          const probe = await probeHttp(discoveryUrl)
-          connectivity = probe.ok ? `discovery joignable (${probe.message})` : `discovery ${probe.message}`
+          const probe = await probeHttp(discoveryUrl);
+          connectivity = probe.ok
+            ? `discovery joignable (${probe.message})`
+            : `discovery ${probe.message}`;
         } else if (row.kind === "ldap") {
-          const { createLdapProvider } = await import("../providers/ldap/ldap-provider")
+          const { createLdapProvider } =
+            await import("../providers/ldap/ldap-provider");
           // La config stockée est chiffrée : on la déchiffre avant de construire
           // l'adapter (lui ne déchiffre plus, cf. double-déchiffrement).
-          const decrypted = decryptObject(current, SENSITIVE_FIELDS_BY_KIND["ldap"] ?? [])
-          const ldapProvider = createLdapProvider({ ...(decrypted as Record<string, unknown> as any), id: row.id })
-          const testRes = await ldapProvider.testConnection()
+          const decrypted = decryptObject(
+            current,
+            SENSITIVE_FIELDS_BY_KIND["ldap"] ?? [],
+          );
+          const ldapProvider = createLdapProvider({
+            ...(decrypted as Record<string, unknown> as any),
+            id: row.id,
+          });
+          const testRes = await ldapProvider.testConnection();
           return {
             ok: testRes.ok,
             message: testRes.message,
             connectivity: testRes.ok ? "LDAP joignable" : "LDAP injoignable",
-          }
+          };
         }
         return {
           ok: true,
           message: connectivity ?? "configuration valide",
           connectivity,
-        }
+        };
       } catch (err) {
         return reply.code(200).send({
           ok: false,
           error: "serveur LDAP injoignable",
           message: (err as Error)?.message || "serveur LDAP injoignable",
           code: "ldap_unreachable",
-        })
+        });
       }
     },
-  )
+  );
 
   // Prévol (wizard) : valide une config À L'ÉCRAN, sans persister, et sonde la
   // joignabilité de chaque endpoint côté IdP. Ne renvoie jamais de secret.
   app.post(
     "/api/auth/admin/providers/preflight",
     {
-      ...owner,
+      ...guard("provider.test"),
       schema: {
         body: z.object({
           kind: z.enum(["oidc", "oauth2", "saml", "ldap"]),
           config: z.record(z.string(), z.any()).default({}),
         }),
         tags: ["auth"],
-        summary: "Prévol de config provider (owner) : validation + joignabilité étape par étape",
+        summary:
+          "Prévol de config provider (owner) : validation + joignabilité étape par étape",
         security: [{ bearerAuth: [] }],
       },
     },
     async (req) => {
-      const body = z.object({ kind: z.enum(["oidc", "oauth2", "saml", "ldap"]), config: z.record(z.string(), z.any()).default({}) }).parse(req.body)
-      const schema = CONFIG_SCHEMAS[body.kind]
-      const check = schema.safeParse(body.config)
+      const body = z
+        .object({
+          kind: z.enum(["oidc", "oauth2", "saml", "ldap"]),
+          config: z.record(z.string(), z.any()).default({}),
+        })
+        .parse(req.body);
+      const schema = CONFIG_SCHEMAS[body.kind];
+      const check = schema.safeParse(body.config);
       if (!check.success) {
         return {
           ok: false,
           schemaValid: false,
           steps: [],
           details: check.error.flatten().fieldErrors,
-        }
+        };
       }
-      const cfg = check.data as Record<string, unknown>
-      const steps: { step: string; ok: boolean; message: string; latencyMs?: number }[] = []
+      const cfg = check.data as Record<string, unknown>;
+      const steps: {
+        step: string;
+        ok: boolean;
+        message: string;
+        latencyMs?: number;
+      }[] = [];
 
       if (body.kind === "oidc") {
         const discoveryUrl =
           typeof cfg.discoveryUrl === "string"
             ? cfg.discoveryUrl
-            : defaultOidcDiscoveryUrl(typeof cfg.issuer === "string" ? cfg.issuer : undefined)
+            : defaultOidcDiscoveryUrl(
+                typeof cfg.issuer === "string" ? cfg.issuer : undefined,
+              );
         if (discoveryUrl) {
-          const t0 = Date.now()
-          const probe = await probeHttp(discoveryUrl)
-          let message = probe.ok ? `discovery joignable (${probe.message})` : `discovery ${probe.message}`
+          const t0 = Date.now();
+          const probe = await probeHttp(discoveryUrl);
+          let message = probe.ok
+            ? `discovery joignable (${probe.message})`
+            : `discovery ${probe.message}`;
           if (probe.ok) {
             try {
-              const jsonRes = await fetchWithTimeout(discoveryUrl, { redirect: "follow" })
-              const text = await readBoundedText(jsonRes, 262144)
-              const doc = JSON.parse(text) as { issuer?: string }
-              if (doc.issuer && doc.issuer !== cfg.issuer) message += " — issuer ne correspond pas au discovery"
+              const jsonRes = await fetchWithTimeout(discoveryUrl, {
+                redirect: "follow",
+              });
+              const text = await readBoundedText(jsonRes, 262144);
+              const doc = JSON.parse(text) as { issuer?: string };
+              if (doc.issuer && doc.issuer !== cfg.issuer)
+                message += " — issuer ne correspond pas au discovery";
             } catch {
-              message += " — réponse non-JSON ou trop volumineuse"
+              message += " — réponse non-JSON ou trop volumineuse";
             }
           }
-          steps.push({ step: "discovery", ok: probe.ok, message, latencyMs: Date.now() - t0 })
+          steps.push({
+            step: "discovery",
+            ok: probe.ok,
+            message,
+            latencyMs: Date.now() - t0,
+          });
         }
       } else if (body.kind === "oauth2") {
         for (const [step, url] of [
           ["authorization_uri", cfg.authorizationUri],
           ["token_uri", cfg.tokenUri],
         ] as const) {
-          if (typeof url !== "string") continue
-          const label = step === "authorization_uri" ? "authorizationUri" : "tokenUri"
-          const t0 = Date.now()
-          const probe = await probeHttp(url)
-          const message = probe.ok ? `${label} joignable (${probe.message})` : `${label} ${probe.message}`
-          steps.push({ step, ok: probe.ok, message, latencyMs: Date.now() - t0 })
+          if (typeof url !== "string") continue;
+          const label =
+            step === "authorization_uri" ? "authorizationUri" : "tokenUri";
+          const t0 = Date.now();
+          const probe = await probeHttp(url);
+          const message = probe.ok
+            ? `${label} joignable (${probe.message})`
+            : `${label} ${probe.message}`;
+          steps.push({
+            step,
+            ok: probe.ok,
+            message,
+            latencyMs: Date.now() - t0,
+          });
         }
       } else if (body.kind === "saml") {
         if (typeof cfg.entryPoint === "string") {
-          const t0 = Date.now()
-          const probe = await probeHttp(cfg.entryPoint)
-          steps.push({ step: "entry_point", ok: probe.ok, message: probe.ok ? `entryPoint joignable (${probe.message})` : `entryPoint ${probe.message}`, latencyMs: Date.now() - t0 })
+          const t0 = Date.now();
+          const probe = await probeHttp(cfg.entryPoint);
+          steps.push({
+            step: "entry_point",
+            ok: probe.ok,
+            message: probe.ok
+              ? `entryPoint joignable (${probe.message})`
+              : `entryPoint ${probe.message}`,
+            latencyMs: Date.now() - t0,
+          });
         }
       } else if (body.kind === "ldap") {
-        const { createLdapProvider } = await import("../providers/ldap/ldap-provider")
-        const t0 = Date.now()
-        const ldapProvider = createLdapProvider({ ...(cfg as Record<string, unknown> as any), id: "preflight" })
-        const bindRes = await ldapProvider.testConnection()
-        steps.push({ step: "bind", ok: bindRes.ok, message: bindRes.ok ? "bind LDAP réussi" : "bind LDAP échoué", latencyMs: Date.now() - t0 })
+        const { createLdapProvider } =
+          await import("../providers/ldap/ldap-provider");
+        const t0 = Date.now();
+        const ldapProvider = createLdapProvider({
+          ...(cfg as Record<string, unknown> as any),
+          id: "preflight",
+        });
+        const bindRes = await ldapProvider.testConnection();
+        steps.push({
+          step: "bind",
+          ok: bindRes.ok,
+          message: bindRes.ok ? "bind LDAP réussi" : "bind LDAP échoué",
+          latencyMs: Date.now() - t0,
+        });
       }
 
       return {
         ok: steps.length === 0 ? true : steps.every((s) => s.ok),
         schemaValid: true,
         steps,
-      }
+      };
     },
-  )
+  );
 }

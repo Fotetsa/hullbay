@@ -43,18 +43,20 @@ describe("architecture", () => {
 
   it("le domaine backup est déclaré dans le catalogue", () => {
     for (const key of [
-      "backup.destination.read",
-      "backup.destination.set",
-      "backup.destination.delete",
-      "backup.policy.read",
-      "backup.policy.create",
-      "backup.policy.update",
-      "backup.policy.delete",
-      "backup.run",
-      "backup.artifact.read",
-      "backup.artifact.restore",
+      "backup.destination.read", "backup.destination.set", "backup.destination.delete",
+      "backup.policy.read", "backup.policy.create", "backup.policy.update", "backup.policy.delete",
+      "backup.run", "backup.artifact.read", "backup.artifact.restore",
     ]) {
       expect(RESOURCE_CATALOG.has(key), key).toBe(true);
+    }
+  });
+
+  it("http/ n'importe pas Prisma (seul http/index.ts branche l'instance réelle)", () => {
+    for (const file of tsFiles(path.join(ROOT, "http"))) {
+      if (file.endsWith("index.ts")) continue;
+      expect(readFileSync(file, "utf8"), file).not.toMatch(
+        /@prisma\/client|lib\/prisma/,
+      );
     }
   });
 });

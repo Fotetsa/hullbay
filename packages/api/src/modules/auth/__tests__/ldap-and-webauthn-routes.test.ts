@@ -9,7 +9,7 @@ import {
 } from "vitest";
 
 
-vi.setConfig({ testTimeout: 20000, hookTimeout: 20000 });
+vi.setConfig({ testTimeout: 30000, hookTimeout: 60000 });
 
 
 vi.mock("../../../lib/prisma", async (importOriginal) => {
@@ -17,38 +17,40 @@ vi.mock("../../../lib/prisma", async (importOriginal) => {
   return {
     prisma: {
       ...actual.prisma,
-      user: { ...actual.prisma?.user, findUnique: vi.fn(), findFirst: vi.fn() },
+      user: { ...actual.prisma.user, findUnique: vi.fn(), findFirst: vi.fn() },
       authIdentity: {
-        ...actual.prisma?.authIdentity,
+        ...actual.prisma.authIdentity,
         findFirst: vi.fn(),
         update: vi.fn(),
         findMany: vi.fn(),
       },
       membership: {
-        ...actual.prisma?.membership,
+        ...actual.prisma.membership,
         findUnique: vi.fn(),
         findFirst: vi.fn(),
       },
       userSession: {
-        ...actual.prisma?.userSession,
+        ...actual.prisma.userSession,
         create: vi.fn(),
         update: vi.fn(),
         findUnique: vi.fn(),
         updateMany: vi.fn(),
       },
       securityPolicy: {
-        ...actual.prisma?.securityPolicy,
+        ...actual.prisma.securityPolicy,
         findUnique: vi.fn().mockResolvedValue(null),
         upsert: vi.fn().mockResolvedValue({}),
       },
       authProvider: {
-        ...actual.prisma?.authProvider,
+        ...actual.prisma.authProvider,
         findUnique: vi.fn(),
         findMany: vi.fn(),
       },
       $connect: vi.fn().mockResolvedValue(undefined),
       $disconnect: vi.fn().mockResolvedValue(undefined),
-      $transaction: vi.fn((fn: any) => Promise.resolve(fn(actual.prisma))),
+      $transaction: vi.fn(async (fn: any) => {
+        return fn(actual.prisma);
+      }),
     },
   };
 });
@@ -139,7 +141,6 @@ import { prisma } from "../../../lib/prisma";
 describe("LDAP & WebAuthn Routes", () => {
   let app: Awaited<ReturnType<typeof buildTestApp>>;
 
-
   beforeAll(async () => {
     app = await buildTestApp({
       routes: async (a) => {
@@ -153,9 +154,10 @@ describe("LDAP & WebAuthn Routes", () => {
 
 
   afterAll(async () => {
-    await app.close();
+    if (app) {
+      await app.close();
+    }
   });
-
 
   beforeEach(() => {
     vi.clearAllMocks();

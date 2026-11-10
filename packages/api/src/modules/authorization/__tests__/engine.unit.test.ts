@@ -13,6 +13,7 @@ import type {
   RoleRecord,
 } from "../engine/types";
 import { subjectFromSession } from "../subject";
+import { testSubject } from "./test-subject";
 
 const T1 = "t1";
 const T2 = "t2";
@@ -100,7 +101,7 @@ function buildHier(partial: Partial<MemoryGrantData>) {
   });
 }
 
-const subject = { userId: "u1", tenantId: T1 };
+const subject = testSubject("u1", T1);
 const direct = (r: ReturnType<typeof role>, m = {}) => ({
   memberships: [
     {
@@ -142,7 +143,7 @@ describe("moteur : refus par défaut et entrées invalides", () => {
   it("aucune adhésion dans le tenant", async () => {
     const { authz } = build();
     const d = await authz.can({
-      subject: { userId: "u1", tenantId: T2 },
+      subject: testSubject("u1", T2),
       action: "project.read",
     });
     expect(d.reason).toBe("no_membership");
