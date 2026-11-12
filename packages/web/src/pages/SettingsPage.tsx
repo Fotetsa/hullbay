@@ -8,6 +8,7 @@ import { useTranslation } from "react-i18next"
 import { LanguageSwitch } from "../components/LanguageSwitch"
 import { PasskeysCard } from "../components/PasskeysCard"
 import { ToggleSwitch } from "../components/ToggleSwitch"
+import { MailSettingsSection } from "../components/MailSettingsSection"
 import { useNavigate } from "react-router-dom";
 
 /**
@@ -21,7 +22,7 @@ export function SettingsPage() {
   const { data: me } = useQuery({ queryKey: ["me"], queryFn: api.me })
   const isOwner = me?.role === "owner"
 
-  const [activeTab, setActiveTab] = useState<"profile" | "security" | "domain">("profile")
+  const [activeTab, setActiveTab] = useState<"profile" | "security" | "domain" | "mail">("profile")
 
   const [currentPassword, setCurrentPassword] = useState("")
   const [newPassword, setNewPassword] = useState("")
@@ -91,7 +92,7 @@ export function SettingsPage() {
 
       <Tabs
         value={activeTab}
-        onValueChange={(v) => setActiveTab(v as "profile" | "security" | "domain")}
+        onValueChange={(v) => setActiveTab(v as "profile" | "security" | "domain" | "mail")}
       >
         <Tabs.List>
           <Tabs.Trigger value="profile" data-testid="settings-tab-profile">
@@ -103,6 +104,11 @@ export function SettingsPage() {
           {isOwner && (
             <Tabs.Trigger value="domain" data-testid="settings-tab-domain">
               {t('settings.tabs.domain')}
+            </Tabs.Trigger>
+          )}
+          {isOwner && (
+            <Tabs.Trigger value="mail" data-testid="settings-tab-mail">
+              {t('settings.tabs.mail', 'E-mails & Alertes')}
             </Tabs.Trigger>
           )}
         </Tabs.List>
@@ -301,6 +307,12 @@ export function SettingsPage() {
                 </Button>
               </div>
             </Container>
+          </Tabs.Content>
+        )}
+
+        {isOwner && (
+          <Tabs.Content value="mail" className="mt-5">
+            <MailSettingsSection />
           </Tabs.Content>
         )}
       </Tabs>

@@ -84,5 +84,6 @@ jobs:
         run: npm run test --workspace @hullbay/api
         env:
           NODE_ENV: test
+          BACKUP_DB_INTEGRATION: "1"
           DATABASE_URL: postgresql://test:test@localhost:5432/test_db
           JWT_SECRET: test-secret-for-ci-only

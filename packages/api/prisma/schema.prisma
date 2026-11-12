@@ -169,6 +169,7 @@ model Tenant {
   teams                    Team[]
   plicies                  Policy[]
   externalGroupMappings    ExternalGroupMapping[]
+  mailIntegration          MailIntegration?
   backupTargets            BackupTarget[]
   backupDestinations       BackupDestination[]
 }
@@ -578,6 +579,29 @@ model ExternalGroupMapping {
   @@index([providerId])
   @@index([teamId])
 }
+
+// ── Configuration du Mailer (Resend / SMTP) ──
+enum MailProviderType {
+  RESEND
+  SMTP
+}
+
+model MailIntegration {
+  id         String           @id @default(cuid())
+  tenantId   String           @unique
+  tenant     Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  provider   MailProviderType @default(RESEND)
+  enabled    Boolean          @default(false)
+  fromEmail  String?
+  fromName   String?          @default("Hullbay Ops")
+  replyTo    String?
+  configEnc  String           // JSON chiffré via encryptSecret contenant apiKey ou {host, port, user, pass, secure}
+  createdAt  DateTime         @default(now())
+  updatedAt  DateTime         @updatedAt
+
+  @@index([tenantId])
+}
+
 // ── Backup Engine ────────────────────────────────────────────────────────────
 // Le domaine backup est provider-neutral : aucune colonne ne nomme un backend
 // de stockage ni un moteur de base de données en dur. La stratégie et le
