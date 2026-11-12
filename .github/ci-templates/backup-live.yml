@@ -30,6 +30,20 @@ jobs:
     name: API + moteurs réels
     runs-on: ubuntu-latest
     timeout-minutes: 40
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: test_db
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     steps:
       - uses: actions/checkout@v6
 
@@ -47,6 +61,11 @@ jobs:
       - name: Génération du client Prisma
         run: npx prisma generate --schema packages/api/prisma/schema.prisma
 
+      - name: Appliquer les migrations Prisma
+        run: npx prisma migrate deploy --schema packages/api/prisma/schema.prisma
+        env:
+          DATABASE_URL: postgresql://test:test@localhost:5432/test_db
+
       - name: Build image runner (celle de production)
         run: docker build -t hullbay-backup-runner:ci packages/backup-runner
 
@@ -59,6 +78,7 @@ jobs:
         working-directory: packages/api
         env:
           BACKUP_LIVE: "1"
+          BACKUP_DB_INTEGRATION: "1"
           BACKUP_RUNNER_IMAGE: hullbay-backup-runner:ci
           NODE_ENV: test
           DATABASE_URL: postgresql://test:test@localhost:5432/test_db
