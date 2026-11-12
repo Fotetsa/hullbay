@@ -1,11 +1,14 @@
 import type { FastifyInstance, FastifyRequest } from "fastify"
 import { ObservabilityService, systemHealth } from "./service"
 import { driftTracker } from "./drift"
-import { requireRole } from "../auth/rbac"
+import { requirePermission, fromParam } from "../authorization/http"
+import type { ResourceExtractor } from "../authorization/http/resolvers"
 import { prisma } from "../../lib/prisma"
 import { effectiveTenantId, type TenantScopedRequest } from "../auth/tenancy/tenant-resolver"
 
-const viewer = { preHandler: requireRole("viewer") }
+const guard = (action: string, resource?: ResourceExtractor) => ({
+  preHandler: requirePermission(action, { resource, legacyMin: "viewer" }),
+})
 
 /**
  * Routes d'observabilité (lecture seule, accessibles à tous les rôles connectés) :
@@ -24,7 +27,7 @@ export async function registerObservabilityRoutes(app: FastifyInstance) {
   app.get(
     "/api/health/cluster",
     {
-      ...viewer,
+      ...guard("logs.read"),
       schema: {
         tags: ["observability"],
         summary: "Santé du cluster (nœuds Swarm + métriques par service)",
@@ -37,7 +40,7 @@ export async function registerObservabilityRoutes(app: FastifyInstance) {
   app.get(
     "/api/services/:id/metrics",
     {
-      ...viewer,
+      ...guard("logs.read"),
       schema: {
         tags: ["observability"],
         summary: "Santé d'un service (replicas, CPU, mémoire)",
@@ -65,7 +68,7 @@ export async function registerObservabilityRoutes(app: FastifyInstance) {
   app.get(
     "/api/drift",
     {
-      ...viewer,
+      ...guard("logs.read"),
       schema: {
         tags: ["observability"],
         summary: "Snapshot de drift courant (pour badges canvas)",
@@ -77,7 +80,7 @@ export async function registerObservabilityRoutes(app: FastifyInstance) {
 
   // Sur quel(s) serveur(s) un projet tourne réellement (placement des tasks Swarm).
   app.get("/api/projects/:id/placement", {
-    ...viewer,
+    ...guard("logs.read", fromParam("id", "project")),
     schema: {
       tags: ["observability"],
       summary: "Placement d'un projet (serveurs où il tourne)",

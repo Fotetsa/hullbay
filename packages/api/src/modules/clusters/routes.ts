@@ -1,16 +1,21 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { clusterService } from "./service";
-import { requireRole } from "../auth/rbac";
+import { requirePermission, fromParam } from "../authorization/http";
 import type { TenantScopedRequest } from "../auth/tenancy/tenant-resolver";
 
-const owner = { preHandler: requireRole("owner") };
+const guard = (action: string, withId = false) => ({
+  preHandler: requirePermission(action, {
+    resource: withId ? fromParam("id", "cluster") : undefined,
+    legacyMin: "owner",
+  }),
+});
 
 export async function registerClustersRoutes(app: FastifyInstance) {
   app.get(
     "/api/clusters",
     {
-      ...owner,
+      ...guard("cluster.read"),
       schema: {
         tags: ["clusters"],
         summary: "Lister les clusters (owner uniquement)",
@@ -26,7 +31,7 @@ export async function registerClustersRoutes(app: FastifyInstance) {
   app.get(
     "/api/clusters/:id",
     {
-      ...owner,
+      ...guard("cluster.read", true),
       schema: {
         params: idParams,
         tags: ["clusters"],
@@ -49,18 +54,19 @@ export async function registerClustersRoutes(app: FastifyInstance) {
   app.delete(
     "/api/clusters/:id",
     {
-      ...owner,
+      ...guard("cluster.delete", true),
       schema: {
         params: idParams,
         querystring: deleteQuery,
         tags: ["clusters"],
-        summary: "Supprimer un cluster pending/failed, avec teardown optionnel des serveurs (owner uniquement)",
+        summary:
+          "Supprimer un cluster pending/failed, avec teardown optionnel des serveurs (owner uniquement)",
         security: [{ bearerAuth: [] }],
       },
     },
     async (req, reply) => {
       const { id } = req.params as { id: string };
-      const { teardown } = req.query as { teardown?: boolean }
+      const { teardown } = req.query as { teardown?: boolean };
       try {
         const result = await clusterService.remove(
           id,

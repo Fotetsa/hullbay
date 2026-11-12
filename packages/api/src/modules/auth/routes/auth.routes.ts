@@ -7,7 +7,7 @@ import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify"
 import { z } from "zod"
 import { createHash } from "node:crypto"
 import { prisma } from "../../../lib/prisma"
-import { requireRole, currentUser } from "../authorization/rbac"
+import { requirePermission } from "../../authorization/http";
 import type { TenantScopedRequest } from "../tenancy/tenant-resolver"
 import { DEFAULT_TENANT_ID } from "../identity/auth-identity.service"
 import { sessionManager } from "../core/session-manager"
@@ -348,7 +348,7 @@ export async function registerAuthRoutes(app: FastifyInstance) {
   app.get(
     "/api/audit",
     {
-      preHandler: requireRole("operator"),
+      preHandler: requirePermission("audit.read", { legacyMin: "operator" }),
       schema: {
         tags: ["auth"],
         summary: "Journal d'audit (operator+) — paginé, filtrable par action",

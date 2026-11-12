@@ -13,7 +13,13 @@ import type { CatalogEntry } from "../catalog/resource-catalog";
  * le seul chemin prévu pour construire un Subject est `subjectFromSession()`
  * (subject.ts). Ne construis pas { userId, tenantId } à la main dans une route.
  */
-export type Subject = { userId: string; tenantId: string };
+
+declare const SUBJECT_BRAND: unique symbol;
+export type Subject = {
+  readonly userId: string
+  readonly tenantId: string
+  readonly [SUBJECT_BRAND]: true
+};
 export type Resource = { type: ScopeType; id: string };
 
 export type CanInput = {
