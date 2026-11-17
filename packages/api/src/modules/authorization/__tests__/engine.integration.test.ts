@@ -115,8 +115,8 @@ describe("les presets historiques reproduisent la matrice (via le repli legacy)"
   it("Operator : exactement 25 permissions", async () => {
     expect(await allowedKeys(users.operator)).toEqual([...OPERATOR].sort());
   });
-  it("Owner : les 60 permissions", async () => {
-    expect((await allowedKeys(users.owner)).length).toBe(60);
+  it("Owner : les 72 permissions", async () => {
+    expect((await allowedKeys(users.owner)).length).toBe(72);
   });
 });
 
