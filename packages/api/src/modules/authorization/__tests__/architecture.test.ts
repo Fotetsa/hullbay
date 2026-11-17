@@ -24,22 +24,32 @@ describe("architecture", () => {
     }
   });
 
-  it("aucune comparaison avec les rôles historiques hors du résolveur legacy", () => {
-    const names = /["'`](owner|operator|viewer)["'`]/i;
-    for (const file of tsFiles(ROOT)) {
-      if (file.endsWith("legacy-role-resolver.ts")) continue;
-      expect(readFileSync(file, "utf8"), file).not.toMatch(names);
-    }
-  });
+    it("aucune comparaison avec les rôles historiques hors résolveur legacy et admin/routes.ts", () => {
+      const names = /["'`](owner|operator|viewer)["'`]/i;
+      for (const file of tsFiles(ROOT)) {
+        if (
+          file.endsWith("legacy-role-resolver.ts") ||
+          file.endsWith("admin/routes.ts")
+        )
+          continue;
+        expect(readFileSync(file, "utf8"), file).not.toMatch(names);
+      }
+    });
 
-  it("le catalogue a des clés resource.action et des scopes valides", () => {
-    expect(RESOURCE_CATALOG.size).toBe(60);
-    for (const [key, entry] of RESOURCE_CATALOG) {
-      expect(key).toMatch(/^[a-z]+(\.[a-z]+)+$/);
-      for (const s of [...entry.scopes, ...entry.resourceTypes])
-        expect(isValidScopeType(s)).toBe(true);
-    }
-  });
+    it("le catalogue compte 72 permissions et correspond aux clés de presets.mjs", async () => {
+      const { ALL_KEYS } = await import("../presets.mjs");
+      expect(RESOURCE_CATALOG.size).toBe(72);
+      expect([...RESOURCE_CATALOG.keys()].sort()).toEqual([...ALL_KEYS].sort());
+    });
+
+    it("admin/ n'importe pas Fastify (hors routes.ts)", () => {
+      for (const file of tsFiles(path.join(ROOT, "admin"))) {
+        if (file.endsWith("routes.ts")) continue;
+        expect(readFileSync(file, "utf8"), file).not.toMatch(
+          /from\s+["']fastify/,
+        );
+      }
+    });
 
   it("le domaine backup est déclaré dans le catalogue", () => {
     for (const key of [

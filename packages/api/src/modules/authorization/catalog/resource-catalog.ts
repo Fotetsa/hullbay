@@ -84,7 +84,7 @@ const RAW: Record<string, CatalogEntry> = {
 
   // Backup Engine. Les destinations sont des credentials de tenant (comme le
   // registry) ; une policy et un artifact appartiennent au projet qui porte le
-  // nœud sauvegardé. 
+  // nœud sauvegardé.
   "backup.destination.read": tenantLevel,
   "backup.destination.set": tenantLevel,
   "backup.destination.delete": tenantLevel,
@@ -93,7 +93,11 @@ const RAW: Record<string, CatalogEntry> = {
     ["tenant", "cluster", "project", "node"],
     "Node.project.tenantId",
   ),
-  "backup.policy.create": entry(["node"], ["project", "node"], "Node.project.tenantId"),
+  "backup.policy.create": entry(
+    ["node"],
+    ["project", "node"],
+    "Node.project.tenantId",
+  ),
   "backup.policy.update": entry(["node"], ["node"], "Node.project.tenantId"),
   "backup.policy.delete": entry(["node"], ["node"], "Node.project.tenantId"),
   "backup.run": entry(["node"], ["project", "node"], "Node.project.tenantId"),
@@ -107,6 +111,19 @@ const RAW: Record<string, CatalogEntry> = {
   "settings.domain.read": tenantLevel,
   "settings.domain.set": tenantLevel,
   "audit.read": tenantLevel,
+
+  "role.read": tenantLevel,
+  "role.create": tenantLevel,
+  "role.update": tenantLevel,
+  "role.delete": tenantLevel,
+  "team.read": tenantLevel,
+  "team.create": tenantLevel,
+  "team.update": tenantLevel,
+  "team.delete": tenantLevel,
+  "team.member.assign": tenantLevel,
+  "team.role.assign": tenantLevel,
+  "membership.role.assign": tenantLevel,
+  "authorization.read": tenantLevel,
 
   "logs.read": entry(
     ["cluster", "project"],
