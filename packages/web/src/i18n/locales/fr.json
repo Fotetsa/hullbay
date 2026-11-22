@@ -821,7 +821,35 @@
   "tabs": {
    "profile": "Profil",
    "security": "Sécurité",
-   "domain": "Domaine"
+   "domain": "Domaine",
+   "mail": "E-mails & Alertes"
+  },
+  "mail": {
+   "title": "Notifications & E-mails",
+   "hint": "Configurez l'expédition des alertes (déploiements Swarm, sécurité, dérives) via Resend ou SMTP.",
+   "statusActive": "Actif",
+   "statusInactive": "Désactivé",
+   "enabledLabel": "Activer l'envoi d'e-mails",
+   "enabledHint": "Transmet les rapports d'incidents, succès de déploiement et alertes de sécurité aux opérateurs.",
+   "providerLabel": "Fournisseur de messagerie",
+   "resendApiKeyLabel": "Clé API Resend",
+   "resendApiKeyHint": "Clé chiffrée en base (AES-GCM). Ne sera jamais réaffichée en clair.",
+   "smtpHostLabel": "Serveur SMTP (Hôte)",
+   "smtpPortLabel": "Port",
+   "smtpSecureLabel": "Connexion directe SSL/TLS (port 465)",
+   "smtpUserLabel": "Utilisateur SMTP (optionnel)",
+   "smtpPassLabel": "Mot de passe SMTP",
+   "fromEmailLabel": "E-mail expéditeur (From)",
+   "fromNameLabel": "Nom affiché",
+   "replyToLabel": "Adresse Reply-To (optionnelle)",
+   "saveButton": "Enregistrer la configuration",
+   "testButton": "Envoyer un e-mail de test",
+   "toastSaved": "Configuration des e-mails enregistrée",
+   "toastTestSent": "E-mail de test déclenché ! Vérifiez votre boîte de réception.",
+   "toastTestFailed": "Échec du test d'envoi",
+   "templatesTitle": "Templates React Email & Previews",
+   "templatesSubtitle": "Visualisez le rendu responsive des notifications envoyé aux opérateurs avec leurs données factices (Dummy Data).",
+   "availableTemplates": "Templates disponibles"
   },
   "domain": {
    "title": "Nom de domaine",

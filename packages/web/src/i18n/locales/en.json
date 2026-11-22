@@ -821,7 +821,35 @@
   "tabs": {
    "profile": "Profile",
    "security": "Security",
-   "domain": "Domain"
+   "domain": "Domain",
+   "mail": "Emails & Alerts"
+  },
+  "mail": {
+   "title": "Notifications & Emails",
+   "hint": "Configure alert dispatch (Swarm deployments, security, drifts) via Resend or SMTP.",
+   "statusActive": "Active",
+   "statusInactive": "Disabled",
+   "enabledLabel": "Enable email dispatch",
+   "enabledHint": "Sends incident reports, deployment successes and security alerts to operators.",
+   "providerLabel": "Email Provider",
+   "resendApiKeyLabel": "Resend API Key",
+   "resendApiKeyHint": "Encrypted in database (AES-GCM). Never displayed in plain text.",
+   "smtpHostLabel": "SMTP Server (Host)",
+   "smtpPortLabel": "Port",
+   "smtpSecureLabel": "Direct SSL/TLS connection (port 465)",
+   "smtpUserLabel": "SMTP User (optional)",
+   "smtpPassLabel": "SMTP Password",
+   "fromEmailLabel": "Sender Email (From)",
+   "fromNameLabel": "Display Name",
+   "replyToLabel": "Reply-To Address (optional)",
+   "saveButton": "Save Configuration",
+   "testButton": "Send Test Email",
+   "toastSaved": "Email settings saved successfully",
+   "toastTestSent": "Test email triggered! Check your inbox.",
+   "toastTestFailed": "Failed to send test email",
+   "templatesTitle": "React Email Templates & Previews",
+   "templatesSubtitle": "Preview responsive operator notifications with their dummy data.",
+   "availableTemplates": "Available Templates"
   },
   "domain": {
    "title": "Domain name",
