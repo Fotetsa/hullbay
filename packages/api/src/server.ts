@@ -48,6 +48,8 @@ import { registerBackupDestinationsRoutes } from "./modules/backup/destinations.
 import { registerBackupRoutes } from "./modules/backup/routes";
 import { registerClusterSubscribers } from "./subscribers/clusters";
 import { registerSystemRoutes } from "./modules/system/routes";
+import { registerMailerRoutes } from "./modules/mailer";
+import { registerMailerSubscribers } from "./subscribers/mailer";
 import { backfillDefaultMemberships } from "./modules/auth/identity/auth-identity.service";
 import { logAuthorizationStartup } from "./modules/authorization/startup-check";
 import { currentMode } from "./modules/authorization/http";
@@ -190,6 +192,7 @@ app.setErrorHandler((error: FastifyError, request, reply) => {
     await registerSettingsRoutes(app);
     await registerUpdatesRoutes(app);
     await registerClustersRoutes(app);
+    await registerMailerRoutes(app);
     await registerBackupDestinationsRoutes(app);
     await registerBackupRoutes(app);
   }
@@ -238,6 +241,7 @@ app.setErrorHandler((error: FastifyError, request, reply) => {
     registerDeploySubscribers();
     registerObservabilitySubscribers();
     registerClusterSubscribers();
+    registerMailerSubscribers();
     startDriftJob();
     startAutoScaler();
     startClusterHealthJob();

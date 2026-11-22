@@ -37,6 +37,10 @@ vi.mock("../../../lib/prisma", () => {
   const user = { findUnique: vi.fn(), create: vi.fn() }
   const membership = { upsert: vi.fn(), findUnique: vi.fn() }
   const auditLog = { create: vi.fn(() => Promise.resolve({ id: "audit-1" })) }
+  const securityPolicy = {
+    findUnique: vi.fn().mockResolvedValue(null),
+    upsert: vi.fn().mockResolvedValue({}),
+  }
   // Transaction par défaut : délègue au MÊME client mocké (count/update/delete
   // redirigés vers les mêmes vi.fn). Les tests du workflow d'approbation la
   // remplacent par leur propre tx (voir txMock) — non affectés. $executeRaw
@@ -50,6 +54,7 @@ vi.mock("../../../lib/prisma", () => {
     user,
     membership,
     auditLog,
+    securityPolicy,
     $executeRaw: vi.fn(),
   }
   return {
