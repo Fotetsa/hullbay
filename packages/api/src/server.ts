@@ -37,6 +37,7 @@ import { attachWebSocket } from "./loaders/websocket";
 import { startObserver, stopObserver } from "./modules/observer/service";
 import { registerObservabilitySubscribers } from "./modules/observability/service";
 import { registerDeploySubscribers } from "./subscribers/on-deploy-finished";
+import { registerAuthorizationAdminRoutes } from "./modules/authorization/admin/routes";
 import { startDriftJob } from "./jobs/reconcile-drift";
 import { startAutoScaler } from "./jobs/auto-scaler";
 import { startClusterHealthJob } from "./jobs/cluster-health";
@@ -195,6 +196,7 @@ app.setErrorHandler((error: FastifyError, request, reply) => {
     await registerMailerRoutes(app);
     await registerBackupDestinationsRoutes(app);
     await registerBackupRoutes(app);
+    await registerAuthorizationAdminRoutes(app);
   }
 
   if (!skipSideEffects) {
