@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.6.0](https://github.com/Fotetsa/hullbay/compare/v1.5.0...v1.6.0) (2026-11-27)
+
+
+### Features
+
+* **authorization:** api administration des roles equipes et attributions phase 4 ([#187](https://github.com/Fotetsa/hullbay/issues/187)) ([5eadf74](https://github.com/Fotetsa/hullbay/commit/5eadf74beeda8a1e7c72294c44c17e0ea163d133))
+* **authorization:** branchement du moteur sur les routes phase 3 ([#184](https://github.com/Fotetsa/hullbay/issues/184)) ([75270f0](https://github.com/Fotetsa/hullbay/commit/75270f096412999a4c6fbc488b7380ae06faaadd))
+* **authorization:** moteur autorisation can require (phase 2) ([#179](https://github.com/Fotetsa/hullbay/issues/179)) ([e084708](https://github.com/Fotetsa/hullbay/commit/e08470864f1afdd284c822459ca082a9ed39d1dc))
+* **backup:** moteur de sauvegarde v1 + re-sync non destructif et dur… ([#181](https://github.com/Fotetsa/hullbay/issues/181)) ([ece670a](https://github.com/Fotetsa/hullbay/commit/ece670a6431d613e96d3a152a93a593162aaa975))
+* **mailer:** integration des fournisseurs resend et smtp avec react … ([#182](https://github.com/Fotetsa/hullbay/issues/182)) ([cc5db2e](https://github.com/Fotetsa/hullbay/commit/cc5db2e7aef4821c957486f5d71ca139bc32e989))
+
 ## [1.5.0](https://github.com/Fotetsa/hullbay/compare/v1.4.0...v1.5.0) (2026-10-20)
 
 
